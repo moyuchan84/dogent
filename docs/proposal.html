@@ -1,0 +1,477 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dogent 기획서 — 사내 Gemma 기반 업무 에이전트</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --surface: #ffffff; --ink: #16202c; --muted: #5b6878;
+    --line: #dfe4ea; --accent: #1a56c4; --accent-soft: #e8effb;
+    --ok: #18794e; --ok-soft: #e3f4ec; --warn: #a15c00; --warn-soft: #fdf1dc;
+    --risk: #b3261e; --risk-soft: #fbe9e7;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #11161c; --surface: #1a212a; --ink: #e7ecf2; --muted: #9aa7b6;
+      --line: #2c3743; --accent: #7aa7f5; --accent-soft: #1d2b44;
+      --ok: #5fcf9c; --ok-soft: #16332a; --warn: #f0b458; --warn-soft: #3a2c12;
+      --risk: #f28b82; --risk-soft: #3d1c1a;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: "Pretendard", "Malgun Gothic", "맑은 고딕", "Apple SD Gothic Neo", system-ui, sans-serif;
+    font-size: 16px; line-height: 1.65; word-break: keep-all;
+  }
+  nav {
+    position: sticky; top: 0; z-index: 10; background: var(--surface);
+    border-bottom: 1px solid var(--line); overflow-x: auto; white-space: nowrap;
+  }
+  nav .inner { max-width: 1040px; margin: 0 auto; padding: 0 16px; display: flex; gap: 4px; }
+  nav a {
+    padding: 12px 10px; font-size: 14px; color: var(--muted); text-decoration: none;
+    border-bottom: 2px solid transparent;
+  }
+  nav a:hover { color: var(--accent); border-bottom-color: var(--accent); }
+  main { max-width: 1040px; margin: 0 auto; padding: 0 16px 80px; }
+  header.hero { padding: 56px 0 32px; }
+  .eyebrow { font-size: 13px; font-weight: 700; letter-spacing: .08em; color: var(--accent); text-transform: uppercase; }
+  h1 { font-size: clamp(28px, 4.4vw, 42px); line-height: 1.25; margin: 10px 0 14px; letter-spacing: -.02em; }
+  .lead { font-size: 18px; color: var(--muted); max-width: 760px; margin: 0; }
+  .meta { margin-top: 18px; font-size: 13px; color: var(--muted); }
+  section { padding: 36px 0 8px; border-top: 1px solid var(--line); margin-top: 36px; }
+  h2 { font-size: 24px; margin: 0 0 6px; letter-spacing: -.01em; }
+  h2 .num { color: var(--accent); margin-right: 8px; font-variant-numeric: tabular-nums; }
+  .sub { color: var(--muted); margin: 0 0 22px; }
+  h3 { font-size: 17px; margin: 0 0 6px; }
+  p { margin: 0 0 12px; }
+  .grid { display: grid; gap: 14px; }
+  .g2 { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+  .g3 { grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
+  .g4 { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; }
+  .card p:last-child, .card ul:last-child { margin-bottom: 0; }
+  .card.accent { border-color: var(--accent); background: var(--accent-soft); }
+  .summary { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); margin-top: 28px; }
+  .summary .card .k { font-size: 13px; color: var(--muted); font-weight: 600; }
+  .summary .card .v { font-size: 17px; font-weight: 700; margin-top: 4px; line-height: 1.45; }
+  ul { margin: 0 0 12px; padding-left: 20px; }
+  li { margin-bottom: 4px; }
+  .tag { display: inline-block; font-size: 12px; font-weight: 700; padding: 2px 9px; border-radius: 999px; margin-right: 4px; white-space: nowrap; }
+  .tag.r0 { background: var(--ok-soft); color: var(--ok); }
+  .tag.r3 { background: var(--risk-soft); color: var(--risk); }
+  .tag.ph { background: var(--accent-soft); color: var(--accent); }
+  .tag.r2 { background: var(--warn-soft); color: var(--warn); }
+  .uc-id { font-size: 12px; font-weight: 700; color: var(--muted); letter-spacing: .04em; }
+  .flow { display: flex; flex-wrap: wrap; gap: 6px; align-items: stretch; margin: 12px 0 4px; padding: 0; list-style: none; counter-reset: step; }
+  .flow li {
+    counter-increment: step; flex: 1 1 130px; margin: 0; padding: 10px 12px; font-size: 14px; line-height: 1.45;
+    background: var(--bg); border: 1px solid var(--line); border-radius: 8px;
+  }
+  .flow li::before { content: counter(step); display: block; font-size: 12px; font-weight: 700; color: var(--accent); }
+  .flow li.gate { border-color: var(--risk); background: var(--risk-soft); }
+  .flow li.gate::before { content: counter(step) " · 사람 승인"; color: var(--risk); }
+  .tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; font-size: 14.5px; min-width: 560px; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 13px; color: var(--muted); font-weight: 700; background: var(--bg); }
+  tr:last-child td { border-bottom: 0; }
+  td:first-child { font-weight: 600; white-space: nowrap; }
+  .arch { display: grid; gap: 12px; }
+  .arch .zone { border: 1.5px dashed var(--line); border-radius: 12px; padding: 14px; }
+  .arch .zone > .zt { font-size: 12px; font-weight: 700; color: var(--muted); letter-spacing: .05em; margin-bottom: 10px; }
+  .arch .row { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
+  .box { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; font-size: 14px; }
+  .box b { display: block; font-size: 15px; margin-bottom: 2px; }
+  .box.main { border-color: var(--accent); border-width: 2px; }
+  .box small { color: var(--muted); display: block; line-height: 1.5; }
+  .connector { text-align: center; color: var(--muted); font-size: 13px; padding: 2px 0; }
+  .timeline { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+  .phase { background: var(--surface); border: 1px solid var(--line); border-top: 4px solid var(--accent); border-radius: 10px; padding: 14px 16px; }
+  .phase .when { font-size: 13px; color: var(--muted); font-weight: 600; }
+  .phase h3 { margin: 2px 0 8px; }
+  .phase ul { font-size: 14px; padding-left: 18px; }
+  .phase .gate { font-size: 13px; margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--line); color: var(--muted); }
+  .phase .gate b { color: var(--ink); }
+  .ask { counter-reset: ask; list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+  .ask li { counter-increment: ask; background: var(--surface); border: 1px solid var(--accent); border-radius: 10px; padding: 14px 16px 14px 54px; position: relative; margin: 0; }
+  .ask li::before {
+    content: counter(ask); position: absolute; left: 16px; top: 14px; width: 26px; height: 26px; border-radius: 50%;
+    background: var(--accent); color: var(--surface); font-weight: 700; font-size: 14px; text-align: center; line-height: 26px;
+  }
+  .note { font-size: 14px; color: var(--muted); margin-top: 12px; }
+  code { font-family: Consolas, "D2Coding", monospace; font-size: .92em; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; }
+  footer { margin-top: 48px; padding-top: 20px; border-top: 1px solid var(--line); font-size: 13px; color: var(--muted); }
+  @media print {
+    nav { display: none; }
+    body { background: #fff; font-size: 12pt; }
+    section { break-inside: avoid-page; }
+    .card, .phase, .box { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<nav><div class="inner">
+  <a href="#why">배경</a>
+  <a href="#concept">컨셉</a>
+  <a href="#usecases">유즈케이스</a>
+  <a href="#how">동작 방식</a>
+  <a href="#arch">아키텍처</a>
+  <a href="#ops">배포·운영</a>
+  <a href="#security">보안·통제</a>
+  <a href="#roadmap">로드맵</a>
+  <a href="#risk">리스크</a>
+  <a href="#ask">요청 사항</a>
+</div></nav>
+
+<main>
+
+<header class="hero">
+  <div class="eyebrow">AX / PI 과제 기획서</div>
+  <h1>Dogent — 사내 Gemma로 움직이는<br>브라우저 업무 에이전트</h1>
+  <p class="lead">재공 확인, 엑셀과 웹 사이의 데이터 옮기기, 방화벽 해제 신청처럼 사람이 화면을 오가며 반복하는 업무를, 업무 절차서(스킬)를 따라 에이전트가 대신 수행하게 합니다.</p>
+  <div class="meta">초안 v0.1 · 2026-10-13 · 프로젝트명은 가칭이며 시스템명·기간·인력은 가정 및 추정치입니다</div>
+
+  <div class="summary">
+    <div class="card"><div class="k">무엇을</div><div class="v">크롬 확장 + 데스크탑 클라이언트로 사내 웹 시스템을 대신 조작</div></div>
+    <div class="card"><div class="k">어떻게</div><div class="v">사내 Gemma API + 현업이 작성하는 업무 절차서(스킬)</div></div>
+    <div class="card"><div class="k">인프라</div><div class="v">사용자 PC에서 실행. 서버는 VM 1대 이하</div></div>
+    <div class="card accent"><div class="k">지금 필요한 결정</div><div class="v">사전 확인 + PoC 5~6주 착수 승인</div></div>
+  </div>
+</header>
+
+<section id="why">
+  <h2><span class="num">1</span>배경</h2>
+  <p class="sub">시스템은 많고, 그 사이를 사람이 손으로 잇고 있습니다.</p>
+  <div class="grid g3">
+    <div class="card">
+      <h3>반복되는 화면 작업</h3>
+      <p>조회 조건 입력, 엑셀 내려받기, 필터링, 다른 화면에 붙여넣기. 판단보다 손이 더 많이 가는 일이 매일 반복됩니다.</p>
+    </div>
+    <div class="card">
+      <h3>기존 RPA의 한계</h3>
+      <p>화면 좌표와 고정 스크립트에 의존해, 화면이 조금만 바뀌어도 멈춥니다. 만들고 고치는 일이 개발자 몫입니다.</p>
+    </div>
+    <div class="card">
+      <h3>달라진 조건</h3>
+      <p>사내에 Gemma API가 제공되고, 브라우저를 조작하는 AI 에이전트 방식이 검증되었습니다. 데이터를 밖으로 내보내지 않고 같은 방식을 시도할 수 있습니다.</p>
+    </div>
+  </div>
+</section>
+
+<section id="concept">
+  <h2><span class="num">2</span>컨셉</h2>
+  <p class="sub">모델에게 전부 맡기지 않습니다. 절차는 사람이 정하고, 모델은 화면을 읽고 단계를 수행합니다.</p>
+  <div class="grid g2">
+    <div class="card">
+      <h3>스킬 = 업무 절차서</h3>
+      <p>"재공 조회 화면으로 이동 → 라인 선택 → 조회 → 표 추출"처럼 현업이 쓰는 말로 적은 문서입니다. 화면이 바뀌면 문서만 고치면 되고, 프로그램을 다시 배포하지 않습니다.</p>
+    </div>
+    <div class="card">
+      <h3>화면을 글자로 읽는다</h3>
+      <p>화면을 이미지가 아니라 "버튼: 조회", "선택 상자: 라인" 같은 목록으로 바꿔 모델에 줍니다. 좌표에 의존하지 않아 화면 배치가 바뀌어도 버팁니다.</p>
+    </div>
+    <div class="card">
+      <h3>데이터는 PC 밖으로 나가지 않는다</h3>
+      <p>표 데이터의 집계·가공은 PC 안에서 계산합니다. 모델에는 컬럼 이름과 샘플 몇 행만 전달하므로 숫자가 틀릴 일이 없고 유출 위험도 줄어듭니다.</p>
+    </div>
+    <div class="card">
+      <h3>되돌릴 수 없는 일은 사람이 누른다</h3>
+      <p>저장·상신·삭제 전에는 반드시 내용을 요약해 보여주고 사용자 승인을 받습니다. 기존 결재 절차는 그대로 유지됩니다.</p>
+    </div>
+  </div>
+</section>
+
+<section id="usecases">
+  <h2><span class="num">3</span>유즈케이스</h2>
+  <p class="sub">조회성 업무로 시작해, 입력과 신청 업무로 넓힙니다.</p>
+
+  <div class="grid">
+    <div class="card">
+      <div class="uc-id">UC-01 <span class="tag ph">Phase 1 · PoC</span><span class="tag r0">조회만</span></div>
+      <h3>재공(WIP) 확인</h3>
+      <p>"8라인 PHOTO 공정 재공 확인해줘" 한 줄로 조회부터 정체 Lot 정리까지.</p>
+      <ol class="flow">
+        <li>사용자가 라인·공정을 말로 지시</li>
+        <li>재공 조회 화면 이동, 조건 입력, 조회</li>
+        <li>결과 표 전체 추출</li>
+        <li>기준 초과 Lot 필터, 공정별 집계</li>
+        <li>요약 표시, 엑셀 저장</li>
+      </ol>
+    </div>
+
+    <div class="card">
+      <div class="uc-id">UC-02 <span class="tag ph">Phase 2</span><span class="tag r0">조회만</span></div>
+      <h3>웹 → 엑셀 내보내기 및 가공</h3>
+      <p>조회 결과를 내려받아 정해진 양식으로 가공합니다. 가공 전후의 행 수와 합계를 검증해 보여줍니다.</p>
+      <ol class="flow">
+        <li>대상 화면 조회</li>
+        <li>엑셀 다운로드 또는 표 추출</li>
+        <li>가공 명세 작성 (필터·집계·병합)</li>
+        <li>PC에서 가공 실행, 검증</li>
+        <li>미리보기 후 저장</li>
+      </ol>
+    </div>
+
+    <div class="card">
+      <div class="uc-id">UC-03 <span class="tag ph">Phase 2</span><span class="tag r3">저장 포함</span></div>
+      <h3>엑셀 → 웹 일괄 입력</h3>
+      <p>엑셀에 정리한 데이터를 웹 화면에 옮깁니다. 입력한 값을 다시 읽어 원본과 100% 일치할 때만 저장을 요청합니다.</p>
+      <ol class="flow">
+        <li>엑셀 파일과 대상 화면 지정</li>
+        <li>컬럼 매핑, 형식 검증</li>
+        <li>일괄 붙여넣기 또는 행별 입력</li>
+        <li>화면 값을 원본과 대조</li>
+        <li class="gate">대조 결과 확인 후 저장 승인</li>
+        <li>저장</li>
+      </ol>
+    </div>
+
+    <div class="card">
+      <div class="uc-id">UC-05 <span class="tag ph">Phase 2</span><span class="tag r3">상신 포함</span></div>
+      <h3>IP 방화벽 해제 신청</h3>
+      <p>신청서 작성과 상신까지만 대행합니다. <b>승인은 기존 결재 라인이 그대로 수행</b>하며, 넓은 대역이나 전체 포트 같은 금지 패턴은 사이트에 접속하기 전에 차단합니다.</p>
+      <ol class="flow">
+        <li>출발지·목적지·포트·기간·사유 지시</li>
+        <li>형식 및 금지 패턴 검증</li>
+        <li>신청 사이트 접속, 신청서 작성</li>
+        <li>작성 내용을 요청과 대조</li>
+        <li class="gate">요약 확인 후 상신 승인</li>
+        <li>상신, 신청 번호 기록</li>
+      </ol>
+    </div>
+
+    <div class="grid g2">
+      <div class="card">
+        <div class="uc-id">UC-04 <span class="tag ph">Phase 3</span></div>
+        <h3>다중 시스템 결합 리포트</h3>
+        <p>재공 현황과 설비 상태처럼 두 시스템의 데이터를 조회해 결합하고, 리포트 양식에 채웁니다.</p>
+      </div>
+      <div class="card">
+        <div class="uc-id">UC-06 <span class="tag ph">Phase 3</span></div>
+        <h3>정기 실행 리포트</h3>
+        <p>매일·매주 같은 조회와 가공을 정해진 시각에 실행합니다. 조회성 스킬만 등록할 수 있습니다.</p>
+      </div>
+    </div>
+  </div>
+  <p class="note">상세 흐름과 예외 처리는 <code>01-usecases.md</code>에 있습니다.</p>
+</section>
+
+<section id="how">
+  <h2><span class="num">4</span>동작 방식</h2>
+  <p class="sub">한 단계마다 보고, 정하고, 검사하고, 실행하고, 확인합니다.</p>
+  <ol class="flow">
+    <li><b>관찰</b><br>현재 화면을 요소 목록으로 변환</li>
+    <li><b>판단</b><br>스킬의 현재 단계에 맞는 동작을 Gemma가 선택</li>
+    <li><b>검사</b><br>허용 사이트·허용 동작인지 규칙으로 확인</li>
+    <li class="gate"><b>승인</b><br>저장·상신이면 사용자 확인</li>
+    <li><b>실행</b><br>클릭·입력·추출</li>
+    <li><b>검증</b><br>스킬에 적힌 확인 조건 통과 여부</li>
+  </ol>
+  <div class="grid g2" style="margin-top:14px">
+    <div class="card">
+      <h3>쓸수록 빨라집니다</h3>
+      <p>한 번 성공한 경로는 저장해 두고 다음부터 모델 호출 없이 재생합니다. 화면이 바뀌어 실패할 때만 모델이 다시 화면을 읽어 복구합니다.</p>
+    </div>
+    <div class="card">
+      <h3>모르면 멈춥니다</h3>
+      <p>입력이 부족하면 추측하지 않고 묻습니다. 스킬에 없는 상황을 만나면 임의로 진행하지 않고, 어디까지 했는지 보고하고 중단합니다.</p>
+    </div>
+  </div>
+</section>
+
+<section id="arch">
+  <h2><span class="num">5</span>아키텍처와 기술 스택</h2>
+  <p class="sub">실행은 사용자 PC에서 일어납니다. 대규모 서버 인프라는 필요하지 않습니다.</p>
+
+  <div class="arch">
+    <div class="zone">
+      <div class="zt">사용자 PC</div>
+      <div class="row">
+        <div class="box main"><b>크롬 확장</b><small>사이드 패널(대화·진행·승인)<br>화면 읽기, 클릭·입력 실행<br>사용자의 로그인 세션을 그대로 사용</small></div>
+        <div class="box"><b>데스크탑 클라이언트</b><small>Phase 3부터<br>파일·엑셀, 스케줄, 스킬 동기화<br>실행 기록 보관</small></div>
+        <div class="box"><b>에이전트 코어</b><small>확장과 클라이언트가 공유<br>스킬 실행, 규칙 검사, 데이터 가공</small></div>
+      </div>
+    </div>
+    <div class="connector">▲▼ 사내망 HTTPS</div>
+    <div class="zone">
+      <div class="zt">사내 공용 자원</div>
+      <div class="row">
+        <div class="box"><b>사내 Gemma API</b><small>기존 제공분 사용</small></div>
+        <div class="box"><b>사내 Git</b><small>스킬 저장·검토·버전 관리</small></div>
+        <div class="box"><b>파일 서버</b><small>확장·클라이언트 업데이트 게시</small></div>
+        <div class="box"><b>Hub 서버 (선택)</b><small>Phase 3부터, VM 1대<br>정책 배포, 로그 수집, 통계</small></div>
+      </div>
+    </div>
+  </div>
+
+  <h3 style="margin-top:26px">기술 스택</h3>
+  <div class="tablewrap">
+    <table>
+      <tr><th>영역</th><th>선택</th><th>이유</th></tr>
+      <tr><td>언어</td><td>TypeScript</td><td>확장, 클라이언트, 코어를 한 언어로 개발하고 코드를 공유</td></tr>
+      <tr><td>크롬 확장</td><td>Manifest V3 · WXT · React</td><td>사이드 패널 UI, Chrome과 Edge 동시 지원</td></tr>
+      <tr><td>브라우저 제어</td><td>Content Script · Chrome DevTools Protocol</td><td>별도 브라우저를 띄우지 않고 사용자 세션에서 동작</td></tr>
+      <tr><td>데스크탑</td><td>Electron</td><td>코어를 그대로 탑재, MSI 설치와 자동 업데이트</td></tr>
+      <tr><td>모델 연동</td><td>OpenAI 호환 클라이언트 · Zod 검증</td><td>모델 출력 형식을 검증하고 어긋나면 재시도</td></tr>
+      <tr><td>엑셀·가공</td><td>ExcelJS · Arquero 또는 DuckDB-WASM</td><td>PC 안에서 읽기, 쓰기, 집계를 처리</td></tr>
+      <tr><td>스킬</td><td>Markdown 문서 · 사내 Git</td><td>현업이 직접 작성하고 기존 리뷰 절차로 관리</td></tr>
+      <tr><td>Hub</td><td>Node · PostgreSQL (단일 인스턴스)</td><td>Hub가 내려가도 PC의 실행은 계속됨</td></tr>
+    </table>
+  </div>
+  <p class="note">컴포넌트 상세, 도구 목록, 데이터 처리 경로는 <code>03-architecture.md</code>에 있습니다.</p>
+</section>
+
+<section id="ops">
+  <h2><span class="num">6</span>배포·운영</h2>
+  <p class="sub">기존 사내 배포 체계를 그대로 씁니다.</p>
+  <div class="grid g3">
+    <div class="card">
+      <h3>설치와 업데이트</h3>
+      <ul>
+        <li>확장: 브라우저 정책으로 대상 PC에 자동 설치·업데이트</li>
+        <li>클라이언트: 서명된 MSI, 사내 파일 서버에서 자동 업데이트</li>
+        <li>개발팀 → 파일럿 부서 → 전체 순으로 단계 배포</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>스킬 관리</h3>
+      <ul>
+        <li>사내 Git에 올리고 업무 오너가 검토 후 배포</li>
+        <li>화면이 바뀌면 스킬 문서만 수정</li>
+        <li>성공률이 떨어진 스킬은 오너에게 자동 알림</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>운영 통제</h3>
+      <ul>
+        <li>스킬별 실행 수, 성공률, 소요 시간 집계</li>
+        <li>문제 발생 시 특정 스킬 또는 전체를 원격으로 즉시 중지</li>
+        <li>모델 버전 변경 전 회귀 테스트</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="security">
+  <h2><span class="num">7</span>보안·통제</h2>
+  <p class="sub">에이전트는 사용자가 할 수 있는 일만, 사용자가 보는 앞에서 합니다.</p>
+  <div class="tablewrap">
+    <table>
+      <tr><th>원칙</th><th>내용</th></tr>
+      <tr><td>사내 완결</td><td>모델 호출은 사내 Gemma API로만. 외부로 나가는 데이터 없음</td></tr>
+      <tr><td>본인 권한</td><td>사용자의 로그인 세션 안에서만 동작. 별도 계정이나 권한 상승 없음. 비밀번호를 저장하거나 입력하지 않음</td></tr>
+      <tr><td>허용 범위</td><td>등록된 사내 도메인에서만 동작. 스킬이 선언한 사이트와 동작만 허용</td></tr>
+      <tr><td>사람 승인</td><td>저장·상신·삭제 전 사용자 승인 필수. 기존 결재 절차는 그대로 유지</td></tr>
+      <tr><td>입력 검증</td><td>방화벽 신청 등은 금지 패턴을 규칙으로 차단 (모델 판단에 맡기지 않음)</td></tr>
+      <tr><td>기록</td><td>모든 실행의 단계, 동작, 승인 여부를 감사 로그로 보관</td></tr>
+      <tr><td>검증된 스킬</td><td>검토 승인을 거친 스킬만 배포. 프로그램은 사내 인증서로 서명</td></tr>
+    </table>
+  </div>
+  <div class="grid g4" style="margin-top:14px">
+    <div class="card"><span class="tag r0">R0</span><h3>조회·추출</h3><p>자동 실행</p></div>
+    <div class="card"><span class="tag r0">R1</span><h3>파일 저장</h3><p>자동 실행, 위치 고지</p></div>
+    <div class="card"><span class="tag r2">R2</span><h3>화면 입력</h3><p>자동 실행, 미리보기</p></div>
+    <div class="card"><span class="tag r3">R3</span><h3>저장·상신·삭제</h3><p>사용자 승인 필수</p></div>
+  </div>
+</section>
+
+<section id="roadmap">
+  <h2><span class="num">8</span>로드맵</h2>
+  <p class="sub">단계마다 판정 기준을 두고, 통과할 때만 다음으로 갑니다. 기간은 추정치입니다.</p>
+  <div class="timeline">
+    <div class="phase">
+      <div class="when">Phase 0 · 1~2주</div>
+      <h3>사전 확인</h3>
+      <ul>
+        <li>Gemma API 스펙·속도 실측</li>
+        <li>보안 정책 협의</li>
+        <li>대상 화면 구조 조사</li>
+        <li>현재 업무 소요 시간 측정</li>
+      </ul>
+      <div class="gate"><b>판정</b> 전제 조건 충족 여부</div>
+    </div>
+    <div class="phase">
+      <div class="when">Phase 1 · 3~4주</div>
+      <h3>PoC</h3>
+      <ul>
+        <li>재공 확인 1건</li>
+        <li>확장 단독 구성</li>
+        <li>화면 읽기, 에이전트 루프, 표 추출</li>
+      </ul>
+      <div class="gate"><b>판정</b> 20회 반복 성공률 90% 이상, 데이터 100% 일치</div>
+    </div>
+    <div class="phase">
+      <div class="when">Phase 2 · 6~8주</div>
+      <h3>MVP</h3>
+      <ul>
+        <li>엑셀 ↔ 웹, 방화벽 신청</li>
+        <li>승인 게이트, 입력 대조</li>
+        <li>스킬 형식·검토 절차 확정</li>
+      </ul>
+      <div class="gate"><b>판정</b> 4개 업무 성공률 90% 이상, 승인 없는 제출 0건</div>
+    </div>
+    <div class="phase">
+      <div class="when">Phase 3 · 8주</div>
+      <h3>파일럿</h3>
+      <ul>
+        <li>1개 부서 실사용</li>
+        <li>데스크탑 클라이언트, Hub</li>
+        <li>스케줄, 결합 리포트</li>
+      </ul>
+      <div class="gate"><b>판정</b> 실측 절감 시간, 오제출 0건</div>
+    </div>
+    <div class="phase">
+      <div class="when">Phase 4 · 지속</div>
+      <h3>확산</h3>
+      <ul>
+        <li>부서·스킬 확대</li>
+        <li>스킬 오너 양성</li>
+        <li>API 연동으로 고도화</li>
+      </ul>
+    </div>
+  </div>
+  <div class="card" style="margin-top:14px">
+    <h3>효과는 가정하지 않고 측정합니다</h3>
+    <p>월 절감 시간 = (수작업 건당 시간 − 에이전트 사용 시 사람이 쓴 시간) × 월 실행 건수. 수작업 시간은 Phase 0에서 조사하고, 나머지는 실행 로그에서 산출합니다.</p>
+  </div>
+</section>
+
+<section id="risk">
+  <h2><span class="num">9</span>리스크와 대응</h2>
+  <p class="sub">가장 큰 불확실성 세 가지는 Phase 0에서 먼저 확인합니다.</p>
+  <div class="tablewrap">
+    <table>
+      <tr><th>리스크</th><th>대응</th><th>확인 시점</th></tr>
+      <tr><td>Gemma의 판단이 불안정</td><td>절차는 스킬이 쥐고 모델 역할을 좁힘. 출력 검증·재시도, 성공 경로 재사용</td><td>Phase 0~1</td></tr>
+      <tr><td>대상 화면이 전용 그리드 방식</td><td>시스템별 어댑터 개발, 화면의 엑셀 다운로드 기능 활용, 스크린샷 보조</td><td>Phase 0</td></tr>
+      <tr><td>확장 권한이 보안 정책에 막힘</td><td>조기 협의, 권한을 줄인 축소 구성 준비</td><td>Phase 0</td></tr>
+      <tr><td>잘못된 저장·상신</td><td>승인 게이트, 입력 대조, 시험 실행 모드, 감사 로그</td><td>Phase 2</td></tr>
+      <tr><td>화면 변경으로 스킬이 깨짐</td><td>자가 복구, 성공률 모니터링, 스킬 오너 체계</td><td>Phase 3~</td></tr>
+      <tr><td>수작업보다 느림</td><td>성공 경로 재사용으로 모델 호출 축소</td><td>Phase 1</td></tr>
+    </table>
+  </div>
+</section>
+
+<section id="ask">
+  <h2><span class="num">10</span>의사결정 요청 사항</h2>
+  <p class="sub">PoC 종료 시점에 결과를 보고하고 계속 여부를 다시 판단받겠습니다.</p>
+  <ol class="ask">
+    <li><b>Phase 0~1 착수 승인</b> — 약 5~6주, 개발 인력 2명 (추정)</li>
+    <li><b>PoC 대상 지정</b> — 재공 조회 시스템과 현업 담당자 1명</li>
+    <li><b>보안 부서 협의 창구 지정</b> — 확장 권한과 로그 범위 협의</li>
+    <li><b>사내 Gemma API 개발용 할당량 확보</b></li>
+  </ol>
+</section>
+
+<footer>
+  함께 보는 문서: <code>01-usecases.md</code> 유즈케이스 · <code>02-requirements.md</code> 요구사항 · <code>03-architecture.md</code> 아키텍처 · <code>04-roadmap.md</code> 추진 계획 · <code>05-skill-spec.md</code> 스킬 명세
+</footer>
+
+</main>
+</body>
+</html>
