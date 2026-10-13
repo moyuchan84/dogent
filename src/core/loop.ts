@@ -1,8 +1,8 @@
-import { parseAction, type Action } from './actions';
+import { directParts, parseAction, type Action } from './actions';
 import { capture, evalCheck, stepCaptures, stepCheck, stripCheckLines, type Clause } from './check';
 import { DatasetStore } from './dataset';
-import { buildWorkbook } from './excel';
-import { checkAction, findElement } from './policy';
+import { buildWorkbook, readDownloadedTable } from './excel';
+import { checkAction, findElement, hostAllowed } from './policy';
 import { buildTurnMessages } from './prompt';
 import { checkInputRules, extractSteps, fillTemplate, fillValue, type Skill, type SkillInputs } from './skill';
 import { renderSnapshot } from './snapshot';
@@ -41,9 +41,6 @@ export interface RunDeps {
 const MAX_FORMAT_RETRIES = 2;
 const MAX_STRIKES = 3;
 const MAX_PAGES = 500;
-/** 모델 없이 실행할 수 있는 단계의 첫머리. 예: "select로 ...", "click으로 ..." */
-const DIRECT_STEP =
-  /^(navigate|click|type|select|extract_table|fill_table|transform|write_excel|finish)(?:으로|로)\s/;
 /** 승인 요청에 현재 값으로 보여줄 입력 요소 */
 const FIELD_ROLES = new Set(['textbox', 'combobox', 'checkbox', 'radio']);
 
@@ -266,6 +263,15 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps): Promise<Ru
         }
         return { ok: true, result: `${pages}페이지 추출, "${ds.name}" 누적 ${ds.rows.length}행` };
       }
+      case 'download_table': {
+        if (!browser.download) return { ok: false, result: '이 환경에서는 파일 내려받기를 쓸 수 없습니다. extract_table로 표를 추출하세요' };
+        // 페이지가 직접 만든 파일(blob:)은 그 페이지의 주소로, 서버에서 받는 파일은 받는 주소로 허용 도메인을 본다.
+        const allowed = (url: string) => url.startsWith('data:') || hostAllowed(url.replace(/^blob:/, ''), skill.domains);
+        const file = await browser.download(action.args.ref, action.args.timeout_sec * 1000, allowed);
+        const table = await readDownloadedTable(file.data);
+        const ds = datasets.set(action.args.dataset, table.columns, table.rows);
+        return { ok: true, result: `${file.filename} 내려받음, "${ds.name}" ${ds.rows.length}행` };
+      }
       case 'fill_table': {
         const ds = datasets.get(action.args.dataset);
         if (ds.rows.length === 0) return { ok: false, result: `"${ds.name}"에 입력할 행이 없습니다` };
@@ -313,12 +319,15 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps): Promise<Ru
   function directAction(snap: PageSnapshot): Action | null {
     if (!deps.direct || directTried.has(current)) return null;
     const text = withOutputs(promptSteps[current - 1]);
-    const tool = DIRECT_STEP.exec(text)?.[1];
-    const literal = /`(\{.*\})`/.exec(text)?.[1];
-    if (!tool || !literal) return null;
+    const parts = directParts(text);
+    if (!parts) return null;
     directTried.add(current);
     try {
-      const reply = JSON.stringify({ thought: '스킬에 적힌 대로 실행', tool, args: JSON.parse(literal) });
+      const reply = JSON.stringify({
+        thought: '스킬에 적힌 대로 실행',
+        tool: parts.tool,
+        args: JSON.parse(parts.literal),
+      });
       const parsed = parseAction(reply, snap);
       return parsed.ok ? parsed.action : null;
     } catch {

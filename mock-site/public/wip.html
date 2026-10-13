@@ -45,6 +45,10 @@
 <div class="bar">
   <span id="total"></span>
   <span>
+    <button id="xlsx" disabled>엑셀 다운로드</button>
+    <button id="csv" disabled>CSV 내려받기</button>
+  </span>
+  <span>
     <button id="prev" disabled>이전</button>
     <span id="pageinfo"></span>
     <button id="next" disabled>다음</button>
@@ -66,6 +70,7 @@
   const $ = (id) => document.getElementById(id);
   let rows = [];
   let page = 0;
+  let last = null;
 
   function render() {
     const pages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
@@ -86,6 +91,16 @@
     $('pageinfo').textContent = (page + 1) + ' / ' + pages + ' 페이지';
     $('prev').disabled = page === 0;
     $('next').disabled = page >= pages - 1;
+    $('xlsx').disabled = $('csv').disabled = rows.length === 0;
+  }
+
+  function save(href, name) {
+    const a = document.createElement('a');
+    a.href = href;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
   }
 
   $('query').addEventListener('click', async () => {
@@ -102,12 +117,24 @@
     ]);
     const product = $('product').value.trim();
     rows = product ? data.rows.filter((r) => r[1].includes(product)) : data.rows;
+    last = { line, step: $('step').value, product };
     page = 0;
     wrap.removeAttribute('aria-busy');
     render();
   });
   $('prev').addEventListener('click', () => { page--; render(); });
   $('next').addEventListener('click', () => { page++; render(); });
+  // 서버가 만들어 주는 엑셀 파일. 조회한 조건 전체가 한 번에 내려온다.
+  $('xlsx').addEventListener('click', () => save('/api/wip.xlsx?' + new URLSearchParams(last), ''));
+  // 화면이 직접 만드는 CSV. 주소는 누른 직후에 지운다.
+  $('csv').addEventListener('click', () => {
+    const cell = (v) => (/[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v);
+    const head = [...$('wipGrid').querySelectorAll('th')].map((th) => th.textContent);
+    const text = [head, ...rows].map((r) => r.map(cell).join(',')).join('\r\n');
+    const url = URL.createObjectURL(new Blob(['﻿' + text], { type: 'text/csv' }));
+    save(url, '재공_' + last.line + '.csv');
+    URL.revokeObjectURL(url);
+  });
   $('saveCond').addEventListener('click', () => { $('msg').textContent = '조회 조건을 저장했습니다.'; });
 </script>
 </body>

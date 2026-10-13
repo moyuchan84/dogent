@@ -5,6 +5,7 @@ import {
   FREE_SKILL_ID,
   buildFreeSkill,
   OpenAiCompatClient,
+  parseSkill,
   planRequest,
   readTable,
   resolveInputs,
@@ -14,10 +15,13 @@ import {
   type LlmSettings,
   type RunEvent,
   type RunResult,
+  type Skill,
 } from '@/src/core';
 import { ChromeBrowser } from '@/src/ext/browser';
 import { loadBundledSkills } from '@/src/ext/skills';
-import { appendRun, loadRuns, loadSettings, saveSettings } from '@/src/ext/storage';
+import { appendRun, loadDrafts, loadRuns, loadSettings, markTrial, saveSettings, type DraftSkill } from '@/src/ext/storage';
+import { Author } from './Author';
+import { download, targetTab } from './util';
 
 const STATUS_LABEL: Record<RunResult['status'], string> = {
   done: '완료',
@@ -27,27 +31,25 @@ const STATUS_LABEL: Record<RunResult['status'], string> = {
   dryrun: '시험 실행 완료',
 };
 
-function download(filename: string, data: BlobPart, type: string) {
-  const url = URL.createObjectURL(new Blob([data], { type }));
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 10_000);
-}
-
-/** 테스트에서는 ?tabId= 로 대상 탭을 지정한다. 평소에는 현재 창의 활성 탭. */
-async function targetTab(): Promise<{ id: number; url: string }> {
-  const forced = new URLSearchParams(location.search).get('tabId');
-  const tab = forced
-    ? await browser.tabs.get(Number(forced))
-    : (await browser.tabs.query({ active: true, currentWindow: true }))[0];
-  if (tab?.id === undefined) throw new Error('대상 탭을 찾을 수 없습니다');
-  return { id: tab.id, url: tab.url ?? '' };
-}
-
 export function App() {
-  const { skills, errors: skillErrors } = useMemo(loadBundledSkills, []);
+  const { skills: bundled, errors: skillErrors } = useMemo(loadBundledSkills, []);
+  const [tab, setTab] = useState<'run' | 'author'>('run');
+  const [drafts, setDrafts] = useState<DraftSkill[]>([]);
+  // 초안은 만든 PC에서만 보인다. 번들된 스킬과 구분해 표시하고, 자연어 해석 대상에는 넣지 않는다.
+  const draftSkills = useMemo(
+    () =>
+      drafts.flatMap((d): Skill[] => {
+        try {
+          return [parseSkill(d.source)];
+        } catch {
+          return [];
+        }
+      }),
+    [drafts],
+  );
+  const skills = useMemo(() => [...bundled, ...draftSkills], [bundled, draftSkills]);
+  const isDraft = (id: string) => draftSkills.some((d) => d.id === id);
+  const reloadDrafts = () => loadDrafts().then(setDrafts);
   const [settings, setSettings] = useState<LlmSettings | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [skillId, setSkillId] = useState(FREE_SKILL_ID);
@@ -76,6 +78,7 @@ export function App() {
 
   useEffect(() => {
     loadSettings().then(setSettings);
+    void reloadDrafts();
   }, []);
   useEffect(() => {
     logEnd.current?.scrollIntoView({ block: 'end' });
@@ -86,7 +89,7 @@ export function App() {
     setPlanning(true);
     setNotice('');
     try {
-      const p = await planRequest(request, skills, new OpenAiCompatClient(settings));
+      const p = await planRequest(request, bundled, new OpenAiCompatClient(settings));
       if (!p.skill_id) {
         setSkillId(FREE_SKILL_ID);
         setForm({ request });
@@ -194,6 +197,11 @@ export function App() {
     setResult(res);
     setPreviews(datasets.list());
     setRunning(false);
+    // 초안이 끝까지 돌면 시험 실행 통과로 기록한다. 배포 요청의 조건 중 하나다.
+    if (isDraft(skill.id) && (res.status === 'done' || res.status === 'dryrun')) {
+      await markTrial(skill.id, res.status);
+      await reloadDrafts();
+    }
     await appendRun({
       id: crypto.randomUUID(),
       startedAt,
@@ -287,12 +295,24 @@ export function App() {
         </section>
       )}
 
+      <nav className="tabs">
+        <button id="tab-run" className={tab === 'run' ? 'on' : ''} onClick={() => setTab('run')}>
+          실행
+        </button>
+        <button id="tab-author" className={tab === 'author' ? 'on' : ''} disabled={running} onClick={() => setTab('author')}>
+          스킬 만들기
+        </button>
+      </nav>
+
+      {tab === 'author' && <Author bundledIds={bundled.map((s) => s.id)} drafts={drafts} onChange={reloadDrafts} />}
+
       {skillErrors.map((e) => (
         <p key={e} className="notice error">
           {e}
         </p>
       ))}
 
+      {tab === 'run' && (<>
       <section className="card">
         <h2>무엇을 할까요?</h2>
         <div className="row">
@@ -325,6 +345,7 @@ export function App() {
             <option value={FREE_SKILL_ID}>자유 요청 (스킬 없이 현재 화면 조작)</option>
             {skills.map((s) => (
               <option key={s.id} value={s.id}>
+                {isDraft(s.id) ? '[초안] ' : ''}
                 {s.name} ({s.risk})
               </option>
             ))}
@@ -582,6 +603,7 @@ export function App() {
           <div ref={logEnd} />
         </section>
       )}
+      </>)}
     </div>
   );
 }

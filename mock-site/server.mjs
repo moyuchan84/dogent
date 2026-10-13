@@ -1,9 +1,22 @@
-// 개발·테스트용 모의 사내 사이트. 의존성 없이 node로 바로 실행한다: node mock-site/server.mjs
+// 개발·테스트용 모의 사내 사이트. node로 바로 실행한다: node mock-site/server.mjs (엑셀 내려받기만 exceljs를 쓴다)
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { COLUMNS, generateWip } from './data.mjs';
+
+/** 재공 조회 결과를 엑셀 파일로 만든다. 화면과 달리 수량과 정체시간은 숫자로 들어간다. */
+export async function wipXlsx(line, step, product) {
+  const { default: ExcelJS } = await import('exceljs');
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('재공');
+  ws.addRow(COLUMNS);
+  for (const r of generateWip(line, step)) {
+    if (product && !r[1].includes(product)) continue;
+    ws.addRow([r[0], r[1], r[2], Number(r[3].replace(/,/g, '')), r[4], Number(r[5])]);
+  }
+  return wb.xlsx.writeBuffer();
+}
 
 const PUBLIC = join(fileURLToPath(new URL('.', import.meta.url)), 'public');
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css' };
@@ -44,6 +57,16 @@ export function createMockSite() {
       }
       if (req.method === 'DELETE') fwLog.length = 0;
       return json(fwLog);
+    }
+    if (url.pathname === '/api/wip.xlsx') {
+      const line = url.searchParams.get('line') ?? '';
+      const body = await wipXlsx(line, url.searchParams.get('step') ?? '', url.searchParams.get('product') ?? '');
+      res.writeHead(200, {
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(`재공_${line}.xlsx`)}`,
+      });
+      res.end(Buffer.from(body));
+      return;
     }
     if (url.pathname === '/api/wip') {
       const rows = generateWip(url.searchParams.get('line') ?? '', url.searchParams.get('step') ?? '');

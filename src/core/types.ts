@@ -44,9 +44,25 @@ export interface PageSnapshot {
   items: SnapshotItem[];
 }
 
+/**
+ * 사람이 화면에서 한 조작 하나. 스킬 초안을 만들 때 녹화한다.
+ * dup은 같은 이름의 요소가 화면에 여럿 있어 이름만으로 특정할 수 없다는 뜻이다.
+ */
+export type RecordedEvent =
+  | { kind: 'click'; role: string; name: string; dup: boolean }
+  | { kind: 'type'; name: string; value: string; dup: boolean; multiline: boolean; numeric: boolean }
+  | { kind: 'select'; name: string; value: string; options: string[]; dup: boolean };
+
 export interface ActResult {
   ok: boolean;
   message: string;
+}
+
+/** 화면의 내려받기 버튼으로 받은 파일. url은 파일이 온 주소로, 페이지가 만든 파일이면 blob: 또는 data: 로 시작한다. */
+export interface DownloadedFile {
+  filename: string;
+  url: string;
+  data: ArrayBuffer;
 }
 
 export interface BrowserPort {
@@ -59,6 +75,11 @@ export interface BrowserPort {
   extractTable(ref: number): Promise<TableData>;
   /** 입력 칸이 있는 표의 빈 행에 값을 채운다. columns는 표의 머리글 이름이다. */
   fillTable(ref: number, columns: string[], rows: string[][], addRef?: number): Promise<ActResult>;
+  /**
+   * 요소를 눌러 시작된 내려받기의 파일 내용을 돌려준다. timeoutMs 안에 시작되지 않으면 실패한다.
+   * allowed가 false를 돌려주는 주소의 파일은 읽지 않는다.
+   */
+  download?(ref: number, timeoutMs: number, allowed: (url: string) => boolean): Promise<DownloadedFile>;
   /** 에이전트가 화면을 조작 중임을 사용자에게 표시하거나 지운다. */
   setActive?(on: boolean): Promise<void>;
 }

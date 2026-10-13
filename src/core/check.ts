@@ -8,12 +8,14 @@ import type { PageSnapshot } from './types';
  *   - 검사: did("click") and no_text("조회 중") and text("총")
  *   - 검사: rows("wip") == page_number("총 (\d+)건")
  *   - 검사: dataset("hold") and dataset("by_step")
+ *   - 검사: url("/wip.html") and text("재공 현황 조회")
  *
  * 검사가 있는 단계는 조건이 충족되는 순간 루프가 다음 단계로 넘기고,
  * 충족되기 전에는 모델이 next_step으로 건너뛸 수 없다.
  */
 export type Clause =
   | { kind: 'text'; text: string; negate: boolean }
+  | { kind: 'url'; text: string }
   | { kind: 'value'; name: string; expected: string }
   | { kind: 'rows'; dataset: string; pattern: string }
   | { kind: 'dataset'; name: string }
@@ -69,6 +71,7 @@ export function capture(c: Capture, snap: PageSnapshot): string | null {
 function parseClause(src: string): Clause {
   let m: RegExpExecArray | null;
   if ((m = /^(no_)?text\("([^"]*)"\)$/.exec(src))) return { kind: 'text', text: m[2], negate: !!m[1] };
+  if ((m = /^url\("([^"]*)"\)$/.exec(src))) return { kind: 'url', text: m[1] };
   if ((m = /^value\("([^"]*)"\)\s*==\s*"([^"]*)"$/.exec(src))) return { kind: 'value', name: m[1], expected: m[2] };
   if ((m = /^rows\("([^"]*)"\)\s*==\s*page_number\("([^"]*)"\)$/.exec(src))) {
     new RegExp(m[2]);
@@ -78,7 +81,7 @@ function parseClause(src: string): Clause {
   if ((m = /^did\("([^"]*)"\)$/.exec(src))) return { kind: 'did', tool: m[1] };
   throw new Error(
     `검사 식을 읽을 수 없습니다: ${src}\n` +
-      '쓸 수 있는 형태: text("글자"), no_text("글자"), value("요소 이름") == "값", ' +
+      '쓸 수 있는 형태: text("글자"), no_text("글자"), url("주소 일부"), value("요소 이름") == "값", ' +
       'rows("데이터셋") == page_number("정규식"), dataset("이름"), did("도구") — and로 연결',
   );
 }
@@ -119,6 +122,11 @@ export function evalCheck(clauses: Clause[], ctx: CheckContext): string[] {
         if (found === c.negate) {
           unmet.push(c.negate ? `화면에서 "${c.text}" 표시가 사라져야 함` : `화면에 "${c.text}"가 보여야 함`);
         }
+        break;
+      }
+      case 'url': {
+        const urls = [ctx.snap.url, ...ctx.snap.items.flatMap((i) => (i.kind === 'frame' ? [i.url] : []))];
+        if (!urls.some((u) => u.includes(c.text))) unmet.push(`주소에 "${c.text}"가 들어간 화면이 열려 있어야 함`);
         break;
       }
       case 'value': {
