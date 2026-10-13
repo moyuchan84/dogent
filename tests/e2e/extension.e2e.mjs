@@ -95,6 +95,7 @@ try {
           timeoutScale: SCALE,
           // 모델의 판단 능력을 재는 것이 목적이므로 기본은 모든 동작을 모델이 정하게 한다. DIRECT=1이면 제품 기본값대로.
           skillDirect: process.env.DIRECT === '1',
+          pathCache: process.env.DIRECT === '1',
         },
       );
     }

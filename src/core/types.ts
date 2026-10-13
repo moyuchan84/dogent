@@ -147,8 +147,34 @@ export interface HistoryEntry {
   thought: string;
   ok: boolean;
   result: string;
-  /** 이 동작을 정한 쪽. skill이면 스킬에 적힌 인자를 모델 호출 없이 그대로 실행한 것이다. */
-  by: 'model' | 'skill';
+  /**
+   * 이 동작을 정한 쪽. skill이면 스킬에 적힌 인자를, cache면 지난번에 성공한 경로를
+   * 모델 호출 없이 그대로 실행한 것이다.
+   */
+  by: 'model' | 'skill' | 'cache';
+}
+
+/** 저장해 둔 동작 하나. 요소는 번호가 아니라 이름으로, 입력값은 {이름} 자리표시자로 적는다. */
+export interface CachedAction {
+  tool: string;
+  args: Record<string, unknown>;
+}
+
+/** 한 단계를 끝낸 동작들. inputs가 있으면 입력값이 그때와 같을 때만 다시 쓴다. */
+export interface StepPath {
+  actions: CachedAction[];
+  inputs?: Record<string, string>;
+  /** 모델 없이 다시 쓴 횟수 */
+  hits: number;
+}
+
+/** 단계 번호 → 그 단계의 경로 */
+export type SkillPaths = Record<number, StepPath>;
+
+/** 성공한 경로를 실행과 실행 사이에 보관하는 곳 */
+export interface PathStore {
+  load(key: string): Promise<SkillPaths | null>;
+  save(key: string, paths: SkillPaths): Promise<void>;
 }
 
 export type RunEvent =

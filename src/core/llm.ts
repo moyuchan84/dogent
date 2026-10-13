@@ -10,6 +10,8 @@ export interface LlmSettings {
   timeoutScale: number;
   /** 도구와 인자가 스킬에 적힌 단계는 모델을 부르지 않고 바로 실행한다. */
   skillDirect: boolean;
+  /** 모델이 정한 동작으로 성공한 경로를 저장해 두고 다음 실행에서 모델 없이 다시 쓴다. */
+  pathCache: boolean;
 }
 
 const CALL_TIMEOUT_MS = 60_000;

@@ -2,6 +2,7 @@ import { directParts, parseAction, type Action } from './actions';
 import { capture, evalCheck, stepCaptures, stepCheck, stripCheckLines, type Clause } from './check';
 import { DatasetStore } from './dataset';
 import { buildWorkbook, readDownloadedTable } from './excel';
+import { PathMemo } from './paths';
 import { SUBMIT_PATTERN, checkAction, findElement, hostAllowed } from './policy';
 import { buildTurnMessages } from './prompt';
 import { checkInputRules, extractSteps, fillTemplate, fillValue, type Skill, type SkillInputs } from './skill';
@@ -18,6 +19,7 @@ import type {
   HistoryEntry,
   LlmPort,
   PageSnapshot,
+  PathStore,
   RunEvent,
   RunResult,
   RunStatus,
@@ -39,6 +41,11 @@ export interface RunDeps {
    * 그 동작이 실패하면 그 단계는 모델에게 넘긴다.
    */
   direct?: boolean;
+  /**
+   * 성공한 경로의 보관소. 주면 모델이 정한 동작으로 끝난 단계를 저장해 두었다가
+   * 다음 실행에서 모델 없이 다시 한다. 통하지 않으면 그 단계는 모델에게 넘긴다.
+   */
+  paths?: PathStore;
 }
 
 const MAX_FORMAT_RETRIES = 2;
@@ -57,13 +64,16 @@ const cellText = (cell: string | number) => (typeof cell === 'number' ? String(c
 export async function runSkill(skill: Skill, inputs: SkillInputs, deps: RunDeps): Promise<RunResult> {
   await deps.browser.setActive?.(true).catch(() => {});
   try {
-    return await run(skill, inputs, deps);
+    const memo = deps.paths ? await PathMemo.open(skill, inputs, deps.paths) : null;
+    const result = await run(skill, inputs, deps, memo);
+    await memo?.commit(result).catch(() => {});
+    return result;
   } finally {
     await deps.browser.setActive?.(false).catch(() => {});
   }
 }
 
-async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps): Promise<RunResult> {
+async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps, memo: PathMemo | null): Promise<RunResult> {
   const { llm, browser, ui, files, signal } = deps;
   const datasets = deps.datasets ?? new DatasetStore();
   const emit = deps.onEvent ?? (() => {});
@@ -400,7 +410,9 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps): Promise<Ru
       }
 
       const direct = directAction(snap);
-      const action = direct ?? (await decide(n, snap));
+      const remembered = direct ? null : (memo?.next(current, snap, (text) => withOutputs(fill(text))) ?? null);
+      const action = direct ?? remembered ?? (await decide(n, snap));
+      const by = direct ? 'skill' : remembered ? 'cache' : 'model';
       action.step = current;
       lastStep = current;
 
@@ -485,12 +497,14 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps): Promise<Ru
         thought: action.thought,
         ok: outcome.ok,
         result: outcome.result,
-        by: direct ? 'skill' : 'model',
+        by,
       };
       history.push(entry);
       emit({ type: 'action', entry });
 
       if (outcome.ok) didTools.add(action.tool);
+      if (by === 'cache' && !outcome.ok) memo?.fail(current);
+      if (by !== 'skill' && outcome.ok && !outcome.end) memo?.record(current, action, snap, outputs, by);
 
       if (outcome.end) return end(outcome.end, outcome.result);
 

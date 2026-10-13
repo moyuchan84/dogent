@@ -2,7 +2,7 @@ import { browser } from 'wxt/browser';
 import { dogentConfig } from '@/dogent.config';
 import type { LlmSettings } from '../core/llm';
 import type { SkillInputs } from '../core/skill';
-import type { RunEvent, RunResult } from '../core/types';
+import type { PathStore, RunEvent, RunResult, SkillPaths } from '../core/types';
 
 const SETTINGS_KEY = 'llmSettings';
 const RUNS_KEY = 'runs';
@@ -41,6 +41,32 @@ export function effectiveSettings(settings: LlmSettings): LlmSettings {
 
 export async function saveSettings(settings: LlmSettings): Promise<void> {
   await browser.storage.local.set({ [SETTINGS_KEY]: settings });
+}
+
+const PATHS_KEY = 'skillPaths';
+const MAX_PATH_KEYS = 100;
+
+/**
+ * 성공한 경로의 보관소. 이 PC의 브라우저에만 남는다.
+ * 키에 스킬의 버전과 본문이 들어 있어, 스킬을 고치면 예전 경로는 쓰이지 않고 오래된 것부터 밀려난다.
+ */
+export const pathStore: PathStore = {
+  async load(key) {
+    const all = (await browser.storage.local.get(PATHS_KEY))[PATHS_KEY] as Record<string, SkillPaths> | undefined;
+    return all?.[key] ?? null;
+  },
+  async save(key, paths) {
+    const all = ((await browser.storage.local.get(PATHS_KEY))[PATHS_KEY] as Record<string, SkillPaths> | undefined) ?? {};
+    delete all[key];
+    all[key] = paths;
+    const keys = Object.keys(all);
+    for (const old of keys.slice(0, Math.max(0, keys.length - MAX_PATH_KEYS))) delete all[old];
+    await browser.storage.local.set({ [PATHS_KEY]: all });
+  },
+};
+
+export async function clearPaths(): Promise<void> {
+  await browser.storage.local.remove(PATHS_KEY);
 }
 
 const DRAFTS_KEY = 'draftSkills';
