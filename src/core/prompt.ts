@@ -61,6 +61,8 @@ export function buildTurnMessages(p: {
   page: string;
   /** 지금 할 단계 번호(1부터)와 그 단계의 본문 */
   step: { n: number; total: number; text: string; unmet: string[] | null };
+  /** 직전 동작 뒤 화면에 새로 나타난 줄. 첫 차례에는 null */
+  changes: string[] | null;
 }): ChatMessage[] {
   const recent = p.history.slice(-15);
   const omitted = p.history.length - recent.length;
@@ -85,6 +87,25 @@ export function buildTurnMessages(p: {
       ].join('\n')
     : '이 단계를 위한 다음 동작 하나를 JSON으로 답하세요. 이 단계가 이미 끝났으면 next_step을 쓰세요.';
 
+  // 직전 동작이 화면에 무엇을 바꿨는지 알려준다. 모델이 결과를 알아채지 못하고 같은 동작을
+  // 되풀이하는 것을 줄인다.
+  let changes = '';
+  if (p.changes) {
+    const last = p.history.at(-1);
+    const prev = p.history.at(-2);
+    const repeated =
+      last && prev && last.ok && prev.ok && last.tool === prev.tool && JSON.stringify(last.args) === JSON.stringify(prev.args);
+    changes = [
+      '',
+      '## 직전 동작 뒤 화면에 새로 보이는 것',
+      p.changes.length > 0 ? p.changes.map((c) => `<page>${c}</page>`).join('\n') : '(달라진 것이 없습니다)',
+      ...(repeated
+        ? ['', '같은 동작을 두 번 연속으로 했습니다. 한 번 더 하면 실행이 중단됩니다. 목적을 이뤘으면 다음으로 넘어가거나 finish로 끝내세요.']
+        : []),
+      '',
+    ].join('\n');
+  }
+
   const user = `## 스킬: ${p.skill.name} (${p.skill.id} v${p.skill.version})
 허용 도메인: ${p.skill.domains.join(', ')}
 입력값: ${JSON.stringify(p.inputs)}
@@ -101,7 +122,7 @@ ${p.datasets}
 <page>
 ${p.page}
 </page>
-
+${changes}
 ## 지금 할 단계 (${p.step.n}/${p.step.total})
 ${p.step.n}. ${p.step.text}
 
