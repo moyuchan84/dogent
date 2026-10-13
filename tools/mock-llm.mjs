@@ -16,6 +16,20 @@ function section(text, from, to) {
 
 function planReply(user) {
   const request = section(user, '## 사용자 요청');
+  if (request.includes('방화벽')) {
+    const inputs = {};
+    const ips = request.match(/\d+\.\d+\.\d+\.\d+(?:\/\d+)?/g) ?? [];
+    const port = /(\d+)\s*(?:번\s*)?포트/.exec(request);
+    const days = /(\d+)\s*일/.exec(request);
+    const months = /(\d+)\s*개월/.exec(request);
+    if (ips[0]) inputs.src_ip = ips[0];
+    if (ips[1]) inputs.dst_ip = ips[1];
+    if (port) inputs.port = port[1];
+    if (/UDP/i.test(request)) inputs.protocol = 'UDP';
+    if (days) inputs.period_days = Number(days[1]);
+    else if (months) inputs.period_days = Number(months[1]) * 30;
+    return { skill_id: 'firewall-request', inputs, reason: '방화벽 해제 신청 요청' };
+  }
   if (!request.includes('재공')) {
     return { skill_id: null, inputs: {}, reason: '재공 관련 요청이 아닙니다' };
   }
@@ -29,7 +43,37 @@ function planReply(user) {
   return { skill_id: 'wip-check', inputs, reason: '재공 확인 요청' };
 }
 
+const TOOL_WORD = /\b(navigate|select|type|click|extract_table|transform|write_excel|finish)\b/;
+
+/**
+ * 인자가 스킬에 그대로 적힌 단계를 따라가는 범용 규칙. "지금 할 단계"의 `...` 안 JSON을 그대로 낸다.
+ */
+function followStep(user) {
+  const stepText = section(user, '## 지금 할 단계').split('\n\n')[0];
+  const history = section(user, '## 지금까지의 동작', '## 데이터셋').trim().split('\n');
+  const page = section(user, '<page>', '</page>');
+  const failed = history.slice(-2).filter((h) => h.includes('→ 실패'));
+  if (failed.length === 2) {
+    return { thought: '두 번 연속 실패', tool: 'abort', args: { reason: failed[1].split('→ 실패: ')[1] ?? '동작 실패' } };
+  }
+  const literal = /`(\{.*\})`/.exec(stepText)?.[1];
+  const tool = TOOL_WORD.exec(stepText)?.[1];
+  if (literal && tool) return { thought: '스킬에 적힌 인자 그대로', tool, args: JSON.parse(literal) };
+  const url = /https?:\/\/\S+/.exec(stepText)?.[0];
+  if (url) return { thought: '화면 이동', tool: 'navigate', args: { url } };
+  if (stepText.includes('finish')) {
+    const id = /신청 번호: (\S+)/.exec(page)?.[1];
+    return {
+      thought: '보고',
+      tool: 'finish',
+      args: { summary: id ? `신청 번호 ${id}, 결재 대기 중입니다` : '모든 단계를 마쳤습니다' },
+    };
+  }
+  return { thought: '할 일 없음', tool: 'next_step', args: {} };
+}
+
 function agentReply(user) {
+  if (!user.includes('(wip-check v')) return followStep(user);
   const planned = planAction(user);
   const current = Number(/^## 지금 할 단계 \((\d+)\//m.exec(user)?.[1] ?? planned.step);
   if (planned.step > current && planned.tool !== 'abort') {

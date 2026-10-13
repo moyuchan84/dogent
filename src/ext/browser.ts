@@ -6,6 +6,9 @@ type Reply<T> = { ok: true; value: T } | { ok: false; error: string };
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const NO_AGENT = 'NO_AGENT';
+/** 요소를 표시한 뒤 실제로 조작하기까지의 시간. 사용자가 어디를 누르는지 볼 수 있게 한다. */
+const POINT_MS = 450;
+const POINT_LABEL = { click: '클릭', type: '입력', select: '선택' } as const;
 
 // 페이지 쪽(격리된 world)에서 실행된다. 예외를 값으로 바꿔 돌려준다.
 async function invoke(method: string, args: unknown[]): Promise<Reply<unknown>> {
@@ -21,6 +24,7 @@ async function invoke(method: string, args: unknown[]): Promise<Reply<unknown>> 
 /** 한 탭을 대상으로 하는 BrowserPort 구현. 사용자의 로그인 세션을 그대로 쓴다. */
 export class ChromeBrowser implements BrowserPort {
   private refs = new Map<number, { frame: number; localRef: number }>();
+  private active = false;
 
   constructor(private tabId: number) {}
 
@@ -56,8 +60,21 @@ export class ChromeBrowser implements BrowserPort {
     await this.run('settle', []).catch(() => {});
   }
 
+  /** 곧 조작할 요소를 화면에 표시하고, 사용자가 볼 수 있게 잠깐 기다린다. */
+  private async point(target: { frame: number; localRef: number }, label: string): Promise<void> {
+    const [res] = await this.run<boolean>('point', [target.localRef, label], target.frame).catch(() => []);
+    if (res?.reply.ok && res.reply.value) await sleep(POINT_MS);
+  }
+
+  async setActive(on: boolean): Promise<void> {
+    this.active = on;
+    await this.run('setActive', [on], 0).catch(() => {});
+  }
+
   async snapshot(): Promise<PageSnapshot> {
     await this.waitLoaded();
+    // 화면이 바뀌면(이동, 새로 고침) 표시가 사라지므로 볼 때마다 다시 켠다.
+    if (this.active) await this.run('setActive', [true], 0).catch(() => {});
     try {
       const frames = (await this.run<FrameSnapshot>('snapshot', []))
         .filter((r): r is typeof r & { reply: { ok: true; value: FrameSnapshot } } => r.reply.ok)
@@ -91,6 +108,7 @@ export class ChromeBrowser implements BrowserPort {
   private async act(method: 'click' | 'type' | 'select', ref: number, extra: unknown[]): Promise<ActResult> {
     const target = this.refs.get(ref);
     if (!target) return { ok: false, message: `ref ${ref} 이(가) 현재 화면에 없습니다` };
+    await this.point(target, POINT_LABEL[method]);
     const [res] = await this.run<ActResult>(method, [target.localRef, ...extra], target.frame);
     if (!res) return { ok: false, message: '프레임이 사라졌습니다' };
     if (!res.reply.ok) return { ok: false, message: res.reply.error };
@@ -123,6 +141,7 @@ export class ChromeBrowser implements BrowserPort {
   async extractTable(ref: number): Promise<TableData> {
     const target = this.refs.get(ref);
     if (!target) throw new Error(`ref ${ref} 이(가) 현재 화면에 없습니다`);
+    await this.point(target, '표 추출');
     const [res] = await this.run<TableData>('extractTable', [target.localRef], target.frame);
     if (!res) throw new Error('프레임이 사라졌습니다');
     if (!res.reply.ok) throw new Error(res.reply.error);

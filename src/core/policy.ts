@@ -36,7 +36,8 @@ function optionsOf(el: ElementItem): string[] | null {
   return m[1].split(', ');
 }
 
-export type Verdict ={ ok: true } | { ok: false; reason: string };
+/** approval이 있으면 실행 전에 사용자 승인을 받아야 하는 동작이다. */
+export type Verdict = { ok: true; approval?: ElementItem } | { ok: false; reason: string };
 
 export function checkAction(action: Action, snap: PageSnapshot, skill: Skill): Verdict {
   if (action.tool === 'navigate') {
@@ -92,10 +93,23 @@ export function checkAction(action: Action, snap: PageSnapshot, skill: Skill): V
   }
 
   if (action.tool === 'click' && SUBMIT_PATTERN.test(el.name)) {
-    return {
-      ok: false,
-      reason: `"${el.name}"은(는) 저장·상신 계열 동작입니다. 이 버전은 조회 업무만 지원하므로 실행하지 않습니다`,
-    };
+    // 저장·상신 계열(R3)은 스킬이 선언한 단계에서, 선언한 버튼만, 사용자 승인을 거쳐 누를 수 있다.
+    if (skill.risk !== 'R3') {
+      return { ok: false, reason: `"${el.name}"은(는) 저장·상신 계열 동작입니다. 이 스킬은 조회 전용이라 실행하지 않습니다` };
+    }
+    if (!skill.submit_steps.includes(action.step)) {
+      return {
+        ok: false,
+        reason: `"${el.name}"은(는) 저장·상신 계열 동작입니다. ${skill.submit_steps.join(', ')}단계에서만 누를 수 있습니다 (지금은 ${action.step}단계)`,
+      };
+    }
+    if (skill.submit_labels.length > 0 && !skill.submit_labels.includes(el.name.trim())) {
+      return {
+        ok: false,
+        reason: `"${el.name}"은(는) 이 스킬이 누를 수 있는 버튼(${skill.submit_labels.join(', ')})이 아닙니다`,
+      };
+    }
+    return { ok: true, approval: el };
   }
   if (action.tool === 'extract_table') {
     if (el.role !== 'table') return { ok: false, reason: `[${el.ref}]은(는) 표가 아닙니다 (role=${el.role})` };

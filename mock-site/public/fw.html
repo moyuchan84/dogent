@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>방화벽 정책 신청 - 모의 보안 포털</title>
+<style>
+  body { font: 14px "Malgun Gothic", sans-serif; margin: 24px; color: #1c2733; max-width: 640px; }
+  h1 { font-size: 20px; }
+  .form { display: grid; gap: 12px; padding: 16px; background: #f0f3f7; border-radius: 6px; }
+  label { display: grid; gap: 3px; font-size: 12px; color: #55606e; }
+  input, select, textarea, button { font: inherit; padding: 6px 8px; }
+  textarea { min-height: 70px; }
+  .actions { display: flex; gap: 8px; justify-content: flex-end; }
+  #msg { color: #b3261e; min-height: 20px; }
+  #done { padding: 16px; background: #e3f4ec; border-radius: 6px; }
+</style>
+</head>
+<body>
+<h1>방화벽 정책 신청</h1>
+
+<div id="formwrap">
+  <div class="form">
+    <label for="src">출발지 IP <input id="src" placeholder="예: 10.10.1.15"></label>
+    <label for="dst">목적지 IP <input id="dst" placeholder="예: 10.20.3.7"></label>
+    <label for="port">포트 <input id="port" placeholder="예: 1521"></label>
+    <label for="proto">프로토콜
+      <select id="proto"><option>TCP</option><option>UDP</option></select>
+    </label>
+    <label for="days">기간(일) <input id="days" type="number" min="1"></label>
+    <label for="reason">사유 <textarea id="reason"></textarea></label>
+    <div class="actions">
+      <button id="draft">임시 저장</button>
+      <button id="submit">상신</button>
+    </div>
+  </div>
+  <div id="msg"></div>
+</div>
+<div id="done" hidden></div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const read = () => ({
+    src: $('src').value, dst: $('dst').value, port: $('port').value,
+    protocol: $('proto').value, days: $('days').value, reason: $('reason').value,
+  });
+  $('draft').addEventListener('click', () => { $('msg').textContent = '임시 저장했습니다.'; });
+  $('submit').addEventListener('click', async () => {
+    const data = read();
+    if (Object.values(data).some((v) => !v.trim())) { $('msg').textContent = '모든 항목을 입력하세요.'; return; }
+    $('submit').disabled = true;
+    const wrap = $('formwrap');
+    wrap.setAttribute('aria-busy', 'true');
+    const [res] = await Promise.all([
+      fetch('/api/fw', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }).then((r) => r.json()),
+      new Promise((r) => setTimeout(r, 400)),
+    ]);
+    wrap.removeAttribute('aria-busy');
+    wrap.hidden = true;
+    $('done').hidden = false;
+    $('done').textContent = '신청이 접수되었습니다. 신청 번호: ' + res.id + ' (결재 대기)';
+  });
+</script>
+</body>
+</html>

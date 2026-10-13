@@ -12,6 +12,10 @@ export interface PageAgent {
   extractTable(ref: number): TableData;
   hasText(text: string): boolean;
   settle(quietMs?: number, maxMs?: number): Promise<void>;
+  /** 곧 조작할 요소를 화면에 표시한다. 요소가 사라졌으면 false. */
+  point(ref: number, label: string): boolean;
+  /** 에이전트가 이 화면을 조작 중임을 테두리로 표시하거나 지운다. */
+  setActive(on: boolean): void;
 }
 
 const SKIP_TAGS = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'HEAD', 'SVG', 'IFRAME', 'FRAME']);
@@ -233,8 +237,76 @@ export function createPageAgent(win: Window & typeof globalThis): PageAgent {
     }
   }
 
+  // ---- 화면 표시 ----
+  // 사용자가 에이전트의 동작을 눈으로 따라갈 수 있게, 조작할 요소에 테두리와 포인터를 그린다.
+  // 닫힌 shadow root 안에 두어 페이지의 글자·스타일과 섞이지 않고, 스냅샷과 hasText에도 잡히지 않는다.
+  const ACCENT = '#1a56c4';
+  let overlay: { host: HTMLElement; frame: HTMLElement; box: HTMLElement; tag: HTMLElement } | null = null;
+
+  function ensureOverlay() {
+    if (overlay?.host.isConnected) return overlay;
+    const make = (css: string, text = '') => {
+      const el = doc.createElement('div');
+      el.style.cssText = css;
+      el.textContent = text;
+      return el;
+    };
+    const host = make('position:fixed;inset:0;pointer-events:none;z-index:2147483647;');
+    host.setAttribute('data-dogent-overlay', '');
+    host.setAttribute('aria-hidden', 'true');
+    const root = host.attachShadow({ mode: 'closed' });
+    const font = 'font:600 12px/1.4 "Malgun Gothic",system-ui,sans-serif;color:#fff;';
+    const frame = make(`display:none;position:fixed;inset:0;border:3px solid ${ACCENT};box-shadow:inset 0 0 18px ${ACCENT}66;`);
+    frame.appendChild(
+      make(`position:absolute;right:10px;bottom:10px;padding:4px 10px;border-radius:999px;background:${ACCENT};${font}`, 'Dogent가 조작 중'),
+    );
+    const box = make(
+      `display:none;position:fixed;border:2px solid ${ACCENT};border-radius:6px;background:${ACCENT}1f;` +
+        `box-shadow:0 0 0 4px ${ACCENT}33;transition:left .18s,top .18s,width .18s,height .18s;`,
+    );
+    const tag = make(`position:absolute;left:-2px;bottom:100%;margin-bottom:4px;padding:2px 8px;border-radius:4px;white-space:nowrap;background:${ACCENT};${font}`);
+    // 마우스 포인터 모양. 요소 가운데를 가리킨다.
+    const cursor = doc.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    cursor.setAttribute('viewBox', '0 0 24 24');
+    cursor.style.cssText = 'position:absolute;left:50%;top:50%;width:22px;height:22px;filter:drop-shadow(0 1px 2px #0006);';
+    const arrow = doc.createElementNS('http://www.w3.org/2000/svg', 'path');
+    arrow.setAttribute('d', 'M3 2l7 18 2.5-7.5L20 10z');
+    arrow.setAttribute('fill', ACCENT);
+    arrow.setAttribute('stroke', '#fff');
+    arrow.setAttribute('stroke-width', '1.5');
+    cursor.appendChild(arrow);
+    box.append(tag, cursor);
+    root.append(frame, box);
+    doc.documentElement.appendChild(host);
+    overlay = { host, frame, box, tag };
+    return overlay;
+  }
+
   return {
     snapshot,
+
+    point(ref, label) {
+      const el = refs.get(ref);
+      if (!el || !el.isConnected) return false;
+      (el as HTMLElement).scrollIntoView?.({ block: 'center' });
+      const r = el.getBoundingClientRect();
+      const { box, tag } = ensureOverlay();
+      const pad = 4;
+      box.style.left = `${r.left - pad}px`;
+      box.style.top = `${r.top - pad}px`;
+      box.style.width = `${r.width + pad * 2}px`;
+      box.style.height = `${r.height + pad * 2}px`;
+      box.style.display = 'block';
+      tag.textContent = label;
+      return true;
+    },
+
+    setActive(on) {
+      if (!on && !overlay) return;
+      const o = ensureOverlay();
+      o.frame.style.display = on ? 'block' : 'none';
+      if (!on) o.box.style.display = 'none';
+    },
 
     click: (ref) =>
       act(() => {

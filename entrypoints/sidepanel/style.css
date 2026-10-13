@@ -255,3 +255,48 @@ td {
 th {
   background: var(--bg);
 }
+textarea {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 7px 9px;
+  font: inherit;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  resize: vertical;
+}
+.approval {
+  margin-top: 10px;
+  padding: 12px;
+  border: 2px solid var(--risk);
+  border-radius: 8px;
+  background: var(--risk-soft);
+}
+.approval dl {
+  margin: 8px 0 0;
+  display: grid;
+  gap: 4px;
+}
+.approval dl div {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  gap: 8px;
+  font-size: 13px;
+}
+.approval dt {
+  color: var(--muted);
+}
+.approval dd {
+  margin: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.approval .row button {
+  flex: 1;
+}
+.result.dryrun {
+  background: var(--warn-soft);
+}

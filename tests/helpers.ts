@@ -10,7 +10,14 @@ import { mockComplete } from '../tools/mock-llm.mjs';
 const ROOT = join(import.meta.dirname, '..');
 const ORIGIN = 'http://localhost:4173';
 
-export const wipSkill = () => parseSkill(readFileSync(join(ROOT, 'skills/wip-check/SKILL.md'), 'utf8'));
+const read = (path: string) => readFileSync(join(ROOT, path), 'utf8');
+
+export const wipSkill = () => parseSkill(read('skills/wip-check/SKILL.md'));
+export const fwSkill = () =>
+  parseSkill(read('skills/firewall-request/SKILL.md'), read('skills/firewall-request/policy.yaml'));
+
+/** 모의 신청 화면이 접수한 방화벽 신청. 테스트마다 비우고 쓴다. */
+export const fwLog: Record<string, string>[] = [];
 
 /** 모의 사이트의 HTML을 jsdom에 올리고 스크립트까지 실행한다. /api/wip 는 같은 데이터 생성기로 대신한다. */
 async function load(pathname: string): Promise<JSDOM> {
@@ -20,8 +27,13 @@ async function load(pathname: string): Promise<JSDOM> {
     runScripts: 'dangerously',
     pretendToBeVisual: true,
     beforeParse(window) {
-      (window as any).fetch = async (input: string) => {
+      (window as any).fetch = async (input: string, init?: { method?: string; body?: string }) => {
         const url = new URL(input, ORIGIN);
+        if (url.pathname === '/api/fw') {
+          const entry = { id: `FW-${String(fwLog.length + 1).padStart(6, '0')}`, ...JSON.parse(init?.body ?? '{}') };
+          fwLog.push(entry);
+          return { json: async () => ({ id: entry.id }) };
+        }
         const rows = generateWip(url.searchParams.get('line') ?? '', url.searchParams.get('step') ?? '');
         return { json: async () => ({ columns: COLUMNS, rows }) };
       };

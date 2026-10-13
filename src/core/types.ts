@@ -57,6 +57,8 @@ export interface BrowserPort {
   select(ref: number, value: string): Promise<ActResult>;
   waitFor(text: string, timeoutMs: number): Promise<boolean>;
   extractTable(ref: number): Promise<TableData>;
+  /** 에이전트가 화면을 조작 중임을 사용자에게 표시하거나 지운다. */
+  setActive?(on: boolean): Promise<void>;
 }
 
 export interface ChatMessage {
@@ -68,15 +70,24 @@ export interface LlmPort {
   complete(messages: ChatMessage[], signal?: AbortSignal): Promise<string>;
 }
 
+/** 저장·상신 직전에 사용자에게 보여주는 내용. fields는 화면에서 다시 읽은 현재 값이다. */
+export interface ApprovalRequest {
+  skill: string;
+  button: string;
+  url: string;
+  fields: { name: string; value: string }[];
+}
+
 export interface UiPort {
   ask(question: string): Promise<string>;
+  approve(request: ApprovalRequest): Promise<boolean>;
 }
 
 export interface FilePort {
   save(filename: string, data: ArrayBuffer): Promise<void>;
 }
 
-export type RunStatus = 'done' | 'aborted' | 'stopped' | 'error';
+export type RunStatus = 'done' | 'aborted' | 'stopped' | 'error' | 'dryrun';
 
 export interface HistoryEntry {
   n: number;
@@ -94,6 +105,7 @@ export type RunEvent =
   | { type: 'blocked'; n: number; tool: string; reason: string }
   | { type: 'action'; entry: HistoryEntry }
   | { type: 'step_done'; step: number }
+  | { type: 'approval'; n: number; request: ApprovalRequest; approved: boolean; dryRun: boolean }
   | { type: 'end'; status: RunStatus; message: string };
 
 export interface DatasetInfo {
@@ -109,5 +121,7 @@ export interface RunResult {
   actions: number;
   files: string[];
   datasets: DatasetInfo[];
+  /** 스킬의 "기록:" 줄로 화면에서 읽은 값 (예: 신청 번호) */
+  outputs: Record<string, string>;
   elapsedMs: number;
 }
