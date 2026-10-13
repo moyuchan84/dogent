@@ -57,6 +57,8 @@ export interface BrowserPort {
   select(ref: number, value: string): Promise<ActResult>;
   waitFor(text: string, timeoutMs: number): Promise<boolean>;
   extractTable(ref: number): Promise<TableData>;
+  /** 입력 칸이 있는 표의 빈 행에 값을 채운다. columns는 표의 머리글 이름이다. */
+  fillTable(ref: number, columns: string[], rows: string[][], addRef?: number): Promise<ActResult>;
   /** 에이전트가 화면을 조작 중임을 사용자에게 표시하거나 지운다. */
   setActive?(on: boolean): Promise<void>;
 }
@@ -76,6 +78,8 @@ export interface ApprovalRequest {
   button: string;
   url: string;
   fields: { name: string; value: string }[];
+  /** 이번 실행에서 채운 표. 화면에서 다시 읽어 원본 데이터와 일치함을 확인한 것만 담긴다. */
+  tables: { name: string; dataset: string; columns: string[]; rowCount: number; preview: string[][] }[];
 }
 
 export interface UiPort {

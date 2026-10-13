@@ -27,6 +27,7 @@ export const AGENT_SYSTEM_PROMPT = `당신은 사내 웹 시스템을 조작하�
 - select {"ref", "value"}: 선택 상자에서 옵션 선택. value는 화면에 보이는 옵션 글자입니다.
 - wait_for {"text", "timeout_sec"}: 화면에 글자가 나타날 때까지 대기.
 - extract_table {"ref", "dataset", "next_ref", "append"}: 표를 데이터셋에 담습니다. 여러 페이지인 표는 next_ref에 다음 페이지 버튼을 주면 마지막 페이지까지 자동으로 넘기며 전부 담습니다. next_ref 없이 쓰면 현재 페이지만 담고, append=true면 기존 데이터셋 뒤에 붙입니다.
+- fill_table {"ref", "dataset", "add_ref"}: 입력 칸이 있는 표의 빈 행에 데이터셋을 통째로 채웁니다. 데이터셋의 컬럼 이름과 표의 머리글이 같아야 합니다. 행이 모자라면 add_ref의 행 추가 버튼을 눌러 늘립니다. 채운 뒤 화면 값을 다시 읽어 원본과 대조합니다.
 - transform {"source", "target", "steps"}: 데이터셋을 가공해 새 데이터셋을 만듭니다. steps의 각 항목은 다음 중 하나입니다.
   {"op":"filter","match":"all"|"any","where":[{"col","cmp","value"}]}  cmp: == != > >= < <= contains
   {"op":"group","by":[컬럼],"agg":[{"fn":"count"|"sum"|"avg"|"min"|"max","col","as"}]}

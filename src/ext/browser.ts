@@ -128,6 +128,21 @@ export class ChromeBrowser implements BrowserPort {
     return this.act('select', ref, [value]);
   }
 
+  async fillTable(ref: number, columns: string[], rows: string[][], addRef?: number): Promise<ActResult> {
+    const target = this.refs.get(ref);
+    if (!target) return { ok: false, message: `ref ${ref} 이(가) 현재 화면에 없습니다` };
+    const add = addRef === undefined ? undefined : this.refs.get(addRef);
+    if (addRef !== undefined && (!add || add.frame !== target.frame)) {
+      return { ok: false, message: '행 추가 버튼이 표와 같은 화면에 없습니다' };
+    }
+    await this.point(target, '표 입력');
+    const [res] = await this.run<ActResult>('fillTable', [target.localRef, columns, rows, add?.localRef], target.frame);
+    if (!res) return { ok: false, message: '프레임이 사라졌습니다' };
+    if (!res.reply.ok) return { ok: false, message: res.reply.error };
+    await this.settle();
+    return res.reply.value;
+  }
+
   async waitFor(text: string, timeoutMs: number): Promise<boolean> {
     const deadline = Date.now() + timeoutMs;
     for (;;) {
@@ -141,7 +156,7 @@ export class ChromeBrowser implements BrowserPort {
   async extractTable(ref: number): Promise<TableData> {
     const target = this.refs.get(ref);
     if (!target) throw new Error(`ref ${ref} 이(가) 현재 화면에 없습니다`);
-    await this.point(target, '표 추출');
+    await this.point(target, '표 읽기');
     const [res] = await this.run<TableData>('extractTable', [target.localRef], target.frame);
     if (!res) throw new Error('프레임이 사라졌습니다');
     if (!res.reply.ok) throw new Error(res.reply.error);

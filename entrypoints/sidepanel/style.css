@@ -300,3 +300,16 @@ textarea {
 .result.dryrun {
   background: var(--warn-soft);
 }
+input[type='file'] {
+  padding: 5px;
+}
+.approval-table {
+  margin-top: 10px;
+  font-size: 13px;
+}
+.approval-table p {
+  margin: 0;
+}
+.approval-table table {
+  background: var(--surface);
+}

@@ -8,10 +8,12 @@ export type Risk = (typeof RISK_LEVELS)[number];
 const InputSpec = z.object({
   name: z.string().regex(/^[a-z][a-z0-9_]*$/),
   label: z.string().optional(),
-  type: z.enum(['string', 'number', 'text', 'enum', 'ip', 'port']).default('string'),
+  type: z.enum(['string', 'number', 'text', 'enum', 'ip', 'port', 'file']).default('string'),
   required: z.boolean().default(false),
   default: z.union([z.string(), z.number()]).optional(),
   values: z.array(z.string()).optional(),
+  /** type이 file일 때, 읽은 표를 담을 데이터셋 이름 */
+  dataset: z.string().min(1).optional(),
 });
 export type InputSpec = z.infer<typeof InputSpec>;
 
@@ -77,6 +79,11 @@ export function parseSkill(source: string, policySource?: string): Skill {
       throw new Error(`${i + 1}단계: ${(e as Error).message}`);
     }
   });
+  for (const i of parsed.data.inputs) {
+    if (i.type === 'file' && !i.dataset) {
+      throw new Error(`입력 "${i.name}"은(는) file 형식이므로 dataset(읽은 표를 담을 이름)이 필요합니다`);
+    }
+  }
   for (const s of parsed.data.submit_steps) {
     if (s > steps.length) throw new Error(`submit_steps의 ${s}번 단계가 본문에 없습니다`);
   }

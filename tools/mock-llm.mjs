@@ -43,7 +43,7 @@ function planReply(user) {
   return { skill_id: 'wip-check', inputs, reason: '재공 확인 요청' };
 }
 
-const TOOL_WORD = /\b(navigate|select|type|click|extract_table|transform|write_excel|finish)\b/;
+const TOOL_WORD = /\b(navigate|select|type|click|extract_table|fill_table|transform|write_excel|finish)\b/;
 
 /**
  * 인자가 스킬에 그대로 적힌 단계를 따라가는 범용 규칙. "지금 할 단계"의 `...` 안 JSON을 그대로 낸다.

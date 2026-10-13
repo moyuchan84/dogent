@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>재공 수량 조정 - 모의 MES</title>
+<style>
+  body { font: 14px "Malgun Gothic", sans-serif; margin: 24px; color: #1c2733; }
+  h1 { font-size: 20px; }
+  table { border-collapse: collapse; }
+  th, td { border: 1px solid #d5dbe3; padding: 4px 6px; text-align: left; }
+  th { background: #e8edf3; }
+  td input, td select { font: inherit; padding: 4px 6px; width: 150px; box-sizing: border-box; }
+  td.no { color: #55606e; width: 36px; text-align: right; }
+  .actions { margin: 12px 0; display: flex; gap: 8px; }
+  button { font: inherit; padding: 6px 12px; }
+  #msg { color: #b3261e; min-height: 20px; }
+  #done { padding: 16px; background: #e3f4ec; border-radius: 6px; }
+</style>
+</head>
+<body>
+<h1>재공 수량 조정</h1>
+<p>Lot별 조정 수량을 입력하고 저장합니다. 엑셀에서 복사해 붙여 넣던 화면을 가정한 모의 화면입니다.</p>
+
+<div id="formwrap">
+  <table id="adjGrid" aria-label="조정 목록">
+    <thead><tr><th>No</th><th>Lot ID</th><th>공정</th><th>조정수량</th><th>사유</th></tr></thead>
+    <tbody></tbody>
+  </table>
+  <div class="actions">
+    <button id="addRow">행 추가</button>
+    <button id="save">저장</button>
+  </div>
+  <div id="msg"></div>
+</div>
+<div id="done" hidden></div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const STEPS = ['PHOTO', 'ETCH', 'DIFF', 'CMP', 'IMP'];
+  const tbody = $('adjGrid').querySelector('tbody');
+
+  function addRow() {
+    const tr = document.createElement('tr');
+    const no = document.createElement('td');
+    no.className = 'no';
+    no.textContent = tbody.children.length + 1;
+    const cell = (control) => { const td = document.createElement('td'); td.appendChild(control); return td; };
+    const input = (type) => { const el = document.createElement('input'); if (type) el.type = type; return el; };
+    const select = document.createElement('select');
+    for (const v of ['', ...STEPS]) {
+      const o = document.createElement('option');
+      o.value = v;
+      o.textContent = v || '선택';
+      select.appendChild(o);
+    }
+    tr.append(no, cell(input()), cell(select), cell(input('number')), cell(input()));
+    tbody.appendChild(tr);
+  }
+  for (let i = 0; i < 3; i++) addRow();
+  $('addRow').addEventListener('click', addRow);
+
+  $('save').addEventListener('click', async () => {
+    const rows = [...tbody.children]
+      .map((tr) => [...tr.querySelectorAll('input,select')].map((el) => el.value))
+      .filter((r) => r.some((v) => v !== ''));
+    if (rows.length === 0) { $('msg').textContent = '입력된 행이 없습니다.'; return; }
+    if (rows.some((r) => r.some((v) => v === ''))) { $('msg').textContent = '비어 있는 칸이 있습니다.'; return; }
+    $('save').disabled = true;
+    const wrap = $('formwrap');
+    wrap.setAttribute('aria-busy', 'true');
+    const [res] = await Promise.all([
+      fetch('/api/adjust', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(rows) }).then((r) => r.json()),
+      new Promise((r) => setTimeout(r, 400)),
+    ]);
+    wrap.removeAttribute('aria-busy');
+    wrap.hidden = true;
+    $('done').hidden = false;
+    $('done').textContent = '저장되었습니다. ' + res.count + '건';
+  });
+</script>
+</body>
+</html>
