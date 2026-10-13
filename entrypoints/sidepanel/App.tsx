@@ -19,7 +19,7 @@ import {
 } from '@/src/core';
 import { ChromeBrowser } from '@/src/ext/browser';
 import { loadBundledSkills } from '@/src/ext/skills';
-import { appendRun, loadDrafts, loadRuns, loadSettings, markTrial, saveSettings, type DraftSkill } from '@/src/ext/storage';
+import { appendRun, effectiveSettings, hasBuiltInKey, loadDrafts, loadRuns, loadSettings, markTrial, saveSettings, type DraftSkill } from '@/src/ext/storage';
 import { Author } from './Author';
 import { download, targetTab } from './util';
 
@@ -89,7 +89,7 @@ export function App() {
     setPlanning(true);
     setNotice('');
     try {
-      const p = await planRequest(request, bundled, new OpenAiCompatClient(settings));
+      const p = await planRequest(request, bundled, new OpenAiCompatClient(effectiveSettings(settings)));
       if (!p.skill_id) {
         setSkillId(FREE_SKILL_ID);
         setForm({ request });
@@ -152,7 +152,7 @@ export function App() {
       const scale = Math.max(1, settings.timeoutScale || 1);
       const scaled = { ...active, limits: { ...active.limits, timeout_sec: active.limits.timeout_sec * scale } };
       res = await runSkill(scaled, values, {
-        llm: new OpenAiCompatClient(settings),
+        llm: new OpenAiCompatClient(effectiveSettings(settings)),
         browser: new ChromeBrowser(tab.id),
         datasets,
         signal: abort.signal,
@@ -254,6 +254,7 @@ export function App() {
             <input
               type="password"
               value={settings.apiKey}
+              placeholder={hasBuiltInKey ? '비워 두면 배포에 포함된 공용 키를 씁니다' : ''}
               onChange={(e) => setSettings({ ...settings, apiKey: e.target.value })}
             />
           </label>

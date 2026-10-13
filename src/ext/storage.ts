@@ -8,9 +8,35 @@ const SETTINGS_KEY = 'llmSettings';
 const RUNS_KEY = 'runs';
 const MAX_RUNS = 50;
 
+/**
+ * 배포할 때 빌드에 넣는 모델 접속 정보. 저장소가 아니라 빌드하는 PC의 .env.local에 적는다 (.env.example 참고).
+ * 공용 키를 쓰는 환경에서는 사용자가 설정을 입력하지 않아도 바로 쓸 수 있다.
+ */
+const BUILT_IN = {
+  baseUrl: (import.meta.env.WXT_LLM_BASE_URL as string | undefined) ?? '',
+  apiKey: (import.meta.env.WXT_LLM_API_KEY as string | undefined) ?? '',
+  model: (import.meta.env.WXT_LLM_MODEL as string | undefined) ?? '',
+};
+
+/** 빌드에 공용 API 키가 들어 있는지. 들어 있으면 설정 화면에서 키를 묻지 않아도 된다. */
+export const hasBuiltInKey = BUILT_IN.apiKey !== '';
+
 export async function loadSettings(): Promise<LlmSettings> {
   const stored = (await browser.storage.local.get(SETTINGS_KEY))[SETTINGS_KEY] as Partial<LlmSettings> | undefined;
-  return { ...dogentConfig.llmDefaults, ...stored };
+  return {
+    ...dogentConfig.llmDefaults,
+    ...(BUILT_IN.baseUrl ? { baseUrl: BUILT_IN.baseUrl } : {}),
+    ...(BUILT_IN.model ? { model: BUILT_IN.model } : {}),
+    ...stored,
+  };
+}
+
+/**
+ * 모델을 부를 때 쓰는 설정. 사용자가 키를 따로 넣지 않았으면 빌드에 든 공용 키를 쓴다.
+ * 공용 키는 설정 화면에 보이지 않고 브라우저 저장소에도 복사되지 않는다.
+ */
+export function effectiveSettings(settings: LlmSettings): LlmSettings {
+  return settings.apiKey ? settings : { ...settings, apiKey: BUILT_IN.apiKey };
 }
 
 export async function saveSettings(settings: LlmSettings): Promise<void> {

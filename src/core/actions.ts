@@ -8,7 +8,12 @@ const ref = z.coerce.number().int().nonnegative();
 export const TOOL_ARGS = {
   next_step: z.object({}),
   navigate: z.object({ url: z.url() }),
-  click: z.object({ ref }),
+  click: z.object({
+    ref,
+    /** 누른 뒤 뜨는 확인 창에서 확인을 누른다. 없으면 취소한다. */
+    accept_dialog: z.boolean().optional(),
+  }),
+  close_tab: z.object({}),
   type: z.object({ ref, text: z.string() }),
   select: z.object({ ref, value: z.string() }),
   wait_for: z.object({
@@ -52,7 +57,7 @@ export type ToolName = keyof typeof TOOL_ARGS;
 
 /** 모델 없이 실행할 수 있는 단계의 첫머리. 예: "select로 ...", "click으로 ..." */
 const DIRECT_STEP =
-  /^(navigate|click|type|select|extract_table|download_table|fill_table|transform|write_excel|finish)(?:으로|로)\s/;
+  /^(navigate|click|close_tab|type|select|extract_table|download_table|fill_table|transform|write_excel|finish)(?:으로|로)\s/;
 
 /**
  * 단계가 "도구로 ..."로 시작하고 `{...}` 인자가 적혀 있으면 그 도구 이름과 인자 원문을 돌려준다.

@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>Lot 홀드 해제 요청 - 모의 MES</title>
+<style>
+  body { font: 14px "Malgun Gothic", sans-serif; margin: 24px; color: #1c2733; max-width: 640px; }
+  h1 { font-size: 20px; }
+  .form { display: grid; gap: 12px; padding: 16px; background: #f0f3f7; border-radius: 6px; }
+  label { display: grid; gap: 3px; font-size: 12px; color: #55606e; }
+  input, textarea, button { font: inherit; padding: 6px 8px; }
+  textarea { min-height: 70px; }
+  .pick { display: flex; gap: 8px; align-items: end; }
+  .pick label { flex: 1; }
+  .actions { display: flex; gap: 8px; justify-content: flex-end; }
+</style>
+</head>
+<body>
+<h1>Lot 홀드 해제 요청</h1>
+
+<!-- 사내 구형 화면에 흔한 구성: 값은 팝업 창에서 고르고, 확인과 결과는 브라우저의 확인·알림 창으로 알린다. -->
+<div class="form">
+  <div class="pick">
+    <label for="lot">Lot ID <input id="lot" readonly placeholder="Lot 찾기로 선택"></label>
+    <button id="find">Lot 찾기</button>
+  </div>
+  <label for="reason">해제 사유 <textarea id="reason"></textarea></label>
+  <div class="actions">
+    <button id="reset">초기화</button>
+    <button id="submit">상신</button>
+  </div>
+</div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  // 팝업이 고른 값을 넘겨줄 때 부른다.
+  window.setLot = (id) => { $('lot').value = id; };
+  $('find').addEventListener('click', () => {
+    window.open('lot-popup.html', 'lotPopup', 'width=520,height=480');
+  });
+  $('reset').addEventListener('click', () => {
+    if (!confirm('입력한 내용을 지우시겠습니까?')) return;
+    $('lot').value = '';
+    $('reason').value = '';
+  });
+  $('submit').addEventListener('click', async () => {
+    if (!$('lot').value) { alert('Lot을 선택하세요.'); return; }
+    if (!$('reason').value.trim()) { alert('해제 사유를 입력하세요.'); return; }
+    if (!confirm('상신하시겠습니까?')) return;
+    const res = await fetch('/api/hold', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lot: $('lot').value, reason: $('reason').value }),
+    }).then((r) => r.json());
+    alert('접수되었습니다. 접수 번호: ' + res.id);
+    $('lot').value = '';
+    $('reason').value = '';
+  });
+</script>
+</body>
+</html>

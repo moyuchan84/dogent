@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>홀드 Lot 찾기 - 모의 MES</title>
+<style>
+  body { font: 14px "Malgun Gothic", sans-serif; margin: 16px; color: #1c2733; }
+  h1 { font-size: 16px; }
+  li { margin: 6px 0; }
+</style>
+</head>
+<body>
+<h1>홀드 Lot 찾기</h1>
+<p>Lot ID를 누르면 요청 화면에 입력되고 이 창은 닫힙니다.</p>
+<!-- 표 안의 링크는 에이전트가 따로 누를 수 없어(표는 통째로 한 요소로 읽힌다) 목록으로 둔다. -->
+<ul>
+  <li><a href="#" data-lot="P7-00012">P7-00012</a> DR5-16G · PHOTO · 검사 대기</li>
+  <li><a href="#" data-lot="P7-00031">P7-00031</a> NV2-512 · ETCH · 설비 점검</li>
+  <li><a href="#" data-lot="P8-00044">P8-00044</a> DR5-32G · CMP · 품질 확인</li>
+</ul>
+<script>
+  for (const a of document.querySelectorAll('a[data-lot]')) {
+    a.addEventListener('click', (e) => {
+      e.preventDefault();
+      window.opener.setLot(a.dataset.lot);
+      window.close();
+    });
+  }
+</script>
+</body>
+</html>

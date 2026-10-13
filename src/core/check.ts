@@ -9,6 +9,7 @@ import type { PageSnapshot } from './types';
  *   - 검사: rows("wip") == page_number("총 (\d+)건")
  *   - 검사: dataset("hold") and dataset("by_step")
  *   - 검사: url("/wip.html") and text("재공 현황 조회")
+ *   - 검사: did("click") and dialog("접수되었습니다")
  *
  * 검사가 있는 단계는 조건이 충족되는 순간 루프가 다음 단계로 넘기고,
  * 충족되기 전에는 모델이 next_step으로 건너뛸 수 없다.
@@ -19,7 +20,9 @@ export type Clause =
   | { kind: 'value'; name: string; expected: string }
   | { kind: 'rows'; dataset: string; pattern: string }
   | { kind: 'dataset'; name: string }
-  | { kind: 'did'; tool: string };
+  | { kind: 'did'; tool: string }
+  /** 이 단계에서 뜬 알림·확인 창의 내용 */
+  | { kind: 'dialog'; text: string };
 
 /** 값이 주어지지 않은 선택 입력의 자리표시자. 이 값과의 비교는 확인할 것이 없으므로 통과로 본다. */
 export const UNSET = '(미지정)';
@@ -40,28 +43,32 @@ export function stripCheckLines(text: string): string {
  *
  *   - 기록: request_id = page_text("신청 번호: (\S+)")
  *
+ *   - 기록: receipt = dialog_text("접수 번호: (\S+)")
+ *
+ * page_text는 화면의 글자에서, dialog_text는 이 단계에서 뜬 알림·확인 창의 내용에서 읽는다.
  * 뒤 단계에서는 {out.request_id}로 쓸 수 있다. 모델이 옮겨 적다 틀릴 수 있는 값을 규칙으로 읽는다.
  */
 export interface Capture {
   name: string;
   pattern: string;
+  from: 'page' | 'dialog';
 }
 
 export function stepCaptures(stepText: string): Capture[] {
   return stepText.split('\n').flatMap((l) => {
     const line = CAPTURE_LINE.exec(l)?.[1].trim();
     if (!line) return [];
-    const m = /^([a-z_][a-z0-9_]*)\s*=\s*page_text\("([^"]*)"\)$/.exec(line);
-    if (!m) throw new Error(`기록 식을 읽을 수 없습니다: ${line}\n형태: 이름 = page_text("정규식")`);
-    new RegExp(m[2]);
-    return [{ name: m[1], pattern: m[2] }];
+    const m = /^([a-z_][a-z0-9_]*)\s*=\s*(page|dialog)_text\("([^"]*)"\)$/.exec(line);
+    if (!m) throw new Error(`기록 식을 읽을 수 없습니다: ${line}\n형태: 이름 = page_text("정규식") 또는 dialog_text("정규식")`);
+    new RegExp(m[3]);
+    return [{ name: m[1], pattern: m[3], from: m[2] as Capture['from'] }];
   });
 }
 
-/** 화면 글자에서 정규식의 첫 괄호(없으면 전체 일치)를 읽는다. 없으면 null. */
-export function capture(c: Capture, snap: PageSnapshot): string | null {
+/** 화면 글자(또는 이 단계에서 뜬 창의 내용)에서 정규식의 첫 괄호(없으면 전체 일치)를 읽는다. 없으면 null. */
+export function capture(c: Capture, snap: PageSnapshot, dialogs: string[] = []): string | null {
   const re = new RegExp(c.pattern);
-  for (const text of pageTexts(snap)) {
+  for (const text of c.from === 'dialog' ? dialogs : pageTexts(snap)) {
     const hit = re.exec(text);
     if (hit) return hit[1] ?? hit[0];
   }
@@ -79,10 +86,11 @@ function parseClause(src: string): Clause {
   }
   if ((m = /^dataset\("([^"]*)"\)$/.exec(src))) return { kind: 'dataset', name: m[1] };
   if ((m = /^did\("([^"]*)"\)$/.exec(src))) return { kind: 'did', tool: m[1] };
+  if ((m = /^dialog\("([^"]*)"\)$/.exec(src))) return { kind: 'dialog', text: m[1] };
   throw new Error(
     `검사 식을 읽을 수 없습니다: ${src}\n` +
       '쓸 수 있는 형태: text("글자"), no_text("글자"), url("주소 일부"), value("요소 이름") == "값", ' +
-      'rows("데이터셋") == page_number("정규식"), dataset("이름"), did("도구") — and로 연결',
+      'rows("데이터셋") == page_number("정규식"), dataset("이름"), did("도구"), dialog("글자") — and로 연결',
   );
 }
 
@@ -101,6 +109,8 @@ export interface CheckContext {
   datasets: DatasetStore;
   /** 지금 단계에서 성공한 동작의 도구 이름 */
   didTools: Set<string>;
+  /** 지금 단계에서 뜬 알림·확인 창의 내용 */
+  dialogs?: string[];
 }
 
 function pageTexts(snap: PageSnapshot): string[] {
@@ -154,6 +164,9 @@ export function evalCheck(clauses: Clause[], ctx: CheckContext): string[] {
       }
       case 'dataset':
         if (!ctx.datasets.list().some((d) => d.name === c.name)) unmet.push(`데이터셋 "${c.name}"이 아직 없음`);
+        break;
+      case 'dialog':
+        if (!ctx.dialogs?.some((d) => d.includes(c.text))) unmet.push(`"${c.text}" 내용의 알림 창이 떠야 함`);
         break;
       case 'did':
         if (!ctx.didTools.has(c.tool)) unmet.push(`이 단계에서 ${c.tool}을(를) 아직 성공하지 못함`);

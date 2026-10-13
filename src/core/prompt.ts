@@ -22,7 +22,8 @@ export const AGENT_SYSTEM_PROMPT = `당신은 사내 웹 시스템을 조작하�
 도구
 - next_step {}: 지금 할 단계를 마치고 다음 단계로 넘어갑니다.
 - navigate {"url"}: 화면 이동. 스킬의 허용 도메인만 가능합니다.
-- click {"ref"}: 요소 클릭.
+- click {"ref", "accept_dialog"}: 요소 클릭. 누른 뒤 뜨는 확인 창은 취소하며, 결과에 창의 내용이 적힙니다. 확인을 눌러야 하는 창이면 accept_dialog=true로 다시 누릅니다. 누른 결과로 새 창이 열리면 그 뒤로는 새 창이 현재 화면입니다.
+- close_tab {}: 새로 열린 창을 닫고 원래 창으로 돌아갑니다.
 - type {"ref", "text"}: 입력란에 값 입력 (기존 값을 바꿉니다).
 - select {"ref", "value"}: 선택 상자에서 옵션 선택. value는 화면에 보이는 옵션 글자입니다.
 - wait_for {"text", "timeout_sec"}: 화면에 글자가 나타날 때까지 대기.
