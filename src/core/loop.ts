@@ -155,14 +155,23 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps): Promise<Ru
     return diffs;
   }
 
+  // 직전 차례의 화면 줄. ref 번호는 화면이 바뀌면 달라지므로 떼고 비교한다.
+  let seenLines: Set<string> | null = null;
+  const MAX_CHANGES = 10;
+
   async function decide(n: number, snap: PageSnapshot): Promise<Action> {
+    const page = renderSnapshot(snap);
+    const lines = page.split('\n').map((l) => l.replace(/^\[\d+\] /, ''));
+    const changes = seenLines && lines.filter((l) => !seenLines!.has(l)).slice(0, MAX_CHANGES);
+    seenLines = new Set(lines);
     let messages = buildTurnMessages({
       skill,
       body: withOutputs(promptBody),
       inputs,
       history,
       datasets: datasets.describe(),
-      page: renderSnapshot(snap),
+      page,
+      changes,
       step: { n: current, total: steps.length, text: withOutputs(promptSteps[current - 1]), unmet: unmetNow(snap) },
     });
     for (let attempt = 0; ; attempt++) {

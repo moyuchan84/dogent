@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { browser } from 'wxt/browser';
 import {
   DatasetStore,
+  FREE_SKILL_ID,
+  buildFreeSkill,
   OpenAiCompatClient,
   planRequest,
   readTable,
@@ -48,7 +50,7 @@ export function App() {
   const { skills, errors: skillErrors } = useMemo(loadBundledSkills, []);
   const [settings, setSettings] = useState<LlmSettings | null>(null);
   const [showSettings, setShowSettings] = useState(false);
-  const [skillId, setSkillId] = useState(skills[0]?.id ?? '');
+  const [skillId, setSkillId] = useState(FREE_SKILL_ID);
   const [form, setForm] = useState<Record<string, string>>({});
   const [request, setRequest] = useState('');
   const [notice, setNotice] = useState('');
@@ -61,12 +63,16 @@ export function App() {
   const [answer, setAnswer] = useState('');
   const [approval, setApproval] = useState<{ request: ApprovalRequest; decide: (ok: boolean) => void } | null>(null);
   const [dryRun, setDryRun] = useState(false);
+  const [allowWrite, setAllowWrite] = useState(false);
   // 파일 입력에서 고른 파일 (입력 이름 → 파일)
   const [picked, setPicked] = useState<Record<string, File | undefined>>({});
   const abortRef = useRef<AbortController | null>(null);
   const logEnd = useRef<HTMLDivElement>(null);
 
-  const skill = skills.find((s) => s.id === skillId);
+  // 자유 요청은 실행할 때 현재 탭의 주소로 다시 만든다. 여기서는 입력 폼을 그리는 용도다.
+  const freeTemplate = useMemo(() => buildFreeSkill('http://localhost/', false), []);
+  const isFree = skillId === FREE_SKILL_ID;
+  const skill = isFree ? freeTemplate : skills.find((s) => s.id === skillId);
 
   useEffect(() => {
     loadSettings().then(setSettings);
@@ -82,7 +88,9 @@ export function App() {
     try {
       const p = await planRequest(request, skills, new OpenAiCompatClient(settings));
       if (!p.skill_id) {
-        setNotice(`맞는 스킬을 찾지 못했습니다. ${p.reason}`);
+        setSkillId(FREE_SKILL_ID);
+        setForm({ request });
+        setNotice('맞는 스킬이 없어 자유 요청으로 준비했습니다. 확인하고 실행을 누르세요.');
         return;
       }
       setSkillId(p.skill_id);
@@ -130,15 +138,22 @@ export function App() {
     try {
       const tab = await targetTab();
       tabUrl = tab.url;
+      const active = isFree ? buildFreeSkill(tab.url, allowWrite) : skill;
+      if (isFree) {
+        const origin = `${new URL(tab.url).origin}/*`;
+        if (!(await browser.permissions.contains({ origins: [origin] }))) {
+          throw new Error(`이 사이트(${new URL(tab.url).host})는 Dogent의 허용 목록에 없습니다. dogent.config.ts의 sitePermissions에 추가해야 합니다`);
+        }
+      }
       // 느린 모델용 배율은 스킬의 전체 제한 시간에도 같이 적용한다.
       const scale = Math.max(1, settings.timeoutScale || 1);
-      const scaled = { ...skill, limits: { ...skill.limits, timeout_sec: skill.limits.timeout_sec * scale } };
+      const scaled = { ...active, limits: { ...active.limits, timeout_sec: active.limits.timeout_sec * scale } };
       res = await runSkill(scaled, values, {
         llm: new OpenAiCompatClient(settings),
         browser: new ChromeBrowser(tab.id),
         datasets,
         signal: abort.signal,
-        dryRun: skill.risk === 'R3' && dryRun,
+        dryRun: !isFree && skill.risk === 'R3' && dryRun,
         files: {
           async save(filename, data) {
             download(filename, data, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -298,6 +313,7 @@ export function App() {
               setPicked({});
             }}
           >
+            <option value={FREE_SKILL_ID}>자유 요청 (스킬 없이 현재 화면 조작)</option>
             {skills.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.name} ({s.risk})
@@ -353,7 +369,19 @@ export function App() {
             )}
           </label>
         ))}
-        {skill?.risk === 'R3' && (
+        {isFree && (
+          <label className="check">
+            <input
+              id="allowWrite"
+              type="checkbox"
+              checked={allowWrite}
+              disabled={running}
+              onChange={(e) => setAllowWrite(e.target.checked)}
+            />
+            저장·상신 버튼 허용 (누르기 전에 승인을 묻습니다)
+          </label>
+        )}
+        {!isFree && skill?.risk === 'R3' && (
           <label className="check">
             <input id="dryrun" type="checkbox" checked={dryRun} disabled={running} onChange={(e) => setDryRun(e.target.checked)} />
             시험 실행 (입력까지만 하고 저장·상신 직전에 멈춤)

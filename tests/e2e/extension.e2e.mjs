@@ -342,6 +342,30 @@ try {
     assert.deepEqual(await adjustApi(), []);
   });
 
+  await scenario('자유 요청: 스킬 없이 선택·조회하고 결과를 답함', async (openPages) => {
+    const { target, panel } = await openPages('/wip.html');
+    await panel.selectOption('#skill', 'free');
+    await panel.fill('[data-input=request]', '8라인을 선택하고 조회해서 총 몇 건인지 알려줘');
+    const r = await run(panel);
+    check(r, () => {
+      assert.equal(r.status, 'done');
+      assert.match(r.text, /173/);
+    });
+    assert.equal(await target.locator('#total').innerText(), '총 173건');
+    assert.equal(await target.locator('#line').inputValue(), '8라인');
+    return `${r.sec}초`;
+  });
+
+  await scenario('자유 요청: 쓰기를 허용하지 않으면 저장 버튼을 누르지 않음', async (openPages) => {
+    const { target, panel } = await openPages('/wip.html');
+    await panel.selectOption('#skill', 'free');
+    await panel.fill('[data-input=request]', '지금 조건을 저장해줘');
+    const r = await run(panel);
+    assert.equal(await panel.locator('#approval').count(), 0);
+    assert.equal(await target.locator('#msg').innerText(), '', `저장 버튼이 눌림 (${r.status})`);
+    return `${r.status}, ${r.sec}초`;
+  });
+
   await scenario('로그인 화면이면 중단', async (openPages) => {
     const { panel } = await openPages('/login.html');
     await panel.selectOption('#skill', 'wip-check');

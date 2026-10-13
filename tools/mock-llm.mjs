@@ -72,7 +72,45 @@ function followStep(user) {
   return { thought: '할 일 없음', tool: 'next_step', args: {} };
 }
 
+/**
+ * 자유 요청용 규칙. 실제 모델처럼 요청을 이해하는 것이 아니라, 시험에 쓰는 요청 형태
+ * ("N라인 선택", "조회", "저장")만 화면에서 찾아 수행한다.
+ */
+function freeReply(user) {
+  const request = /수행한다: (.*)$/m.exec(section(user, '## 지금 할 단계'))?.[1] ?? '';
+  const history = section(user, '## 지금까지의 동작', '## 데이터셋').trim().split('\n');
+  const page = section(user, '<page>', '</page>');
+  const ref = (role, name) => {
+    const m = new RegExp(`^\\[(\\d+)\\] ${role} "${name}"(.*)$`, 'm').exec(page);
+    return m ? { ref: Number(m[1]), value: /value="([^"]*)"/.exec(m[2])?.[1] } : null;
+  };
+  const did = (pattern) => history.some((h) => pattern.test(h));
+  if (history.slice(-2).filter((h) => h.includes('→ 실패')).length === 2) {
+    return { thought: '두 번 연속 실패', tool: 'abort', args: { reason: history.at(-1).split('→ 실패: ')[1] ?? '실패' } };
+  }
+  const line = /(\d+라인)/.exec(request)?.[1];
+  const lineSel = ref('combobox', '라인');
+  if (line && lineSel && lineSel.value !== line) {
+    return { thought: '라인 선택', tool: 'select', args: { ref: lineSel.ref, value: line } };
+  }
+  if (request.includes('저장') && !did(/click .*→ (성공|실패)/)) {
+    return { thought: '저장', tool: 'click', args: { ref: '조건 저장' } };
+  }
+  if (request.includes('조회') && !did(/click .*→ 성공/)) {
+    return { thought: '조회', tool: 'click', args: { ref: ref('button', '조회').ref } };
+  }
+  if (page.includes('조회 중')) return { thought: '대기', tool: 'wait_for', args: { text: '건', timeout_sec: 10 } };
+  const total = /총 (\d+)건/.exec(page)?.[1];
+  const saved = page.includes('조회 조건을 저장했습니다');
+  return {
+    thought: '보고',
+    tool: 'finish',
+    args: { summary: saved ? '조회 조건을 저장했습니다.' : total ? `조회 결과는 총 ${total}건입니다.` : '요청한 일을 마쳤습니다.' },
+  };
+}
+
 function agentReply(user) {
+  if (user.includes('(free v')) return freeReply(user);
   if (!user.includes('(wip-check v')) return followStep(user);
   const planned = planAction(user);
   const current = Number(/^## 지금 할 단계 \((\d+)\//m.exec(user)?.[1] ?? planned.step);

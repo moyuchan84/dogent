@@ -3,6 +3,7 @@ export * from './actions';
 export * from './check';
 export * from './dataset';
 export * from './excel';
+export * from './free';
 export * from './llm';
 export * from './loop';
 export * from './planner';
