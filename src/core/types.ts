@@ -101,6 +101,8 @@ export interface HistoryEntry {
   thought: string;
   ok: boolean;
   result: string;
+  /** 이 동작을 정한 쪽. skill이면 스킬에 적힌 인자를 모델 호출 없이 그대로 실행한 것이다. */
+  by: 'model' | 'skill';
 }
 
 export type RunEvent =

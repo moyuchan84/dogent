@@ -8,6 +8,8 @@ export interface LlmSettings {
   jsonMode: boolean;
   /** 제한 시간 배율. CPU로 도는 로컬 모델처럼 느린 환경에서 올린다. */
   timeoutScale: number;
+  /** 도구와 인자가 스킬에 적힌 단계는 모델을 부르지 않고 바로 실행한다. */
+  skillDirect: boolean;
 }
 
 const CALL_TIMEOUT_MS = 60_000;

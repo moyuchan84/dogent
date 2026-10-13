@@ -59,7 +59,7 @@ function followStep(user) {
   const literal = /`(\{.*\})`/.exec(stepText)?.[1];
   const tool = TOOL_WORD.exec(stepText)?.[1];
   if (literal && tool) return { thought: '스킬에 적힌 인자 그대로', tool, args: JSON.parse(literal) };
-  const url = /https?:\/\/\S+/.exec(stepText)?.[0];
+  const url = /https?:\/\/[^\s"`]+/.exec(stepText)?.[0];
   if (url) return { thought: '화면 이동', tool: 'navigate', args: { url } };
   if (stepText.includes('finish')) {
     const id = /신청 번호: (\S+)/.exec(page)?.[1];
@@ -145,7 +145,7 @@ function planAction(user) {
   const act = (step, thought, tool, args) => ({ step, thought, tool, args });
 
   if (!page.includes('# 재공 현황 조회')) {
-    const url = /https?:\/\/\S+/.exec(skillBody)?.[0];
+    const url = /https?:\/\/[^\s"`]+/.exec(skillBody)?.[0];
     if (did(/navigate .*→ 성공/)) return act(1, '이동했지만 조회 화면이 아님', 'abort', { reason: '재공 현황 조회 화면을 열지 못했습니다' });
     return act(1, '조회 화면으로 이동', 'navigate', { url });
   }

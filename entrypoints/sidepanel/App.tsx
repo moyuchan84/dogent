@@ -154,6 +154,7 @@ export function App() {
         datasets,
         signal: abort.signal,
         dryRun: !isFree && skill.risk === 'R3' && dryRun,
+        direct: settings.skillDirect,
         files: {
           async save(filename, data) {
             download(filename, data, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -264,6 +265,14 @@ export function App() {
               value={settings.timeoutScale}
               onChange={(e) => setSettings({ ...settings, timeoutScale: Number(e.target.value) || 1 })}
             />
+          </label>
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={settings.skillDirect}
+              onChange={(e) => setSettings({ ...settings, skillDirect: e.target.checked })}
+            />
+            스킬에 인자가 적힌 단계는 모델 없이 바로 실행 (빠름)
           </label>
           <p className="hint">기본은 응답 60초, 스킬별 전체 제한 시간입니다. 느린 로컬 모델이면 배율을 올리세요.</p>
           <p className="hint">API 주소의 호스트는 dogent.config.ts의 llmPermissions에도 있어야 합니다.</p>
@@ -411,6 +420,7 @@ export function App() {
                   <li key={i} className={h.ok ? '' : 'fail'}>
                     <div className="log-head">
                       <span className="step">단계 {h.step}</span>
+                      {h.by === 'skill' && <span className="chip">모델 호출 없음</span>}
                       <b>{h.tool}</b>
                       <code>{JSON.stringify(h.args).slice(0, 90)}</code>
                     </div>
