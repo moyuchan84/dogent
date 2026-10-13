@@ -31,11 +31,19 @@ export interface RunDeps {
   signal?: AbortSignal;
   /** 시험 실행. 승인이 필요한 동작 직전에 멈추고 실제로 제출하지 않는다. */
   dryRun?: boolean;
+  /**
+   * 도구와 인자가 스킬에 적힌 단계는 모델을 부르지 않고 그대로 실행한다.
+   * 그 동작이 실패하면 그 단계는 모델에게 넘긴다.
+   */
+  direct?: boolean;
 }
 
 const MAX_FORMAT_RETRIES = 2;
 const MAX_STRIKES = 3;
 const MAX_PAGES = 500;
+/** 모델 없이 실행할 수 있는 단계의 첫머리. 예: "select로 ...", "click으로 ..." */
+const DIRECT_STEP =
+  /^(navigate|click|type|select|extract_table|fill_table|transform|write_excel|finish)(?:으로|로)\s/;
 /** 승인 요청에 현재 값으로 보여줄 입력 요소 */
 const FIELD_ROLES = new Set(['textbox', 'combobox', 'checkbox', 'radio']);
 
@@ -80,7 +88,13 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps): Promise<Ru
   const captures = extractSteps(skill.body).map(stepCaptures);
   const outputs: Record<string, string> = {};
   const withOutputs = (text: string) =>
-    text.replace(/\{out\.([a-z_][a-z0-9_]*)\}/g, (whole, name: string) => outputs[name] ?? whole);
+    text
+      .replace(/\{out\.([a-z_][a-z0-9_]*)\}/g, (whole, name: string) => outputs[name] ?? whole)
+      // {rows.이름}: 데이터셋의 현재 행 수. 모델이 세지 않아도 보고에 정확한 숫자가 들어간다.
+      .replace(/\{rows\.([A-Za-z_][A-Za-z0-9_]*)\}/g, (whole, name: string) => {
+        const ds = datasets.list().find((d) => d.name === name);
+        return ds ? String(ds.rows.length) : whole;
+      });
   // 지금 할 단계. 모델이 아니라 루프가 관리한다. 검사가 있는 단계는 조건이 충족되면 자동으로,
   // 없는 단계는 모델의 next_step으로 한 칸씩 넘어간다.
   let current = 1;
@@ -293,6 +307,25 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps): Promise<Ru
     }
   }
 
+  // 단계가 "도구로 ..."로 시작하고 `{...}` 인자가 적혀 있으면 모델 없이 그대로 실행한다.
+  // 단계마다 한 번만 시도한다. 실패하거나 한 번으로 단계가 끝나지 않으면 그 뒤는 모델이 맡는다.
+  const directTried = new Set<number>();
+  function directAction(snap: PageSnapshot): Action | null {
+    if (!deps.direct || directTried.has(current)) return null;
+    const text = withOutputs(promptSteps[current - 1]);
+    const tool = DIRECT_STEP.exec(text)?.[1];
+    const literal = /`(\{.*\})`/.exec(text)?.[1];
+    if (!tool || !literal) return null;
+    directTried.add(current);
+    try {
+      const reply = JSON.stringify({ thought: '스킬에 적힌 대로 실행', tool, args: JSON.parse(literal) });
+      const parsed = parseAction(reply, snap);
+      return parsed.ok ? parsed.action : null;
+    } catch {
+      return null;
+    }
+  }
+
   let strikes = 0;
   let firstFailure = '';
   try {
@@ -314,7 +347,8 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps): Promise<Ru
         completeStep(snap);
       }
 
-      const action = await decide(n, snap);
+      const direct = directAction(snap);
+      const action = direct ?? (await decide(n, snap));
       action.step = current;
       lastStep = current;
 
@@ -399,6 +433,7 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps): Promise<Ru
         thought: action.thought,
         ok: outcome.ok,
         result: outcome.result,
+        by: direct ? 'skill' : 'model',
       };
       history.push(entry);
       emit({ type: 'action', entry });

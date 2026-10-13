@@ -313,3 +313,10 @@ input[type='file'] {
 .approval-table table {
   background: var(--surface);
 }
+.chip {
+  font-size: 10px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--ok-soft);
+  color: var(--muted);
+}

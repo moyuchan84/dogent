@@ -31,7 +31,8 @@ limits:
 
 ## 단계
 
-1. 재공 현황 조회 화면 http://localhost:4173/wip.html 로 이동한다. 현재 화면에 "재공 현황 조회" 제목이 이미 보이면 이동하지 않는다.
+1. navigate로 재공 현황 조회 화면으로 이동한다. args는 다음을 그대로 쓴다. 현재 화면에 "재공 현황 조회" 제목이 이미 보이면 이동하지 않는다.
+   `{"url": "http://localhost:4173/wip.html"}`
    - 확인: 화면에 "재공 현황 조회" 제목이 보인다.
    - 검사: text("재공 현황 조회")
 2. select로 "라인" 선택 상자에서 {line}을 선택한다. args는 다음을 그대로 쓴다.
@@ -62,7 +63,8 @@ limits:
    `{"filename": "재공확인_{line}", "sheets": [{"name": "원본", "dataset": "wip"}, {"name": "정체Lot", "dataset": "hold"}, {"name": "공정별집계", "dataset": "by_step"}]}`
    - 확인: 동작 기록에 write_excel 성공이 있다.
    - 검사: did("write_excel")
-9. finish로 결과를 보고한다. summary에 `wip`, `hold`, `by_step`의 행 수와 저장한 파일 이름을 적는다.
+9. finish로 결과를 보고한다. args는 다음을 그대로 쓴다.
+   `{"summary": "총 재공 {rows.wip} Lot, 정체 Lot {rows.hold}건, 공정 {rows.by_step}개. 파일: 재공확인_{line}.xlsx"}`
 
 ## 판단 기준
 

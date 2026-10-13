@@ -14,5 +14,6 @@ export const dogentConfig = {
     model: 'gemma',
     jsonMode: false,
     timeoutScale: 1,
+    skillDirect: true,
   },
 };
