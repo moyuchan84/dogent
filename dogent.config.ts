@@ -15,5 +15,6 @@ export const dogentConfig = {
     jsonMode: false,
     timeoutScale: 1,
     skillDirect: true,
+    pathCache: true,
   },
 };

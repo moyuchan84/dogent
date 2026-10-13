@@ -19,7 +19,7 @@ import {
 } from '@/src/core';
 import { ChromeBrowser } from '@/src/ext/browser';
 import { loadBundledSkills } from '@/src/ext/skills';
-import { appendRun, effectiveSettings, hasBuiltInKey, loadDrafts, loadRuns, loadSettings, markTrial, saveSettings, type DraftSkill } from '@/src/ext/storage';
+import { appendRun, clearPaths, effectiveSettings, hasBuiltInKey, loadDrafts, loadRuns, loadSettings, markTrial, pathStore, saveSettings, type DraftSkill } from '@/src/ext/storage';
 import { Author } from './Author';
 import { download, targetTab } from './util';
 
@@ -158,6 +158,8 @@ export function App() {
         signal: abort.signal,
         dryRun: !isFree && skill.risk === 'R3' && dryRun,
         direct: settings.skillDirect,
+        // 자유 요청은 매번 내용이 달라 다시 쓸 경로가 없다.
+        paths: settings.pathCache && !isFree ? pathStore : undefined,
         files: {
           async save(filename, data) {
             download(filename, data, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -283,6 +285,17 @@ export function App() {
             />
             스킬에 인자가 적힌 단계는 모델 없이 바로 실행 (빠름)
           </label>
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={settings.pathCache}
+              onChange={(e) => setSettings({ ...settings, pathCache: e.target.checked })}
+            />
+            모델이 찾아 성공한 경로를 기억해 다음 실행에서 다시 사용
+          </label>
+          <button className="ghost" onClick={() => void clearPaths()}>
+            기억한 경로 지우기
+          </button>
           <p className="hint">기본은 응답 60초, 스킬별 전체 제한 시간입니다. 느린 로컬 모델이면 배율을 올리세요.</p>
           <p className="hint">API 주소의 호스트는 dogent.config.ts의 llmPermissions에도 있어야 합니다.</p>
           <button
@@ -443,6 +456,7 @@ export function App() {
                     <div className="log-head">
                       <span className="step">단계 {h.step}</span>
                       {h.by === 'skill' && <span className="chip">모델 호출 없음</span>}
+                      {h.by === 'cache' && <span className="chip">기억한 경로</span>}
                       <b>{h.tool}</b>
                       <code>{JSON.stringify(h.args).slice(0, 90)}</code>
                     </div>

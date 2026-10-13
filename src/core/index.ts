@@ -8,6 +8,7 @@ export * from './excel';
 export * from './free';
 export * from './llm';
 export * from './loop';
+export * from './paths';
 export * from './planner';
 export * from './policy';
 export * from './prompt';
