@@ -374,6 +374,164 @@ try {
     return `${r.status}, ${r.sec}초`;
   });
 
+  await scenario('스킬 만들기: 한 번 해 보이면 초안이 나오고, 시험 실행을 통과하면 배포 요청 가능', async (openPages) => {
+    const { target, panel } = await openPages('/fw.html');
+    await fwApi('DELETE');
+    await panel.click('#tab-author');
+    await panel.fill('#a-id', 'fw-recorded');
+    await panel.fill('#a-name', '방화벽 신청 녹화');
+    await panel.fill('#a-desc', '녹화로 만든 방화벽 해제 신청');
+    await panel.fill('#a-owner', '인프라운영');
+    await panel.click('#rec-start');
+    await panel.locator('#rec').waitFor();
+
+    // 사람이 업무 화면에서 한 번 해 보인다.
+    await target.bringToFront();
+    await target.fill('#src', '10.10.1.15');
+    await target.fill('#dst', '10.20.3.7');
+    await target.fill('#port', '1521');
+    await target.selectOption('#proto', 'UDP');
+    await target.fill('#days', '90');
+    await target.fill('#reason', '개발 서버에서 운영 DB 조회 배치 실행');
+    await target.click('#submit');
+    await target.locator('#done').waitFor();
+    await panel.bringToFront();
+    await panel.locator('#rec[data-count="7"]').waitFor();
+    await panel.getByText('"상신" 누름 → "신청이 접수되었습니다." 나타남').waitFor();
+    // 프로토콜은 늘 같은 값이므로 고정한다.
+    await panel.locator('.rec-list li', { hasText: '프로토콜' }).locator('input[type=checkbox]').uncheck();
+    await panel.screenshot({ path: join(ROOT, 'test-results/panel-author-recording.png'), fullPage: true });
+    await panel.click('#rec-stop');
+
+    // 초안은 손대지 않아도 배포 기준(B 이상)이고, 상신 통제가 선언되어 있다.
+    assert.equal(await panel.locator('#lint').getAttribute('data-grade'), 'B');
+    const source = await panel.locator('#draft-src').inputValue();
+    assert.match(source, /risk: R3/);
+    assert.match(source, /submit_steps: \[8\]/);
+    assert.match(source, /submit_labels: \["상신"\]/);
+    await panel.screenshot({ path: join(ROOT, 'test-results/panel-author-lint.png'), fullPage: true });
+    // 내용을 깨뜨리면 저장할 수 없다.
+    await panel.fill('#draft-src', source.replace('submit_steps: [8]', 'submit_steps: [2]'));
+    assert.equal(await panel.locator('#lint').getAttribute('data-grade'), 'F');
+    assert.ok(await panel.locator('#draft-save').isDisabled());
+    await panel.fill('#draft-src', source);
+    await panel.click('#draft-save');
+    const draft = panel.locator('.draft[data-id="fw-recorded"]');
+    assert.equal(await draft.getAttribute('data-ready'), 'false', '시험 실행 전에는 배포 요청 불가');
+
+    // 실행 탭에서 초안을 골라 다른 값으로 시험 실행한다.
+    assert.deepEqual((await fwApi()).length, 1, '녹화 중 사람이 한 상신 1건');
+    await target.goto(SITE + '/fw.html');
+    await panel.click('#tab-run');
+    await panel.selectOption('#skill', 'fw-recorded');
+    const values = ['10.10.9.9', '10.20.9.9', '443', '30', '테스트 서버 연동 확인'];
+    for (const [i, value] of values.entries()) await panel.fill(`[data-input=v${i + 1}]`, value);
+    await panel.check('#dryrun');
+    await panel.click('#run');
+    const r = await result(panel).catch(async (e) => {
+      e.runLog = await panel.locator('.app').innerText();
+      throw e;
+    });
+    assert.equal(r.status, 'dryrun', r.text);
+    assert.equal(await target.locator('#src').inputValue(), '10.10.9.9');
+    assert.equal(await target.locator('#proto').inputValue(), 'UDP');
+    assert.equal(await target.locator('#reason').inputValue(), '테스트 서버 연동 확인');
+    assert.deepEqual((await fwApi()).length, 1, '시험 실행은 상신하지 않음');
+    assert.doesNotMatch(await panel.locator('.log').innerText(), /모델 응답/);
+
+    await panel.click('#tab-author');
+    assert.equal(await draft.getAttribute('data-ready'), 'true');
+    await panel.screenshot({ path: join(ROOT, 'test-results/panel-author-ready.png'), fullPage: true });
+    await fwApi('DELETE');
+  });
+
+  await scenario('엑셀 다운로드: 서버가 만든 파일을 한 번에 받아 정리', async (openPages) => {
+    const { target, panel } = await openPages('/wip.html');
+    await panel.selectOption('#skill', 'wip-download');
+    await panel.fill('[data-input=line]', '8라인');
+    const r = await run(panel);
+    const want = generateWip('8라인');
+    const book = r.files[0] ? await sheets(r.files[0].path) : {};
+    check(r, () => {
+      assert.equal(r.status, 'done');
+      assert.equal(r.files[0]?.name, '재공내려받기_8라인.xlsx');
+      assert.deepEqual(
+        book['원본'].slice(1),
+        want.map((row) => [row[0], row[1], row[2], num(row[3]), row[4], Number(row[5])]),
+      );
+      const hold = want.filter((row) => Number(row[5]) >= 24 || row[4] === 'HOLD').map((row) => row[0]);
+      assert.deepEqual(book['정체Lot'].slice(1).map((row) => row[0]).sort(), hold.sort());
+      assert.match(r.log, /재공_8라인\.xlsx 내려받음/);
+    });
+    assert.equal(await target.locator('#pageinfo').innerText(), '1 / 4 페이지', '페이지를 넘기지 않아야 함');
+    return `${r.sec}초`;
+  });
+
+  await scenario('CSV 내려받기: 화면이 만들고 바로 지운 파일도 읽음', async (openPages) => {
+    const { target, panel } = await openPages('/wip.html');
+    const source = `---
+id: csv-download
+name: CSV 내려받기 시험
+description: 화면이 만든 CSV 파일을 받아 엑셀로 저장한다
+version: 0.1.0
+owner: 시험
+risk: R1
+domains:
+  - localhost:4173
+limits:
+  max_steps: 20
+  timeout_sec: 120
+---
+
+## 단계
+
+1. select로 "라인"에서 값을 선택한다. args는 다음을 그대로 쓴다.
+   \`{"ref": "라인", "value": "6라인"}\`
+   - 검사: value("라인") == "6라인"
+2. click으로 "조회" 버튼을 한 번 누른다. args는 다음을 그대로 쓴다.
+   \`{"ref": "조회"}\`
+   - 검사: did("click") and no_text("조회 중") and text("총")
+3. download_table로 "CSV 내려받기" 버튼을 눌러 받은 파일을 데이터셋 \`d\`에 담는다. args는 다음을 그대로 쓴다.
+   \`{"ref": "CSV 내려받기", "dataset": "d"}\`
+   - 검사: rows("d") == page_number("총 ([\\d,]+)건")
+4. write_excel로 엑셀 파일을 저장한다. args는 다음을 그대로 쓴다.
+   \`{"filename": "csv시험", "sheets": [{"name": "표", "dataset": "d"}]}\`
+   - 검사: did("write_excel")
+5. finish로 결과를 보고한다. args는 다음을 그대로 쓴다.
+   \`{"summary": "{rows.d}행을 받았습니다."}\`
+
+## 예외
+
+- 화면에 오류 메시지가 나오면 abort로 메시지 원문을 그대로 알린다.
+`;
+    const before = await panel.evaluate(async () => (await chrome.storage.local.get('draftSkills')).draftSkills ?? []);
+    await panel.evaluate(
+      (draftSkills) => chrome.storage.local.set({ draftSkills }),
+      [...before, { id: 'csv-download', source, savedAt: new Date().toISOString() }],
+    );
+    try {
+      await panel.reload();
+      await panel.selectOption('#skill', 'csv-download');
+      const r = await run(panel);
+      const want = generateWip('6라인');
+      const book = r.files[0] ? await sheets(r.files[0].path) : {};
+      check(r, () => {
+        assert.equal(r.status, 'done');
+        assert.match(r.text, new RegExp(`${want.length}행을 받았습니다`));
+        assert.deepEqual(
+          book['표'].slice(1),
+          want.map((row) => [row[0], row[1], row[2], num(row[3]), row[4], Number(row[5])]),
+        );
+        assert.doesNotMatch(r.log, /모델 응답/);
+      });
+      // 페이지의 URL.createObjectURL은 원래대로 돌아가 있어야 한다.
+      assert.equal(await target.evaluate(() => '__dogentBlobs' in window), false);
+      return `${r.sec}초`;
+    } finally {
+      await panel.evaluate((draftSkills) => chrome.storage.local.set({ draftSkills }), before);
+    }
+  });
+
   await scenario('로그인 화면이면 중단', async (openPages) => {
     const { panel } = await openPages('/login.html');
     await panel.selectOption('#skill', 'wip-check');

@@ -1,5 +1,7 @@
 export * from './types';
 export * from './actions';
+export * from './author';
+export * from './lint';
 export * from './check';
 export * from './dataset';
 export * from './excel';

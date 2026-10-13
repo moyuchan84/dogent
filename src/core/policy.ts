@@ -9,6 +9,29 @@ import type { ElementItem, PageSnapshot } from './types';
 export const SUBMIT_PATTERN =
   /(저장|상신|제출|삭제|승인|결재|등록|확정|반려|submit|save|delete|remove|approve)/i;
 
+/** 파일을 내려받는 버튼으로 보는 라벨 */
+const DOWNLOAD_PATTERN = /(엑셀|excel|xlsx?|csv|다운로드|내려받|내보내|download|export)/i;
+
+/**
+ * download_table로 누를 수 없는 버튼이면 이유를 돌려준다.
+ * "엑셀 저장"처럼 내려받기를 뜻하는 저장만 허용하고, 그 밖의 저장·상신 계열("엑셀 등록" 등)은 막는다.
+ */
+export function downloadBlocked(name: string): string | null {
+  if (!SUBMIT_PATTERN.test(name)) return null;
+  const rest = name.replace(/저장|save/gi, '');
+  if (DOWNLOAD_PATTERN.test(name) && !SUBMIT_PATTERN.test(rest)) return null;
+  return `"${name.trim()}"은(는) 저장·상신 계열이라 내려받기 버튼으로 쓸 수 없습니다`;
+}
+
+/**
+ * 녹화한 클릭이 파일 내려받기로 보이는지. 초안에서 그 단계를 download_table로 만들 때 쓴다.
+ * "엑셀 업로드"처럼 엑셀이라는 글자만 있는 버튼은 내려받기로 보지 않는다.
+ */
+export function looksLikeDownload(name: string): boolean {
+  if (downloadBlocked(name)) return false;
+  return /(다운로드|내려받|내보내|download|export)/i.test(name) || /(엑셀|excel|xlsx|csv)\s*(저장|save)?\s*$/i.test(name);
+}
+
 /** 패턴 예: "mes.example.internal", "localhost:4173", "*.example.internal" */
 export function hostAllowed(url: string, patterns: string[]): boolean {
   let u: URL;
@@ -59,6 +82,7 @@ export function checkAction(action: Action, snap: PageSnapshot, skill: Skill): V
     action.tool !== 'type' &&
     action.tool !== 'select' &&
     action.tool !== 'extract_table' &&
+    action.tool !== 'download_table' &&
     action.tool !== 'fill_table' &&
     action.tool !== 'wait_for'
   ) {
@@ -111,6 +135,10 @@ export function checkAction(action: Action, snap: PageSnapshot, skill: Skill): V
       };
     }
     return { ok: true, approval: el };
+  }
+  if (action.tool === 'download_table') {
+    const blocked = downloadBlocked(el.name);
+    if (blocked) return { ok: false, reason: blocked };
   }
   if (action.tool === 'fill_table') {
     if (el.role !== 'table') return { ok: false, reason: `[${el.ref}]은(는) 표가 아닙니다 (role=${el.role})` };

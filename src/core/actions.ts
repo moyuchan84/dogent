@@ -22,6 +22,12 @@ export const TOOL_ARGS = {
     /** 다음 페이지 버튼. 주면 비활성이 될 때까지 눌러 가며 모든 페이지를 추출한다. */
     next_ref: ref.optional(),
   }),
+  download_table: z.object({
+    /** 엑셀·CSV 내려받기 버튼 */
+    ref,
+    dataset: z.string().min(1),
+    timeout_sec: z.number().positive().max(120).default(30),
+  }),
   fill_table: z.object({
     ref,
     dataset: z.string().min(1),
@@ -43,6 +49,20 @@ export const TOOL_ARGS = {
 } as const;
 
 export type ToolName = keyof typeof TOOL_ARGS;
+
+/** 모델 없이 실행할 수 있는 단계의 첫머리. 예: "select로 ...", "click으로 ..." */
+const DIRECT_STEP =
+  /^(navigate|click|type|select|extract_table|download_table|fill_table|transform|write_excel|finish)(?:으로|로)\s/;
+
+/**
+ * 단계가 "도구로 ..."로 시작하고 `{...}` 인자가 적혀 있으면 그 도구 이름과 인자 원문을 돌려준다.
+ * 이런 단계는 모델 없이 그대로 실행할 수 있다.
+ */
+export function directParts(stepText: string): { tool: ToolName; literal: string } | null {
+  const tool = DIRECT_STEP.exec(stepText)?.[1] as ToolName | undefined;
+  const literal = /`(\{.*\})`/.exec(stepText)?.[1];
+  return tool && literal ? { tool, literal } : null;
+}
 
 export type Action = {
   [K in ToolName]: {

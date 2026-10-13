@@ -14,7 +14,9 @@
     "postinstall": "wxt prepare",
     "e2e": "node tests/e2e/extension.e2e.mjs",
     "e2e:ollama": "node tests/e2e/extension.e2e.mjs --ollama",
-    "ollama:proxy": "node tools/ollama-proxy.mjs"
+    "ollama:proxy": "node tools/ollama-proxy.mjs",
+    "skill:new": "node tools/skill-new.mjs",
+    "skill:lint": "vitest run tests/author.test.ts -t 번들된"
   },
   "dependencies": {
     "exceljs": "^4.4.0",

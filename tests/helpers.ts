@@ -3,6 +3,7 @@ import { JSDOM } from 'jsdom';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { COLUMNS, generateWip } from '../mock-site/data.mjs';
+import { wipXlsx } from '../mock-site/server.mjs';
 import { mergeFrames, parseSkill, type BrowserPort, type FilePort, type LlmPort } from '../src/core';
 import { createPageAgent, type PageAgent } from '../src/page/agent';
 import { mockComplete } from '../tools/mock-llm.mjs';
@@ -32,6 +33,15 @@ async function load(pathname: string): Promise<JSDOM> {
     runScripts: 'dangerously',
     pretendToBeVisual: true,
     beforeParse(window) {
+      // jsdom에는 없는 기능. 페이지가 만든 파일은 주소를 지운 뒤에도 읽을 수 있게 따로 잡아 둔다 (확장의 main world 처리와 같다).
+      const blobs = new Map<string, Blob>();
+      (window as any).__blobs = blobs;
+      window.URL.createObjectURL = (blob: Blob) => {
+        const url = `blob:${ORIGIN}/${blobs.size + 1}`;
+        blobs.set(url, blob);
+        return url;
+      };
+      window.URL.revokeObjectURL = () => {};
       (window as any).fetch = async (input: string, init?: { method?: string; body?: string }) => {
         const url = new URL(input, ORIGIN);
         if (url.pathname === '/api/adjust') {
@@ -106,6 +116,38 @@ export class JsdomBrowser implements BrowserPort {
     const r = this.agent.fillTable(this.local(ref), columns, rows, addRef === undefined ? undefined : this.local(addRef));
     await this.agent.settle(50, 3000);
     return r;
+  }
+
+  /** 누른 요소가 a[download]를 눌러 시작하는 내려받기를 가로채 파일 내용을 돌려준다. 서버 파일은 모의 사이트와 같은 함수로 만든다. */
+  async download(ref: number, _timeoutMs: number, allowed: (url: string) => boolean) {
+    const win = this.dom.window as any;
+    let link: { href: string; name: string } | undefined;
+    const onClick = (e: Event) => {
+      const a = (e.target as Element).closest?.('a[download]') as HTMLAnchorElement | null;
+      if (!a) return;
+      e.preventDefault();
+      link = { href: a.href, name: a.getAttribute('download') ?? '' };
+    };
+    win.document.addEventListener('click', onClick, true);
+    const r = this.agent.click(this.local(ref));
+    win.document.removeEventListener('click', onClick, true);
+    if (!r.ok) throw new Error(r.message);
+    if (!link) throw new Error('버튼을 눌렀지만 내려받기가 시작되지 않았습니다');
+    const { href, name } = link;
+    if (!allowed(href)) throw new Error(`내려받는 파일의 주소(${href})가 허용 도메인 밖이라 읽지 않았습니다`);
+    if (href.startsWith('blob:')) {
+      const data = await new Promise<ArrayBuffer>((resolve, reject) => {
+        const reader = new win.FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(new Error('파일을 읽지 못함'));
+        reader.readAsArrayBuffer(win.__blobs.get(href));
+      });
+      return { filename: name, url: href, data };
+    }
+    const q = new URL(href).searchParams;
+    const line = q.get('line') ?? '';
+    const buf = new Uint8Array(await wipXlsx(line, q.get('step') ?? '', q.get('product') ?? ''));
+    return { filename: `재공_${line}.xlsx`, url: href, data: buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer };
   }
 
   async waitFor(text: string, timeoutMs: number) {

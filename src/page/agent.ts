@@ -1,4 +1,4 @@
-import type { ActResult, FrameSnapshot, SnapshotItem, TableData } from '../core/types';
+import type { ActResult, FrameSnapshot, RecordedEvent, SnapshotItem, TableData } from '../core/types';
 
 /**
  * 페이지 안에서 도는 부분. 화면을 요소 목록으로 읽고, ref로 지정된 요소를 조작한다.
@@ -21,6 +21,8 @@ export interface PageAgent {
   point(ref: number, label: string): boolean;
   /** 에이전트가 이 화면을 조작 중임을 테두리로 표시하거나 지운다. */
   setActive(on: boolean): void;
+  /** 사람이 하는 클릭·입력·선택을 녹화해 onRecord로 알린다. 여러 번 켜도 한 번만 걸린다. */
+  record(on: boolean): void;
 }
 
 const SKIP_TAGS = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'HEAD', 'SVG', 'IFRAME', 'FRAME']);
@@ -44,7 +46,10 @@ const MAX_OPTIONS = 40;
 const norm = (s: string | null | undefined) => (s ?? '').replace(/\s+/g, ' ').trim();
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}…` : s);
 
-export function createPageAgent(win: Window & typeof globalThis): PageAgent {
+export function createPageAgent(
+  win: Window & typeof globalThis,
+  onRecord: (event: RecordedEvent) => void = () => {},
+): PageAgent {
   const doc = win.document;
   let refs = new Map<number, Element>();
 
@@ -345,8 +350,67 @@ export function createPageAgent(win: Window & typeof globalThis): PageAgent {
     return overlay;
   }
 
+  // ---- 조작 녹화 ----
+  // 스킬 초안을 만들 때 쓴다. 요소는 스냅샷과 같은 이름으로 적어, 녹화한 그대로 실행할 수 있게 한다.
+  let recording = false;
+  let listening = false;
+  const CLICK_ROLES = new Set(['button', 'link', 'tab', 'menuitem', 'checkbox', 'radio', 'switch']);
+
+  /** 같은 이름의 요소가 화면에 몇 개인지. role을 주면 그 종류만 센다. */
+  function sameName(name: string, role?: string): number {
+    return snapshot().items.filter((i) => i.kind === 'el' && i.name === name && (!role || i.role === role)).length;
+  }
+
+  function onClick(e: Event): void {
+    if (!recording) return;
+    for (let el = e.target as Element | null; el; el = el.parentElement) {
+      const desc = describe(el);
+      if (!desc) continue;
+      if (CLICK_ROLES.has(desc.role)) {
+        onRecord({ kind: 'click', role: desc.role, name: desc.name, dup: sameName(desc.name) > 1 });
+      }
+      return;
+    }
+  }
+
+  function onChange(e: Event): void {
+    if (!recording) return;
+    const el = e.target as Element | null;
+    const desc = el && describe(el);
+    // 비밀번호 칸은 describe가 null을 돌려주므로 녹화되지 않는다.
+    if (!el || !desc) return;
+    if (desc.role === 'combobox' && el.tagName === 'SELECT') {
+      const sel = el as HTMLSelectElement;
+      onRecord({
+        kind: 'select',
+        name: desc.name,
+        value: norm(sel.selectedOptions[0]?.textContent),
+        options: [...sel.options].slice(0, MAX_OPTIONS).map((o) => norm(o.textContent)),
+        dup: sameName(desc.name, 'combobox') > 1,
+      });
+    } else if (desc.role === 'textbox') {
+      onRecord({
+        kind: 'type',
+        name: desc.name,
+        value: (el as HTMLInputElement).value ?? norm(el.textContent),
+        multiline: el.tagName === 'TEXTAREA',
+        numeric: (el.getAttribute('type') ?? '').toLowerCase() === 'number',
+        dup: sameName(desc.name, 'textbox') > 1,
+      });
+    }
+  }
+
   return {
     snapshot,
+
+    record(on) {
+      recording = on;
+      if (!on || listening) return;
+      listening = true;
+      // 페이지의 처리기가 화면을 바꾸기 전에 읽어야 하므로 캡처 단계에서 듣는다.
+      doc.addEventListener('click', onClick, true);
+      doc.addEventListener('change', onChange, true);
+    },
 
     point(ref, label) {
       const el = refs.get(ref);
@@ -469,7 +533,13 @@ export function createPageAgent(win: Window & typeof globalThis): PageAgent {
       return { columns, rows: data.map((r) => Array.from({ length: width }, (_, i) => r[i] ?? '')) };
     },
 
-    hasText: (text) => norm(doc.body?.textContent).includes(norm(text)),
+    hasText(text) {
+      if (!doc.body) return false;
+      // 스크립트나 스타일 안에 적힌 글자는 화면에 보이는 것이 아니므로 뺀다.
+      const body = doc.body.cloneNode(true) as Element;
+      body.querySelectorAll('script,style,noscript,template').forEach((el) => el.remove());
+      return norm(body.textContent).includes(norm(text));
+    },
 
     /**
      * DOM 변경이 quietMs 동안 없고 aria-busy 표시가 사라질 때까지 기다린다. 최대 maxMs.
