@@ -1,6 +1,6 @@
 import { JSDOM } from 'jsdom';
 import { describe, expect, it } from 'vitest';
-import { mergeFrames, renderSnapshot } from '../src/core';
+import { addRecorded, draftSkill, mergeFrames, parseAction, renderSnapshot, type RecordedEvent } from '../src/core';
 import { createPageAgent } from '../src/page/agent';
 
 function page(html: string) {
@@ -157,5 +157,93 @@ describe('화면 표시', () => {
     doc.getElementById('b')!.remove();
     expect(agent.point(1, '클릭')).toBe(false);
     expect(doc.querySelector('[data-dogent-overlay]')).toBeNull();
+  });
+});
+
+describe('표 안의 요소', () => {
+  const LOTS = `
+    <table>
+      <caption>홀드 Lot</caption>
+      <thead><tr><th>Lot ID</th><th>공정</th><th></th></tr></thead>
+      <tbody>
+        <tr><td>P7-00012</td><td>PHOTO</td><td><button id="a">선택</button></td></tr>
+        <tr><td>P7-00031</td><td>ETCH</td><td><button id="b">선택</button> <a href="/d/31">상세</a></td></tr>
+      </tbody>
+    </table>
+    <button>닫기</button>`;
+
+  it('표 아래에 칸 안의 버튼·링크를 행 글자와 함께 내보낸다', () => {
+    const { render } = page(LOTS);
+    expect(render()).toBe(
+      [
+        '[page] 시험 — http://localhost:4173/t',
+        '[1] table "홀드 Lot" rows=2 cols=[Lot ID, 공정, ]',
+        '[2] button "선택" row="P7-00012 | PHOTO | 선택"',
+        '[3] button "선택" row="P7-00031 | ETCH | 선택 상세"',
+        '[4] link "상세" row="P7-00031 | ETCH | 선택 상세"',
+        '[5] button "닫기"',
+      ].join('\n'),
+    );
+  });
+
+  it('행 안의 버튼을 ref로 누른다', () => {
+    const { agent, doc } = page(LOTS);
+    let clicked = '';
+    doc.getElementById('b')!.addEventListener('click', () => (clicked = 'b'));
+    agent.snapshot();
+    expect(agent.click(3).ok).toBe(true);
+    expect(clicked).toBe('b');
+  });
+
+  it('이름과 row로 적은 ref를 그 행의 요소로 바꾼다', () => {
+    const { agent } = page(LOTS);
+    const snap = mergeFrames([{ frame: 0, snap: agent.snapshot() }]).snapshot;
+    const act = (args: object) => parseAction(JSON.stringify({ tool: 'click', args }), snap);
+    expect(act({ ref: '선택', row: 'P7-00031' })).toMatchObject({ ok: true, action: { args: { ref: 3 } } });
+    expect(act({ ref: '상세' })).toMatchObject({ ok: true, action: { args: { ref: 4 } } });
+    const dup = act({ ref: '선택' });
+    expect(dup.ok).toBe(false);
+    expect(!dup.ok && dup.error).toContain('row="P7-00012');
+    const none = act({ ref: '선택', row: 'P9-99999' });
+    expect(!none.ok && none.error).toContain('"P9-99999" 글자가 있는 행에');
+  });
+
+  it('입력 칸이 있는 표는 칸의 값으로 행을 적고, 너무 많으면 줄인다', () => {
+    const rows = Array.from({ length: 40 }, (_, i) => `<tr><td><input value="L${i}"></td><td><input value="${i}"></td></tr>`);
+    const { render } = page(`<table><thead><tr><th>Lot</th><th>수량</th></tr></thead><tbody>${rows.join('')}</tbody></table>`);
+    const lines = render().split('\n');
+    expect(lines[2]).toBe('[2] textbox "Lot" value="L0" row="L0 | 0"');
+    expect(lines.filter((l) => l.includes('textbox'))).toHaveLength(60);
+    expect(lines.at(-1)).toBe('(표 안의 나머지 요소는 생략됨)');
+  });
+
+  it('머리글 없이 입력란을 담은 table은 배치용으로 보고 안을 그대로 읽는다', () => {
+    const { render } = page(`
+      <table><tr><td>라인</td><td><input aria-label="라인" value="8"></td><td><button>조회</button></td></tr></table>
+      <table><tr><td>가</td><td>1</td></tr></table>`);
+    expect(render()).toBe(
+      [
+        '[page] 시험 — http://localhost:4173/t',
+        '라인',
+        '[1] textbox "라인" value="8"',
+        '[2] button "조회"',
+        '[3] table "표" rows=1 cols=[]',
+      ].join('\n'),
+    );
+  });
+
+  it('녹화할 때 행마다 있는 버튼은 행을 가릴 글자를 함께 적는다', () => {
+    const dom = new JSDOM(`<!doctype html><body>${LOTS}</body>`, { url: 'http://localhost:4173/t' });
+    const events: RecordedEvent[] = [];
+    createPageAgent(dom.window as any, (e) => events.push(e)).record(true);
+    dom.window.document.getElementById('b')!.click();
+    expect(events).toEqual([{ kind: 'click', role: 'button', name: '선택', dup: true, row: 'P7-00031' }]);
+    const { source, notes } = draftSkill(
+      { id: 'lot-pick', name: 'Lot 고르기', description: '표에서 Lot을 고른다', owner: '생산관리' },
+      { url: 'http://localhost:4173/t' },
+      addRecorded([], events[0]),
+    );
+    expect(source).toContain('`{"ref":"선택","row":"P7-00031"}`');
+    expect(notes.join('\n')).toContain('"row"를 {입력값}으로');
   });
 });

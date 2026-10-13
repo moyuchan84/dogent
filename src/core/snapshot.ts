@@ -46,6 +46,7 @@ export function renderSnapshot(snap: PageSnapshot, maxChars = 12000): string {
       let line = `[${item.ref}] ${item.role} ${quote(item.name)}`;
       if (item.value !== undefined) line += ` value=${quote(item.value)}`;
       if (item.detail) line += ` ${item.detail}`;
+      if (item.row) line += ` row=${quote(item.row)}`;
       if (item.disabled) line += ' (비활성)';
       lines.push(line);
     }

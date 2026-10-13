@@ -4,6 +4,8 @@ import type { ElementItem, PageSnapshot } from './types';
 
 // 모델이 ref를 "12"처럼 문자열로 줄 때가 있어 숫자로 맞춘다.
 const ref = z.coerce.number().int().nonnegative();
+/** 표 안의 요소를 이름으로 가리킬 때, 그 행에 있는 글자. 같은 이름이 행마다 있을 때 행을 가린다. */
+const row = z.string().optional();
 
 export const TOOL_ARGS = {
   next_step: z.object({}),
@@ -12,10 +14,11 @@ export const TOOL_ARGS = {
     ref,
     /** 누른 뒤 뜨는 확인 창에서 확인을 누른다. 없으면 취소한다. */
     accept_dialog: z.boolean().optional(),
+    row,
   }),
   close_tab: z.object({}),
-  type: z.object({ ref, text: z.string() }),
-  select: z.object({ ref, value: z.string() }),
+  type: z.object({ ref, text: z.string(), row }),
+  select: z.object({ ref, value: z.string(), row }),
   wait_for: z.object({
     text: z.string().min(1),
     timeout_sec: z.number().positive().max(60).default(10),
@@ -118,7 +121,7 @@ const ROLE_FOR_TOOL: Record<string, string> = {
  * 작은 모델은 ref에 번호 대신 "조회" 같은 요소 이름이나 "[4]"를 넣곤 한다.
  * 화면에서 하나로 특정되면 번호로 바꿔 주고, 아니면 후보를 알려준다.
  */
-function resolveRef(tool: string, ref: unknown, snap: PageSnapshot): { ref: unknown } | { error: string } {
+function resolveRef(tool: string, ref: unknown, snap: PageSnapshot, row?: unknown): { ref: unknown } | { error: string } {
   if (typeof ref !== 'string') return { ref };
   const bracketed = /^\s*\[?\s*(\d+)\s*\]?\s*$/.exec(ref);
   if (bracketed) return { ref: Number(bracketed[1]) };
@@ -126,15 +129,24 @@ function resolveRef(tool: string, ref: unknown, snap: PageSnapshot): { ref: unkn
   let matches = els.filter((e) => e.name.trim() === ref.trim());
   const role = ROLE_FOR_TOOL[tool];
   if (role && matches.some((e) => e.role === role)) matches = matches.filter((e) => e.role === role);
+  const show = (list: ElementItem[]) =>
+    list
+      .slice(0, 12)
+      .map((e) => `[${e.ref}] ${e.role} "${e.name}"${e.row ? ` row="${e.row}"` : ''}`)
+      .join(', ');
+  if (typeof row === 'string' && row.trim() !== '' && matches.length > 0) {
+    const inRow = matches.filter((e) => e.row?.includes(row.trim()));
+    if (inRow.length === 0) {
+      return { error: `"${row}" 글자가 있는 행에 "${ref}" 요소가 없습니다. 화면에 있는 것: ${show(matches)}` };
+    }
+    matches = inRow;
+  }
   if (matches.length === 1) return { ref: matches[0].ref };
-  const list = (matches.length ? matches : els.slice(0, 12))
-    .map((e) => `[${e.ref}] ${e.role} "${e.name}"`)
-    .join(', ');
   return {
     error:
       matches.length === 0
-        ? `ref "${ref}"에 해당하는 요소가 없습니다. ref에는 화면의 [ ] 안 번호를 숫자로 넣으세요. 예: ${list}`
-        : `"${ref}" 이름의 요소가 여러 개입니다: ${list}. 번호로 지정하세요`,
+        ? `ref "${ref}"에 해당하는 요소가 없습니다. ref에는 화면의 [ ] 안 번호를 숫자로 넣으세요. 예: ${show(els)}`
+        : `"${ref}" 이름의 요소가 여러 개입니다: ${show(matches)}. 번호로 지정하세요`,
   };
 }
 
@@ -159,7 +171,7 @@ export function parseAction(text: string, snap?: PageSnapshot): ParseResult {
   const tool = env.data.tool as ToolName;
   let rawArgs = env.data.args;
   if (snap && 'ref' in rawArgs) {
-    const resolved = resolveRef(tool, rawArgs.ref, snap);
+    const resolved = resolveRef(tool, rawArgs.ref, snap, rawArgs.row);
     if ('error' in resolved) return { ok: false, error: resolved.error };
     rawArgs = { ...rawArgs, ref: resolved.ref };
   }
