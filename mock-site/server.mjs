@@ -11,8 +11,25 @@ const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '
 export function createMockSite() {
   // 접수된 방화벽 신청. 테스트가 GET /api/fw 로 읽어 실제로 몇 건이 어떤 값으로 상신됐는지 확인한다.
   const fwLog = [];
+  // 저장된 재공 수량 조정. 한 번의 저장이 행 배열 하나다.
+  const adjustLog = [];
   return createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', 'http://localhost');
+    if (url.pathname === '/api/adjust') {
+      const json = (body) => {
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify(body));
+      };
+      if (req.method === 'POST') {
+        let body = '';
+        for await (const chunk of req) body += chunk;
+        const rows = JSON.parse(body);
+        adjustLog.push(rows);
+        return json({ count: rows.length });
+      }
+      if (req.method === 'DELETE') adjustLog.length = 0;
+      return json(adjustLog);
+    }
     if (url.pathname === '/api/fw') {
       const json = (body) => {
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });

@@ -286,6 +286,62 @@ try {
     assert.deepEqual(await fwApi(), []);
   });
 
+  const adjustColumns = ['Lot ID', '공정', '조정수량', '사유'];
+  const adjustRows = [
+    ['P7-00012', 'PHOTO', -25, '검사 불량 폐기'],
+    ['P7-00031', 'ETCH', 100, '재작업 투입'],
+    ['P7-00044', 'CMP', -3, '샘플 반출'],
+    ['P7-00058', 'IMP', 12, '수량 정정'],
+    ['P7-00071', 'DIFF', -8, '파손'],
+  ];
+  const adjustApi = (method = 'GET') => fetch(`${SITE}/api/adjust`, { method }).then((r) => r.json());
+
+  /** 조정 내역 엑셀 파일을 만들어 경로를 돌려준다. */
+  async function adjustFile(name, rows) {
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('조정');
+    ws.addRow(adjustColumns);
+    for (const r of rows) ws.addRow(r);
+    const path = join(profile, name);
+    await wb.xlsx.writeFile(path);
+    return path;
+  }
+
+  await scenario('엑셀 → 웹 입력: 5행을 표에 채우고 승인 후 저장', async (openPages) => {
+    const { target, panel } = await openPages('/adjust.html');
+    await adjustApi('DELETE');
+    await panel.selectOption('#skill', 'wip-adjust');
+    await panel.setInputFiles('[data-input=source]', await adjustFile('adjust.xlsx', adjustRows));
+    const dialog = await runUntilApproval(panel);
+    assert.match(dialog, /조정 목록/);
+    assert.match(dialog, /5행/);
+    assert.ok(dialog.includes('P7-00071'), '승인 대화상자에 마지막 행이 보여야 함');
+    assert.deepEqual(await adjustApi(), [], '승인 전에는 저장되면 안 됨');
+    assert.equal(await target.locator('#adjGrid tbody tr').count(), 5, '빈 행 3개에 2개가 추가되어야 함');
+    await panel.screenshot({ path: join(ROOT, 'test-results/panel-adjust-approval.png'), fullPage: true });
+    await target.screenshot({ path: join(ROOT, 'test-results/page-adjust.png') });
+    await panel.click('#approve');
+    const r = await result(panel);
+    assert.equal(r.status, 'done', r.text);
+    assert.match(r.text, /5건을 저장했습니다/);
+    assert.deepEqual(await adjustApi(), [adjustRows.map((row) => row.map(String))]);
+  });
+
+  await scenario('엑셀 → 웹 입력: 화면에서 고를 수 없는 값이 있으면 저장하지 않음', async (openPages) => {
+    const { panel } = await openPages('/adjust.html');
+    await adjustApi('DELETE');
+    await panel.selectOption('#skill', 'wip-adjust');
+    const rows = adjustRows.map((row) => [...row]);
+    rows[1][1] = 'WET';
+    await panel.setInputFiles('[data-input=source]', await adjustFile('adjust-bad.xlsx', rows));
+    await panel.click('#run');
+    const r = await result(panel);
+    assert.equal(r.status, 'aborted', r.text);
+    assert.match(r.text, /2행 "공정"/);
+    assert.equal(await panel.locator('#approval').count(), 0);
+    assert.deepEqual(await adjustApi(), []);
+  });
+
   await scenario('로그인 화면이면 중단', async (openPages) => {
     const { panel } = await openPages('/login.html');
     await panel.selectOption('#skill', 'wip-check');

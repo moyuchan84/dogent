@@ -4,6 +4,7 @@ import {
   DatasetStore,
   OpenAiCompatClient,
   planRequest,
+  readTable,
   resolveInputs,
   runSkill,
   type ApprovalRequest,
@@ -60,6 +61,8 @@ export function App() {
   const [answer, setAnswer] = useState('');
   const [approval, setApproval] = useState<{ request: ApprovalRequest; decide: (ok: boolean) => void } | null>(null);
   const [dryRun, setDryRun] = useState(false);
+  // 파일 입력에서 고른 파일 (입력 이름 → 파일)
+  const [picked, setPicked] = useState<Record<string, File | undefined>>({});
   const abortRef = useRef<AbortController | null>(null);
   const logEnd = useRef<HTMLDivElement>(null);
 
@@ -99,6 +102,19 @@ export function App() {
       setNotice(errors.join(' / '));
       return;
     }
+    // 파일 입력은 여기서 읽어 데이터셋으로 넣어 둔다. 파일 내용은 모델에 보내지 않는다.
+    const datasets = new DatasetStore();
+    for (const spec of skill.inputs) {
+      const file = picked[spec.name];
+      if (spec.type !== 'file' || !spec.dataset || !file) continue;
+      try {
+        const table = await readTable(await file.arrayBuffer(), file.name);
+        datasets.set(spec.dataset, table.columns, table.rows);
+      } catch (e) {
+        setNotice(`${spec.label ?? spec.name}: ${(e as Error).message}`);
+        return;
+      }
+    }
     setNotice('');
     setEvents([]);
     setResult(null);
@@ -108,7 +124,6 @@ export function App() {
     const abort = new AbortController();
     abortRef.current = abort;
     const collected: RunEvent[] = [];
-    const datasets = new DatasetStore();
     const startedAt = new Date().toISOString();
     let tabUrl = '';
     let res: RunResult;
@@ -280,6 +295,7 @@ export function App() {
             onChange={(e) => {
               setSkillId(e.target.value);
               setForm({});
+              setPicked({});
             }}
           >
             {skills.map((s) => (
@@ -294,7 +310,19 @@ export function App() {
           <label key={i.name}>
             {i.label ?? i.name}
             {i.required && <span className="req"> *</span>}
-            {i.type === 'enum' && i.values ? (
+            {i.type === 'file' ? (
+              <input
+                data-input={i.name}
+                type="file"
+                accept=".xlsx,.csv"
+                disabled={running}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  setPicked((p) => ({ ...p, [i.name]: file }));
+                  setForm({ ...form, [i.name]: file?.name ?? '' });
+                }}
+              />
+            ) : i.type === 'enum' && i.values ? (
               <select
                 data-input={i.name}
                 value={form[i.name] ?? String(i.default ?? '')}
@@ -402,6 +430,34 @@ export function App() {
                   </div>
                 ))}
               </dl>
+              {approval.request.tables.map((t) => (
+                <div key={t.name} className="approval-table">
+                  <p>
+                    <b>{t.name}</b> · {t.rowCount}행 · 화면 값이 원본과 일치함
+                  </p>
+                  <div className="tablewrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          {t.columns.map((c) => (
+                            <th key={c}>{c}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {t.preview.map((r, i) => (
+                          <tr key={i}>
+                            {r.map((c, j) => (
+                              <td key={j}>{c}</td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {t.rowCount > t.preview.length && <p className="hint">처음 {t.preview.length}행만 표시</p>}
+                </div>
+              ))}
               <div className="row">
                 <button
                   id="decline"

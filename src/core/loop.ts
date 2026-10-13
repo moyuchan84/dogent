@@ -40,6 +40,11 @@ const MAX_PAGES = 500;
 const FIELD_ROLES = new Set(['textbox', 'combobox', 'checkbox', 'radio']);
 
 type Outcome = { ok: boolean; result: string; end?: RunStatus };
+/** 표 이름과 그 표에 넣은 데이터셋 */
+type Fill = { table: string; dataset: string };
+
+/** 데이터셋의 값을 화면에 넣을 글자로 바꾼다. */
+const cellText = (cell: string | number) => (typeof cell === 'number' ? String(cell) : cell.trim());
 
 export async function runSkill(skill: Skill, inputs: SkillInputs, deps: RunDeps): Promise<RunResult> {
   await deps.browser.setActive?.(true).catch(() => {});
@@ -113,8 +118,42 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps): Promise<Ru
   if (violations.length > 0) {
     return end('aborted', `입력값이 정책에 맞지 않아 시작하지 않았습니다: ${violations.join(' / ')}`);
   }
+  // 파일 입력은 호출하는 쪽이 미리 읽어 데이터셋에 넣어 둔다.
+  for (const spec of skill.inputs) {
+    if (spec.type !== 'file' || !spec.dataset || !(spec.name in inputs)) continue;
+    if (!datasets.list().some((d) => d.name === spec.dataset)) {
+      return end('aborted', `${spec.label ?? spec.name}: 파일 내용을 읽은 데이터셋 "${spec.dataset}"이 없어 시작하지 않았습니다`);
+    }
+  }
   // 승인을 받아 제출 버튼을 누른 단계. 같은 단계에서 두 번 제출하지 않는다.
   const submitted = new Set<number>();
+  // 이번 실행에서 채운 표. 제출 전에 화면에서 다시 읽어 원본과 대조한다.
+  const fills: Fill[] = [];
+
+  /** 표를 화면에서 다시 읽어 데이터셋과 비교한다. 다른 점을 문장으로 돌려주며, 빈 배열이면 일치. */
+  async function verifyFill(fill: Fill, snap: PageSnapshot): Promise<string[]> {
+    const ds = datasets.get(fill.dataset);
+    const el = snap.items.find((i): i is ElementItem => i.kind === 'el' && i.role === 'table' && i.name === fill.table);
+    if (!el) return [`표 "${fill.table}"을(를) 화면에서 찾을 수 없음`];
+    const screen = await browser.extractTable(el.ref);
+    const idx = ds.columns.map((c) => screen.columns.indexOf(c));
+    const missing = ds.columns.filter((_, i) => idx[i] < 0);
+    if (missing.length > 0) return [`표에 ${missing.join(', ')} 컬럼이 없음`];
+    // 값이 하나라도 들어 있는 행만 본다 (표 끝의 빈 행은 무시).
+    const filled = screen.rows.filter((r) => idx.some((i) => r[i] !== ''));
+    if (filled.length !== ds.rows.length) return [`화면에 ${filled.length}행, 원본은 ${ds.rows.length}행`];
+    const diffs: string[] = [];
+    ds.rows.forEach((row, r) =>
+      row.forEach((cell, c) => {
+        const want = cellText(cell);
+        const got = filled[r][idx[c]];
+        if (got !== want && diffs.length < 5) {
+          diffs.push(`${r + 1}행 "${ds.columns[c]}": 화면 "${got}", 원본 "${want}"`);
+        }
+      }),
+    );
+    return diffs;
+  }
 
   async function decide(n: number, snap: PageSnapshot): Promise<Action> {
     let messages = buildTurnMessages({
@@ -204,6 +243,20 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps): Promise<Ru
         }
         return { ok: true, result: `${pages}페이지 추출, "${ds.name}" 누적 ${ds.rows.length}행` };
       }
+      case 'fill_table': {
+        const ds = datasets.get(action.args.dataset);
+        if (ds.rows.length === 0) return { ok: false, result: `"${ds.name}"에 입력할 행이 없습니다` };
+        const tableEl = findElement(snap, action.args.ref)!;
+        const rows = ds.rows.map((r) => r.map(cellText));
+        const r = await browser.fillTable(action.args.ref, ds.columns, rows, action.args.add_ref);
+        if (!r.ok) return { ok: false, result: r.message };
+        // 넣은 값을 화면에서 다시 읽어 원본과 대조한다. 다르면 실패로 돌려 다음 단계로 넘어가지 못하게 한다.
+        const fill: Fill = { table: tableEl.name, dataset: ds.name };
+        const diffs = await verifyFill(fill, await browser.snapshot());
+        if (diffs.length > 0) return { ok: false, result: `입력 후 대조 실패: ${diffs.join(' / ')}` };
+        fills.push(fill);
+        return { ok: true, result: `${r.message}. 화면 값이 "${ds.name}"과 일치함` };
+      }
       case 'transform': {
         const out = transform(datasets.get(action.args.source), action.args.steps);
         datasets.set(action.args.target, out.columns, out.rows);
@@ -232,6 +285,7 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps): Promise<Ru
   }
 
   let strikes = 0;
+  let firstFailure = '';
   try {
     for (let n = 1; n <= skill.limits.max_steps; n++) {
       if (signal?.aborted) return end('stopped', '사용자가 중지했습니다');
@@ -277,6 +331,10 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps): Promise<Ru
         const drift = checks
           .slice(0, current - 1)
           .flatMap((c) => (c ? evalCheck(c.filter((x) => x.kind === 'value'), { snap, datasets, didTools }) : []));
+        // 채운 표도 지금 화면 기준으로 다시 대조한다.
+        if (!submitted.has(current)) {
+          for (const fill of fills) drift.push(...(await verifyFill(fill, snap)));
+        }
         if (submitted.has(current)) {
           outcome = { ok: false, result: `이 단계에서 이미 "${button}"을(를) 눌렀습니다. 다시 누르지 않습니다` };
         } else if (drift.length > 0) {
@@ -289,6 +347,16 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps): Promise<Ru
             fields: snap.items.flatMap((i) =>
               i.kind === 'el' && FIELD_ROLES.has(i.role) ? [{ name: i.name, value: i.value ?? '' }] : [],
             ),
+            tables: fills.map((f) => {
+              const ds = datasets.get(f.dataset);
+              return {
+                name: f.table,
+                dataset: f.dataset,
+                columns: ds.columns,
+                rowCount: ds.rows.length,
+                preview: ds.rows.slice(0, 10).map((r) => r.map(cellText)),
+              };
+            }),
           };
           if (deps.dryRun) {
             emit({ type: 'approval', n, request, approved: false, dryRun: true });
@@ -331,8 +399,14 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps): Promise<Ru
       if (outcome.end) return end(outcome.end, outcome.result);
 
       strikes = outcome.ok ? 0 : strikes + 1;
+      if (strikes === 1) firstFailure = outcome.result;
       if (strikes >= MAX_STRIKES) {
-        return end('aborted', `동작이 ${MAX_STRIKES}번 연속 실패했습니다. 마지막 오류: ${outcome.result}`);
+        // 원인은 보통 첫 실패에 있고, 뒤의 실패는 모델이 다른 시도를 하다 난 것이다.
+        const cause =
+          firstFailure === outcome.result
+            ? `오류: ${outcome.result}`
+            : `처음 오류: ${firstFailure} / 마지막 오류: ${outcome.result}`;
+        return end('aborted', `동작이 ${MAX_STRIKES}번 연속 실패했습니다. ${cause}`);
       }
       const last3 = history.slice(-3).map((h) => `${h.tool}${JSON.stringify(h.args)}`);
       if (action.tool !== 'next_step' && last3.length === 3 && last3.every((s) => s === last3[0])) {

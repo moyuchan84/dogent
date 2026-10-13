@@ -22,6 +22,12 @@ export const TOOL_ARGS = {
     /** 다음 페이지 버튼. 주면 비활성이 될 때까지 눌러 가며 모든 페이지를 추출한다. */
     next_ref: ref.optional(),
   }),
+  fill_table: z.object({
+    ref,
+    dataset: z.string().min(1),
+    /** 행 추가 버튼. 표의 빈 행이 모자랄 때 누른다. */
+    add_ref: ref.optional(),
+  }),
   transform: z.object({
     source: z.string().min(1),
     target: z.string().min(1),
@@ -76,7 +82,12 @@ export function extractJson(text: string): string | null {
 
 export type ParseResult = { ok: true; action: Action } | { ok: false; error: string };
 
-const ROLE_FOR_TOOL: Record<string, string> = { select: 'combobox', type: 'textbox', extract_table: 'table' };
+const ROLE_FOR_TOOL: Record<string, string> = {
+  select: 'combobox',
+  type: 'textbox',
+  extract_table: 'table',
+  fill_table: 'table',
+};
 
 /**
  * 작은 모델은 ref에 번호 대신 "조회" 같은 요소 이름이나 "[4]"를 넣곤 한다.
@@ -127,10 +138,11 @@ export function parseAction(text: string, snap?: PageSnapshot): ParseResult {
     if ('error' in resolved) return { ok: false, error: resolved.error };
     rawArgs = { ...rawArgs, ref: resolved.ref };
   }
-  if (snap && rawArgs.next_ref !== undefined) {
-    const resolved = resolveRef('click', rawArgs.next_ref, snap);
+  for (const key of ['next_ref', 'add_ref']) {
+    if (!snap || rawArgs[key] === undefined) continue;
+    const resolved = resolveRef('click', rawArgs[key], snap);
     if ('error' in resolved) return { ok: false, error: resolved.error };
-    rawArgs = { ...rawArgs, next_ref: resolved.ref };
+    rawArgs = { ...rawArgs, [key]: resolved.ref };
   }
   const args = TOOL_ARGS[tool].safeParse(rawArgs);
   if (!args.success) return { ok: false, error: `${tool}의 args 오류:\n${z.prettifyError(args.error)}` };

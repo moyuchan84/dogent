@@ -16,6 +16,11 @@ export const wipSkill = () => parseSkill(read('skills/wip-check/SKILL.md'));
 export const fwSkill = () =>
   parseSkill(read('skills/firewall-request/SKILL.md'), read('skills/firewall-request/policy.yaml'));
 
+export const adjustSkill = () => parseSkill(read('skills/wip-adjust/SKILL.md'));
+
+/** 모의 조정 화면이 저장한 내용. 한 번의 저장이 행 배열 하나다. */
+export const adjustLog: string[][][] = [];
+
 /** 모의 신청 화면이 접수한 방화벽 신청. 테스트마다 비우고 쓴다. */
 export const fwLog: Record<string, string>[] = [];
 
@@ -29,6 +34,11 @@ async function load(pathname: string): Promise<JSDOM> {
     beforeParse(window) {
       (window as any).fetch = async (input: string, init?: { method?: string; body?: string }) => {
         const url = new URL(input, ORIGIN);
+        if (url.pathname === '/api/adjust') {
+          const rows = JSON.parse(init?.body ?? '[]');
+          adjustLog.push(rows);
+          return { json: async () => ({ count: rows.length }) };
+        }
         if (url.pathname === '/api/fw') {
           const entry = { id: `FW-${String(fwLog.length + 1).padStart(6, '0')}`, ...JSON.parse(init?.body ?? '{}') };
           fwLog.push(entry);
@@ -90,6 +100,12 @@ export class JsdomBrowser implements BrowserPort {
 
   async select(ref: number, value: string) {
     return this.agent.select(this.local(ref), value);
+  }
+
+  async fillTable(ref: number, columns: string[], rows: string[][], addRef?: number) {
+    const r = this.agent.fillTable(this.local(ref), columns, rows, addRef === undefined ? undefined : this.local(addRef));
+    await this.agent.settle(50, 3000);
+    return r;
   }
 
   async waitFor(text: string, timeoutMs: number) {

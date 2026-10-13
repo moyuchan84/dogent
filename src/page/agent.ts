@@ -10,6 +10,11 @@ export interface PageAgent {
   type(ref: number, text: string): ActResult;
   select(ref: number, value: string): ActResult;
   extractTable(ref: number): TableData;
+  /**
+   * 입력 칸이 있는 표의 빈 행에 값을 채운다. columns는 표의 머리글 이름, rows는 그 순서의 값.
+   * 행이 모자라면 addRef(행 추가 버튼)를 눌러 늘린다.
+   */
+  fillTable(ref: number, columns: string[], rows: string[][], addRef?: number): ActResult;
   hasText(text: string): boolean;
   settle(quietMs?: number, maxMs?: number): Promise<void>;
   /** 곧 조작할 요소를 화면에 표시한다. 요소가 사라졌으면 false. */
@@ -237,6 +242,64 @@ export function createPageAgent(win: Window & typeof globalThis): PageAgent {
     }
   }
 
+  // ---- 입력 가능한 표 ----
+  type Control = HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
+
+  /** 칸 안의 입력 요소. 숨김·체크박스·버튼류는 값 입력 대상이 아니다. */
+  function controlOf(cell: Element): Control | null {
+    for (const el of cell.querySelectorAll('input,select,textarea')) {
+      const type = (el.getAttribute('type') ?? 'text').toLowerCase();
+      if (el.tagName !== 'INPUT' || !['hidden', 'checkbox', 'radio', 'button', 'submit', 'reset', 'image'].includes(type)) {
+        return el as Control;
+      }
+    }
+    return null;
+  }
+
+  /** 칸의 현재 값. 입력 요소가 있으면 그 값을, 없으면 보이는 글자를 읽는다. */
+  function cellValue(cell: Element): string {
+    const control = controlOf(cell);
+    if (!control) return norm(cell.textContent);
+    if (control.tagName !== 'SELECT') return control.value;
+    const sel = control as HTMLSelectElement;
+    return sel.value === '' ? '' : norm(sel.selectedOptions[0]?.textContent);
+  }
+
+  const optionFor = (sel: HTMLSelectElement, value: string) => {
+    const want = norm(value);
+    return [...sel.options].find((o) => norm(o.textContent) === want || o.value === want);
+  };
+
+  /** 값을 쓰기 전에 그 칸에 들어갈 수 있는 값인지 본다. */
+  function checkControl(control: Control, value: string, where: string): void {
+    if (control.tagName === 'SELECT') {
+      const sel = control as HTMLSelectElement;
+      if (!optionFor(sel, value)) {
+        const options = [...sel.options].map((o) => norm(o.textContent)).join(', ');
+        throw new Error(`${where}: "${value}"은(는) 선택할 수 없는 값입니다. 가능한 값: ${options}`);
+      }
+    } else if ((control.getAttribute('type') ?? '').toLowerCase() === 'number') {
+      if (value.trim() === '' || !Number.isFinite(Number(value))) {
+        throw new Error(`${where}: "${value}"은(는) 숫자가 아닙니다`);
+      }
+    }
+  }
+
+  function setControl(control: Control, value: string, where: string): void {
+    if (control.tagName === 'SELECT') {
+      const sel = control as HTMLSelectElement;
+      checkControl(control, value, where);
+      sel.value = optionFor(sel, value)!.value;
+    } else {
+      // React 등은 value 속성 설정을 가로채므로 원래 setter를 직접 호출한다.
+      const proto = control.tagName === 'INPUT' ? win.HTMLInputElement.prototype : win.HTMLTextAreaElement.prototype;
+      Object.getOwnPropertyDescriptor(proto, 'value')!.set!.call(control, value);
+      if (control.value !== value) throw new Error(`${where}: "${value}"을(를) 이 칸에 넣을 수 없습니다 (형식이 맞지 않음)`);
+    }
+    fire(control, 'input');
+    fire(control, 'change');
+  }
+
   // ---- 화면 표시 ----
   // 사용자가 에이전트의 동작을 눈으로 따라갈 수 있게, 조작할 요소에 테두리와 포인터를 그린다.
   // 닫힌 shadow root 안에 두어 페이지의 글자·스타일과 섞이지 않고, 스냅샷과 hasText에도 잡히지 않는다.
@@ -358,9 +421,49 @@ export function createPageAgent(win: Window & typeof globalThis): PageAgent {
         return `"${norm(hit.textContent)}" 선택함`;
       }),
 
+    fillTable: (ref, columns, rows, addRef) =>
+      act(() => {
+        const table = resolve(ref);
+        let parts = tableParts(table);
+        const colIdx = columns.map((c) => {
+          const i = parts.header.indexOf(c);
+          if (i < 0) throw new Error(`표에 "${c}" 컬럼이 없습니다. 표의 컬럼: ${parts.header.join(', ')}`);
+          return i;
+        });
+        const editable = () => parts.rows.filter((r) => parts.cellsOf(r).some((c) => controlOf(c)));
+        const used = editable().filter((r) => parts.cellsOf(r).some((c) => (controlOf(c)?.value ?? '') !== ''));
+        if (used.length > 0) {
+          throw new Error(`표에 이미 입력된 값이 있습니다 (${used.length}행). 비어 있는 표에만 입력합니다`);
+        }
+        while (editable().length < rows.length) {
+          if (addRef === undefined) {
+            throw new Error(`입력할 행은 ${rows.length}개인데 표의 빈 행은 ${editable().length}개입니다. add_ref에 행 추가 버튼을 지정하세요`);
+          }
+          const before = editable().length;
+          (resolve(addRef) as HTMLElement).click();
+          parts = tableParts(table);
+          if (editable().length <= before) throw new Error('행 추가 버튼을 눌러도 행이 늘지 않습니다');
+        }
+        const targets = editable();
+        // 먼저 전부 검사하고, 문제가 없을 때만 쓴다. 일부만 들어간 표를 남기지 않기 위해서다.
+        const plan = rows.flatMap((row, r) => {
+          const cells = parts.cellsOf(targets[r]);
+          return columns.map((col, c) => {
+            const where = `${r + 1}행 "${col}"`;
+            const control = cells[colIdx[c]] && controlOf(cells[colIdx[c]]);
+            if (!control) throw new Error(`${where} 칸은 입력할 수 없는 칸입니다`);
+            const value = row[c] ?? '';
+            checkControl(control, value, where);
+            return { control, value, where };
+          });
+        });
+        for (const p of plan) setControl(p.control, p.value, p.where);
+        return `${rows.length}행 × ${columns.length}열 입력함`;
+      }),
+
     extractTable(ref) {
       const { header, rows, cellsOf } = tableParts(resolve(ref));
-      const data = rows.map((r) => cellsOf(r).map((c) => norm(c.textContent)));
+      const data = rows.map((r) => cellsOf(r).map(cellValue));
       const width = Math.max(header.length, ...data.map((r) => r.length), 0);
       const columns = Array.from({ length: width }, (_, i) => header[i] || `컬럼${i + 1}`);
       return { columns, rows: data.map((r) => Array.from({ length: width }, (_, i) => r[i] ?? '')) };

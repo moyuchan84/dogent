@@ -59,6 +59,7 @@ export function checkAction(action: Action, snap: PageSnapshot, skill: Skill): V
     action.tool !== 'type' &&
     action.tool !== 'select' &&
     action.tool !== 'extract_table' &&
+    action.tool !== 'fill_table' &&
     action.tool !== 'wait_for'
   ) {
     return { ok: true };
@@ -110,6 +111,20 @@ export function checkAction(action: Action, snap: PageSnapshot, skill: Skill): V
       };
     }
     return { ok: true, approval: el };
+  }
+  if (action.tool === 'fill_table') {
+    if (el.role !== 'table') return { ok: false, reason: `[${el.ref}]은(는) 표가 아닙니다 (role=${el.role})` };
+    // 업무 데이터를 화면에 넣는 동작(R2)은 그 등급 이상을 선언한 스킬만 할 수 있다.
+    if (skill.risk !== 'R2' && skill.risk !== 'R3') {
+      return { ok: false, reason: '이 스킬은 조회 전용이라 표에 값을 입력할 수 없습니다' };
+    }
+    if (action.args.add_ref !== undefined) {
+      const add = findElement(snap, action.args.add_ref);
+      if (!add) return { ok: false, reason: `add_ref ${action.args.add_ref} 이(가) 현재 화면에 없습니다` };
+      if (SUBMIT_PATTERN.test(add.name)) {
+        return { ok: false, reason: `"${add.name}"은(는) 저장·상신 계열이라 행 추가 버튼으로 쓸 수 없습니다` };
+      }
+    }
   }
   if (action.tool === 'extract_table') {
     if (el.role !== 'table') return { ok: false, reason: `[${el.ref}]은(는) 표가 아닙니다 (role=${el.role})` };
