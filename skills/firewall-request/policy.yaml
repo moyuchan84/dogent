@@ -1,0 +1,16 @@
+# 입력값 규칙. 실행을 시작하기 전에 적용하며, 위반이 있으면 신청 화면에 접속하지 않는다.
+# 값은 예시다. 실제 기준은 보안 부서와 합의해 정한다.
+rules:
+  - field: src_ip
+    deny_cidr_wider_than: 24 # /24보다 넓은 대역 금지
+    deny_values: ["0.0.0.0"]
+  - field: dst_ip
+    deny_cidr_wider_than: 24
+    deny_values: ["0.0.0.0"]
+  - field: port
+    deny_values: ["1-65535"]
+  - field: period_days
+    min: 1
+    max: 365
+  - field: reason
+    min_length: 10

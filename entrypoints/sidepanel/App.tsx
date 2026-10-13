@@ -6,6 +6,7 @@ import {
   planRequest,
   resolveInputs,
   runSkill,
+  type ApprovalRequest,
   type Dataset,
   type LlmSettings,
   type RunEvent,
@@ -20,6 +21,7 @@ const STATUS_LABEL: Record<RunResult['status'], string> = {
   aborted: '중단',
   stopped: '사용자 중지',
   error: '오류',
+  dryrun: '시험 실행 완료',
 };
 
 function download(filename: string, data: BlobPart, type: string) {
@@ -56,6 +58,8 @@ export function App() {
   const [previews, setPreviews] = useState<Dataset[]>([]);
   const [question, setQuestion] = useState<{ text: string; answer: (a: string) => void } | null>(null);
   const [answer, setAnswer] = useState('');
+  const [approval, setApproval] = useState<{ request: ApprovalRequest; decide: (ok: boolean) => void } | null>(null);
+  const [dryRun, setDryRun] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const logEnd = useRef<HTMLDivElement>(null);
 
@@ -66,7 +70,7 @@ export function App() {
   }, []);
   useEffect(() => {
     logEnd.current?.scrollIntoView({ block: 'end' });
-  }, [events, result, question]);
+  }, [events, result, question, approval]);
 
   async function plan() {
     if (!settings || !request.trim()) return;
@@ -119,6 +123,7 @@ export function App() {
         browser: new ChromeBrowser(tab.id),
         datasets,
         signal: abort.signal,
+        dryRun: skill.risk === 'R3' && dryRun,
         files: {
           async save(filename, data) {
             download(filename, data, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -129,6 +134,11 @@ export function App() {
             new Promise<string>((resolve, reject) => {
               abort.signal.addEventListener('abort', () => reject(new Error('중지됨')), { once: true });
               setQuestion({ text, answer: resolve });
+            }),
+          approve: (request) =>
+            new Promise<boolean>((resolve, reject) => {
+              abort.signal.addEventListener('abort', () => reject(new Error('중지됨')), { once: true });
+              setApproval({ request, decide: resolve });
             }),
         },
         onEvent(e) {
@@ -144,10 +154,12 @@ export function App() {
         actions: 0,
         files: [],
         datasets: [],
+        outputs: {},
         elapsedMs: 0,
       };
     }
     setQuestion(null);
+    setApproval(null);
     setResult(res);
     setPreviews(datasets.list());
     setRunning(false);
@@ -282,15 +294,43 @@ export function App() {
           <label key={i.name}>
             {i.label ?? i.name}
             {i.required && <span className="req"> *</span>}
-            <input
-              data-input={i.name}
-              value={form[i.name] ?? ''}
-              disabled={running}
-              placeholder={i.default !== undefined ? `기본값 ${i.default}` : ''}
-              onChange={(e) => setForm({ ...form, [i.name]: e.target.value })}
-            />
+            {i.type === 'enum' && i.values ? (
+              <select
+                data-input={i.name}
+                value={form[i.name] ?? String(i.default ?? '')}
+                disabled={running}
+                onChange={(e) => setForm({ ...form, [i.name]: e.target.value })}
+              >
+                {i.default === undefined && <option value="">선택</option>}
+                {i.values.map((v) => (
+                  <option key={v}>{v}</option>
+                ))}
+              </select>
+            ) : i.type === 'text' ? (
+              <textarea
+                data-input={i.name}
+                value={form[i.name] ?? ''}
+                disabled={running}
+                rows={3}
+                onChange={(e) => setForm({ ...form, [i.name]: e.target.value })}
+              />
+            ) : (
+              <input
+                data-input={i.name}
+                value={form[i.name] ?? ''}
+                disabled={running}
+                placeholder={i.default !== undefined ? `기본값 ${i.default}` : ''}
+                onChange={(e) => setForm({ ...form, [i.name]: e.target.value })}
+              />
+            )}
           </label>
         ))}
+        {skill?.risk === 'R3' && (
+          <label className="check">
+            <input id="dryrun" type="checkbox" checked={dryRun} disabled={running} onChange={(e) => setDryRun(e.target.checked)} />
+            시험 실행 (입력까지만 하고 저장·상신 직전에 멈춤)
+          </label>
+        )}
         <div className="row">
           {running ? (
             <button id="stop" className="danger" onClick={() => abortRef.current?.abort()}>
@@ -323,6 +363,13 @@ export function App() {
                   </li>
                 );
               }
+              if (e.type === 'approval') {
+                return (
+                  <li key={i} className={e.approved ? 'minor' : 'fail'}>
+                    "{e.request.button}" {e.dryRun ? '직전에 멈춤 (시험 실행)' : e.approved ? '승인됨' : '승인하지 않음'}
+                  </li>
+                );
+              }
               if (e.type === 'step_done') {
                 return (
                   <li key={i} className="minor">
@@ -340,6 +387,44 @@ export function App() {
               return null;
             })}
           </ol>
+
+          {approval && (
+            <div id="approval" className="approval">
+              <b>"{approval.request.button}" 전에 확인해 주세요</b>
+              <p className="hint">
+                {approval.request.skill} · 화면에서 다시 읽은 현재 값입니다. 승인하면 실제로 제출됩니다.
+              </p>
+              <dl>
+                {approval.request.fields.map((f) => (
+                  <div key={f.name}>
+                    <dt>{f.name}</dt>
+                    <dd>{f.value || '(비어 있음)'}</dd>
+                  </div>
+                ))}
+              </dl>
+              <div className="row">
+                <button
+                  id="decline"
+                  className="secondary"
+                  onClick={() => {
+                    approval.decide(false);
+                    setApproval(null);
+                  }}
+                >
+                  취소
+                </button>
+                <button
+                  id="approve"
+                  onClick={() => {
+                    approval.decide(true);
+                    setApproval(null);
+                  }}
+                >
+                  승인하고 {approval.request.button}
+                </button>
+              </div>
+            </div>
+          )}
 
           {question && (
             <div className="question">

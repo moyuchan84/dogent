@@ -130,3 +130,32 @@ describe('extractTable', () => {
     expect(agent.extractTable(1)).toEqual({ columns: ['Lot', '상태'], rows: [['A', 'RUN']] });
   });
 });
+
+describe('화면 표시', () => {
+  it('포인터와 조작 중 표시는 스냅샷과 글자 검색에 잡히지 않는다', () => {
+    const { agent, doc, render } = page(`<button id="b">조회</button><p>총 3건</p>`);
+    const before = render();
+    agent.setActive(true);
+    expect(agent.point(1, '클릭')).toBe(true);
+
+    const host = doc.querySelector('[data-dogent-overlay]')!;
+    expect(host).not.toBeNull();
+    expect(host.parentElement).toBe(doc.documentElement);
+    expect(render()).toBe(before);
+    expect(agent.hasText('클릭')).toBe(false);
+    expect(agent.hasText('Dogent')).toBe(false);
+    expect(agent.hasText('총 3건')).toBe(true);
+
+    // 다시 표시해도 겹쳐 만들지 않는다.
+    agent.point(1, '입력');
+    expect(doc.querySelectorAll('[data-dogent-overlay]')).toHaveLength(1);
+  });
+
+  it('사라진 요소는 가리키지 않는다', () => {
+    const { agent, doc } = page(`<button id="b">가</button>`);
+    agent.snapshot();
+    doc.getElementById('b')!.remove();
+    expect(agent.point(1, '클릭')).toBe(false);
+    expect(doc.querySelector('[data-dogent-overlay]')).toBeNull();
+  });
+});

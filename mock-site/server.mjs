@@ -9,8 +9,25 @@ const PUBLIC = join(fileURLToPath(new URL('.', import.meta.url)), 'public');
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css' };
 
 export function createMockSite() {
+  // 접수된 방화벽 신청. 테스트가 GET /api/fw 로 읽어 실제로 몇 건이 어떤 값으로 상신됐는지 확인한다.
+  const fwLog = [];
   return createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', 'http://localhost');
+    if (url.pathname === '/api/fw') {
+      const json = (body) => {
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify(body));
+      };
+      if (req.method === 'POST') {
+        let body = '';
+        for await (const chunk of req) body += chunk;
+        const entry = { id: `FW-${String(fwLog.length + 1).padStart(6, '0')}`, ...JSON.parse(body) };
+        fwLog.push(entry);
+        return json({ id: entry.id });
+      }
+      if (req.method === 'DELETE') fwLog.length = 0;
+      return json(fwLog);
+    }
     if (url.pathname === '/api/wip') {
       const rows = generateWip(url.searchParams.get('line') ?? '', url.searchParams.get('step') ?? '');
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });

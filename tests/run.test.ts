@@ -3,7 +3,7 @@ import { generateWip } from '../mock-site/data.mjs';
 import { planRequest, resolveInputs, runSkill, type RunEvent } from '../src/core';
 import { JsdomBrowser, memoryFiles, mockLlm, readWorkbook, scriptedLlm, wipSkill } from './helpers';
 
-const ui = { ask: async () => '' };
+const ui = { ask: async () => '', approve: async () => false };
 const num = (s: string) => Number(s.replace(/,/g, ''));
 
 /** 모의 사이트의 원본 데이터에서 기대 결과를 따로 계산한다 (에이전트의 가공 엔진을 쓰지 않는다). */
@@ -180,16 +180,6 @@ describe('루프 통제', () => {
     expect(llm.calls).toBe(1);
   });
 
-  it('R3 스킬은 시작하지 않는다', async () => {
-    const llm = scriptedLlm([{ step: 1, tool: 'finish', args: { summary: 'x' } }]);
-    const result = await runSkill(
-      { ...wipSkill(), risk: 'R3' },
-      { line: '7라인' },
-      { llm, browser: new JsdomBrowser(), ui, files: memoryFiles() },
-    );
-    expect(result.status).toBe('aborted');
-    expect(llm.calls).toBe(0);
-  });
 });
 
 describe('자연어 요청 해석', () => {

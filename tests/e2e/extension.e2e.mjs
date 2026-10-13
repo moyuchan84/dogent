@@ -188,6 +188,7 @@ try {
 
   await scenario('iframe 안의 업무 화면 + 공정 조건', async (openPages) => {
     const { target, panel } = await openPages('/portal.html');
+    await panel.selectOption('#skill', 'wip-check');
     await panel.fill('[data-input=line]', '8라인');
     await panel.fill('[data-input=step]', 'PHOTO');
     const r = await run(panel);
@@ -201,8 +202,93 @@ try {
     return `${r.sec}초`;
   });
 
+  const fwInputs = {
+    src_ip: '10.10.1.15',
+    dst_ip: '10.20.3.7',
+    port: '1521',
+    period_days: '90',
+    reason: '개발 서버에서 운영 DB 조회 배치를 실행하기 위함',
+  };
+  const fwApi = (method = 'GET') => fetch(`${SITE}/api/fw`, { method }).then((r) => r.json());
+
+  /** 방화벽 신청 스킬을 고르고 입력값을 채운다. */
+  async function fillFirewall(panel, overrides = {}) {
+    await fwApi('DELETE');
+    await panel.selectOption('#skill', 'firewall-request');
+    for (const [name, value] of Object.entries({ ...fwInputs, ...overrides })) {
+      await panel.fill(`[data-input=${name}]`, value);
+    }
+  }
+
+  /** 실행을 누르고 승인 대화상자가 뜰 때까지 기다린다. */
+  async function runUntilApproval(panel) {
+    await panel.click('#run');
+    await panel.locator('#approval').waitFor({ timeout: RUN_TIMEOUT });
+    return panel.locator('#approval').innerText();
+  }
+
+  async function result(panel) {
+    const el = panel.locator('#result');
+    await el.waitFor({ timeout: RUN_TIMEOUT });
+    return { status: await el.getAttribute('data-status'), text: await el.innerText() };
+  }
+
+  await scenario('방화벽 신청: 승인하면 입력값 그대로 한 번 상신', async (openPages) => {
+    const { target, panel } = await openPages('/fw.html');
+    await fillFirewall(panel);
+    const dialog = await runUntilApproval(panel);
+    for (const value of Object.values(fwInputs)) assert.ok(dialog.includes(value), `승인 대화상자에 ${value} 없음`);
+    assert.deepEqual(await fwApi(), [], '승인 전에는 상신되면 안 됨');
+    await panel.click('#approve');
+    const r = await result(panel);
+    assert.equal(r.status, 'done', r.text);
+    assert.match(r.text, /FW-000001/);
+    assert.deepEqual(await fwApi(), [
+      { id: 'FW-000001', src: '10.10.1.15', dst: '10.20.3.7', port: '1521', protocol: 'TCP', days: '90', reason: fwInputs.reason },
+    ]);
+    assert.match(await target.locator('#done').innerText(), /FW-000001/);
+    await panel.screenshot({ path: join(ROOT, 'test-results/panel-firewall.png'), fullPage: true });
+  });
+
+  await scenario('방화벽 신청: 승인하지 않으면 상신하지 않음', async (openPages) => {
+    const { target, panel } = await openPages('/fw.html');
+    await fillFirewall(panel);
+    await runUntilApproval(panel);
+    await panel.screenshot({ path: join(ROOT, 'test-results/panel-approval.png'), fullPage: true });
+    // 업무 화면에는 에이전트가 조작 중이라는 테두리와 마지막으로 가리킨 요소가 표시된다.
+    await target.screenshot({ path: join(ROOT, 'test-results/page-pointer.png') });
+    await panel.click('#decline');
+    const r = await result(panel);
+    assert.equal(r.status, 'aborted', r.text);
+    assert.deepEqual(await fwApi(), []);
+    assert.equal(await target.locator('#src').inputValue(), '10.10.1.15');
+  });
+
+  await scenario('방화벽 신청: 시험 실행은 상신 직전에 멈춤', async (openPages) => {
+    const { panel } = await openPages('/fw.html');
+    await fillFirewall(panel);
+    await panel.check('#dryrun');
+    await panel.click('#run');
+    const r = await result(panel);
+    assert.equal(r.status, 'dryrun', r.text);
+    assert.equal(await panel.locator('#approval').count(), 0);
+    assert.deepEqual(await fwApi(), []);
+  });
+
+  await scenario('방화벽 신청: 넓은 대역은 실행 전에 거부', async (openPages) => {
+    const { target, panel } = await openPages('/fw.html');
+    await fillFirewall(panel, { src_ip: '10.10.0.0/16' });
+    await panel.click('#run');
+    await panel.locator('.notice').waitFor();
+    assert.match(await panel.locator('.notice').innerText(), /\/24보다 넓은 대역/);
+    assert.equal(await panel.locator('#result').count(), 0);
+    assert.equal(await target.locator('#src').inputValue(), '');
+    assert.deepEqual(await fwApi(), []);
+  });
+
   await scenario('로그인 화면이면 중단', async (openPages) => {
     const { panel } = await openPages('/login.html');
+    await panel.selectOption('#skill', 'wip-check');
     await panel.fill('[data-input=line]', '7라인');
     const r = await run(panel);
     check(r, () => {
@@ -213,6 +299,7 @@ try {
 
   await scenario('없는 라인이면 중단하고 파일을 만들지 않음', async (openPages) => {
     const { panel } = await openPages('/wip.html');
+    await panel.selectOption('#skill', 'wip-check');
     await panel.fill('[data-input=line]', '9라인');
     const r = await run(panel);
     check(r, () => {

@@ -1,13 +1,14 @@
 import { parseAction, type Action } from './actions';
-import { evalCheck, stepCheck, stripCheckLines } from './check';
+import { capture, evalCheck, stepCaptures, stepCheck, stripCheckLines, type Clause } from './check';
 import { DatasetStore } from './dataset';
 import { buildWorkbook } from './excel';
 import { checkAction, findElement } from './policy';
 import { buildTurnMessages } from './prompt';
-import { extractSteps, fillTemplate, type Skill, type SkillInputs } from './skill';
+import { checkInputRules, extractSteps, fillTemplate, fillValue, type Skill, type SkillInputs } from './skill';
 import { renderSnapshot } from './snapshot';
 import { transform } from './transform';
 import type {
+  ApprovalRequest,
   BrowserPort,
   ElementItem,
   FilePort,
@@ -28,15 +29,28 @@ export interface RunDeps {
   datasets?: DatasetStore;
   onEvent?: (e: RunEvent) => void;
   signal?: AbortSignal;
+  /** 시험 실행. 승인이 필요한 동작 직전에 멈추고 실제로 제출하지 않는다. */
+  dryRun?: boolean;
 }
 
 const MAX_FORMAT_RETRIES = 2;
 const MAX_STRIKES = 3;
 const MAX_PAGES = 500;
+/** 승인 요청에 현재 값으로 보여줄 입력 요소 */
+const FIELD_ROLES = new Set(['textbox', 'combobox', 'checkbox', 'radio']);
 
 type Outcome = { ok: boolean; result: string; end?: RunStatus };
 
 export async function runSkill(skill: Skill, inputs: SkillInputs, deps: RunDeps): Promise<RunResult> {
+  await deps.browser.setActive?.(true).catch(() => {});
+  try {
+    return await run(skill, inputs, deps);
+  } finally {
+    await deps.browser.setActive?.(false).catch(() => {});
+  }
+}
+
+async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps): Promise<RunResult> {
   const { llm, browser, ui, files, signal } = deps;
   const datasets = deps.datasets ?? new DatasetStore();
   const emit = deps.onEvent ?? (() => {});
@@ -46,9 +60,22 @@ export async function runSkill(skill: Skill, inputs: SkillInputs, deps: RunDeps)
   const body = fillTemplate(skill, inputs);
   const steps = extractSteps(body);
   // 검사 줄은 루프가 평가하므로 모델에게는 보여주지 않는다.
-  const checks = steps.map(stepCheck);
+  // 검사 식은 값을 넣기 전의 원문에서 읽고, 비교값만 따로 채운다 (값에 따옴표가 있어도 식이 깨지지 않게).
+  const fill = (text: string) => fillValue(skill, inputs, text);
+  const checks = extractSteps(skill.body).map((raw) =>
+    stepCheck(raw)?.map((c): Clause => {
+      if (c.kind === 'text') return { ...c, text: fill(c.text) };
+      if (c.kind === 'value') return { ...c, expected: fill(c.expected) };
+      return c;
+    }) ?? null,
+  );
   const promptBody = stripCheckLines(body);
   const promptSteps = steps.map(stripCheckLines);
+  // 단계가 끝날 때 화면에서 읽어 둔 값. 뒤 단계의 {out.이름} 자리에 들어가고 실행 결과에도 남는다.
+  const captures = extractSteps(skill.body).map(stepCaptures);
+  const outputs: Record<string, string> = {};
+  const withOutputs = (text: string) =>
+    text.replace(/\{out\.([a-z_][a-z0-9_]*)\}/g, (whole, name: string) => outputs[name] ?? whole);
   // 지금 할 단계. 모델이 아니라 루프가 관리한다. 검사가 있는 단계는 조건이 충족되면 자동으로,
   // 없는 단계는 모델의 next_step으로 한 칸씩 넘어간다.
   let current = 1;
@@ -58,8 +85,14 @@ export async function runSkill(skill: Skill, inputs: SkillInputs, deps: RunDeps)
     return check ? evalCheck(check, { snap, datasets, didTools }) : null;
   };
   let lastStep = 0;
+  /** 지금 단계를 끝내고 다음 단계로 넘어간다. 그 시점의 화면에서 기록 값을 읽는다. */
+  const completeStep = (snap: PageSnapshot) => {
+    for (const c of captures[current - 1]) outputs[c.name] = capture(c, snap) ?? '(화면에서 찾지 못함)';
+    current++;
+    didTools = new Set();
+  };
 
-  const end = (status: RunStatus, message: string): RunResult => {
+  const end =(status: RunStatus, message: string): RunResult => {
     const progress = `스킬 ${lastStep}/${skill.steps.length}단계, 동작 ${history.length}회 수행`;
     const full = status === 'done' ? message : `${message} (${progress})`;
     emit({ type: 'end', status, message: full });
@@ -70,23 +103,28 @@ export async function runSkill(skill: Skill, inputs: SkillInputs, deps: RunDeps)
       actions: history.length,
       files: savedFiles,
       datasets: datasets.info(),
+      outputs,
       elapsedMs: Date.now() - started,
     };
   };
 
-  if (skill.risk === 'R3') {
-    return end('aborted', '저장·상신이 포함된 스킬(R3)은 승인 기능이 들어가는 다음 단계부터 지원합니다');
+  // 입력값 정책은 화면에 접속하기 전에 적용한다. 호출하는 쪽이 검증을 빠뜨려도 여기서 막는다.
+  const violations = checkInputRules(skill, inputs);
+  if (violations.length > 0) {
+    return end('aborted', `입력값이 정책에 맞지 않아 시작하지 않았습니다: ${violations.join(' / ')}`);
   }
+  // 승인을 받아 제출 버튼을 누른 단계. 같은 단계에서 두 번 제출하지 않는다.
+  const submitted = new Set<number>();
 
   async function decide(n: number, snap: PageSnapshot): Promise<Action> {
     let messages = buildTurnMessages({
       skill,
-      body: promptBody,
+      body: withOutputs(promptBody),
       inputs,
       history,
       datasets: datasets.describe(),
       page: renderSnapshot(snap),
-      step: { n: current, total: steps.length, text: promptSteps[current - 1], unmet: unmetNow(snap) },
+      step: { n: current, total: steps.length, text: withOutputs(promptSteps[current - 1]), unmet: unmetNow(snap) },
     });
     for (let attempt = 0; ; attempt++) {
       const text = await llm.complete(messages, signal);
@@ -113,8 +151,7 @@ export async function runSkill(skill: Skill, inputs: SkillInputs, deps: RunDeps)
         if (current >= steps.length) {
           return { ok: false, result: '마지막 단계입니다. finish로 결과를 보고하세요' };
         }
-        current++;
-        didTools = new Set();
+        completeStep(snap);
         return { ok: true, result: `${current}단계로 넘어감` };
       }
       case 'navigate': {
@@ -211,8 +248,7 @@ export async function runSkill(skill: Skill, inputs: SkillInputs, deps: RunDeps)
       // 검사가 충족된 단계는 모델을 부르지 않고 넘긴다.
       while (current < steps.length && unmetNow(snap)?.length === 0) {
         emit({ type: 'step_done', step: current });
-        current++;
-        didTools = new Set();
+        completeStep(snap);
       }
 
       const action = await decide(n, snap);
@@ -235,6 +271,40 @@ export async function runSkill(skill: Skill, inputs: SkillInputs, deps: RunDeps)
       } else if (!verdict.ok) {
         emit({ type: 'blocked', n, tool: action.tool, reason: verdict.reason });
         outcome = { ok: false, result: `차단됨: ${verdict.reason}` };
+      } else if (verdict.approval) {
+        const button = verdict.approval.name;
+        // 제출 전 대조: 앞 단계에서 확인한 입력값이 지금 화면에도 그대로인지 다시 본다.
+        const drift = checks
+          .slice(0, current - 1)
+          .flatMap((c) => (c ? evalCheck(c.filter((x) => x.kind === 'value'), { snap, datasets, didTools }) : []));
+        if (submitted.has(current)) {
+          outcome = { ok: false, result: `이 단계에서 이미 "${button}"을(를) 눌렀습니다. 다시 누르지 않습니다` };
+        } else if (drift.length > 0) {
+          outcome = { ok: false, result: `제출 전 대조 실패, "${button}"을(를) 누르지 않았습니다: ${drift.join(' / ')}` };
+        } else {
+          const request: ApprovalRequest = {
+            skill: skill.name,
+            button,
+            url: snap.url,
+            fields: snap.items.flatMap((i) =>
+              i.kind === 'el' && FIELD_ROLES.has(i.role) ? [{ name: i.name, value: i.value ?? '' }] : [],
+            ),
+          };
+          if (deps.dryRun) {
+            emit({ type: 'approval', n, request, approved: false, dryRun: true });
+            return end('dryrun', `시험 실행이라 "${button}" 직전에 멈췄습니다. 화면의 입력 내용은 그대로 남아 있습니다`);
+          }
+          const approved = await ui.approve(request);
+          emit({ type: 'approval', n, request, approved, dryRun: false });
+          if (!approved) return end('aborted', `사용자가 "${button}"을(를) 승인하지 않았습니다`);
+          submitted.add(current);
+          try {
+            outcome = await execute(action, snap);
+          } catch (e) {
+            if (signal?.aborted) throw e;
+            outcome = { ok: false, result: (e as Error).message };
+          }
+        }
       } else {
         try {
           outcome = await execute(action, snap);

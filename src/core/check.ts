@@ -23,12 +23,47 @@ export type Clause =
 export const UNSET = '(미지정)';
 
 const CHECK_LINE = /^\s*-\s*검사:\s*(.+)$/;
+const CAPTURE_LINE = /^\s*-\s*기록:\s*(.+)$/;
 
+/** 루프가 직접 처리하는 줄(검사, 기록)을 모델에게 보여줄 본문에서 뺀다. */
 export function stripCheckLines(text: string): string {
   return text
     .split('\n')
-    .filter((l) => !CHECK_LINE.test(l))
+    .filter((l) => !CHECK_LINE.test(l) && !CAPTURE_LINE.test(l))
     .join('\n');
+}
+
+/**
+ * 단계의 "기록:" 줄. 단계가 끝난 시점의 화면에서 값을 읽어 실행 결과에 남긴다.
+ *
+ *   - 기록: request_id = page_text("신청 번호: (\S+)")
+ *
+ * 뒤 단계에서는 {out.request_id}로 쓸 수 있다. 모델이 옮겨 적다 틀릴 수 있는 값을 규칙으로 읽는다.
+ */
+export interface Capture {
+  name: string;
+  pattern: string;
+}
+
+export function stepCaptures(stepText: string): Capture[] {
+  return stepText.split('\n').flatMap((l) => {
+    const line = CAPTURE_LINE.exec(l)?.[1].trim();
+    if (!line) return [];
+    const m = /^([a-z_][a-z0-9_]*)\s*=\s*page_text\("([^"]*)"\)$/.exec(line);
+    if (!m) throw new Error(`기록 식을 읽을 수 없습니다: ${line}\n형태: 이름 = page_text("정규식")`);
+    new RegExp(m[2]);
+    return [{ name: m[1], pattern: m[2] }];
+  });
+}
+
+/** 화면 글자에서 정규식의 첫 괄호(없으면 전체 일치)를 읽는다. 없으면 null. */
+export function capture(c: Capture, snap: PageSnapshot): string | null {
+  const re = new RegExp(c.pattern);
+  for (const text of pageTexts(snap)) {
+    const hit = re.exec(text);
+    if (hit) return hit[1] ?? hit[0];
+  }
+  return null;
 }
 
 function parseClause(src: string): Clause {
