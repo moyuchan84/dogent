@@ -16,6 +16,7 @@
     "e2e:ollama": "node tests/e2e/extension.e2e.mjs --ollama",
     "ollama:proxy": "node tools/ollama-proxy.mjs",
     "skill:new": "node tools/skill-new.mjs",
+    "skill:index": "node tools/skill-index.mjs",
     "skill:lint": "vitest run tests/author.test.ts -t 번들된"
   },
   "dependencies": {

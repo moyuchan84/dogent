@@ -1,4 +1,5 @@
 // 개발·테스트용 모의 사내 사이트. node로 바로 실행한다: node mock-site/server.mjs (엑셀 내려받기만 exceljs를 쓴다)
+import { createHash } from 'node:crypto';
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
@@ -19,6 +20,7 @@ export async function wipXlsx(line, step, product) {
 }
 
 const PUBLIC = join(fileURLToPath(new URL('.', import.meta.url)), 'public');
+const SKILLS = join(fileURLToPath(new URL('.', import.meta.url)), '../skills');
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css' };
 
 export function createMockSite() {
@@ -89,6 +91,28 @@ export function createMockSite() {
       const rows = generateWip(url.searchParams.get('line') ?? '', url.searchParams.get('step') ?? '');
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
       res.end(JSON.stringify({ columns: COLUMNS, rows }));
+      return;
+    }
+    // 공유 스킬 저장소. 번들에 없는 스킬 하나와, 목록의 해시와 내용이 다른 스킬 하나를 내준다.
+    if (url.pathname.startsWith('/shared/')) {
+      const shared = (await readFile(join(SKILLS, 'wip-download/SKILL.md'), 'utf8'))
+        .replace(/\r\n/g, '\n')
+        .replace('id: wip-download', 'id: wip-shared')
+        .replace('name: 재공 내려받기', 'name: 재공 내려받기(공유)');
+      const sha = (text) => createHash('sha256').update(text, 'utf8').digest('hex');
+      const files = {
+        '/shared/index.json': JSON.stringify({
+          skills: [
+            { id: 'wip-shared', path: 'wip-shared/SKILL.md', sha256: sha(shared) },
+            { id: 'tampered', path: 'tampered/SKILL.md', sha256: sha('목록을 만든 뒤에 바뀐 파일') },
+          ],
+        }),
+        '/shared/wip-shared/SKILL.md': shared,
+        '/shared/tampered/SKILL.md': shared.replace('id: wip-shared', 'id: tampered'),
+      };
+      const body = files[url.pathname];
+      res.writeHead(body ? 200 : 404, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end(body ?? '없는 파일');
       return;
     }
     const rel = normalize(url.pathname === '/' ? '/wip.html' : url.pathname);

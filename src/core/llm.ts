@@ -12,6 +12,8 @@ export interface LlmSettings {
   skillDirect: boolean;
   /** 모델이 정한 동작으로 성공한 경로를 저장해 두고 다음 실행에서 모델 없이 다시 쓴다. */
   pathCache: boolean;
+  /** 공유 스킬 저장소의 목록 파일(index.json) 주소. 비어 있으면 확장에 든 스킬만 쓴다. */
+  skillsUrl: string;
 }
 
 const CALL_TIMEOUT_MS = 60_000;

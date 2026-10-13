@@ -18,6 +18,7 @@ import {
   type Skill,
 } from '@/src/core';
 import { ChromeBrowser } from '@/src/ext/browser';
+import { loadShared, refreshShared, type SharedState } from '@/src/ext/shared';
 import { loadBundledSkills } from '@/src/ext/skills';
 import { appendRun, clearPaths, effectiveSettings, hasBuiltInKey, loadDrafts, loadRuns, loadSettings, markTrial, pathStore, saveSettings, type DraftSkill } from '@/src/ext/storage';
 import { Author } from './Author';
@@ -32,7 +33,27 @@ const STATUS_LABEL: Record<RunResult['status'], string> = {
 };
 
 export function App() {
-  const { skills: bundled, errors: skillErrors } = useMemo(loadBundledSkills, []);
+  const { skills: builtIn, errors: skillErrors } = useMemo(loadBundledSkills, []);
+  // 공유 저장소에서 받은 스킬. 같은 id의 번들 스킬보다 우선한다 (저장소가 최신이다).
+  const [shared, setShared] = useState<SharedState | null>(null);
+  const [syncError, setSyncError] = useState('');
+  const [syncing, setSyncing] = useState(false);
+  const sharedSkills = useMemo(
+    () =>
+      (shared?.skills ?? []).flatMap((s): Skill[] => {
+        try {
+          return [parseSkill(s.source, s.policy)];
+        } catch {
+          return [];
+        }
+      }),
+    [shared],
+  );
+  const isShared = (id: string) => sharedSkills.some((s) => s.id === id);
+  const bundled = useMemo(
+    () => [...sharedSkills, ...builtIn.filter((b) => !sharedSkills.some((s) => s.id === b.id))],
+    [builtIn, sharedSkills],
+  );
   const [tab, setTab] = useState<'run' | 'author'>('run');
   const [drafts, setDrafts] = useState<DraftSkill[]>([]);
   // 초안은 만든 PC에서만 보인다. 번들된 스킬과 구분해 표시하고, 자연어 해석 대상에는 넣지 않는다.
@@ -76,8 +97,26 @@ export function App() {
   const isFree = skillId === FREE_SKILL_ID;
   const skill = isFree ? freeTemplate : skills.find((s) => s.id === skillId);
 
+  async function syncShared(url: string) {
+    if (!url) return setShared(null);
+    setShared(await loadShared(url));
+    setSyncing(true);
+    setSyncError('');
+    try {
+      setShared(await refreshShared(url));
+    } catch (e) {
+      // 저장소에 닿지 않으면 받아 둔 스킬로 계속 쓴다.
+      setSyncError((e as Error).message);
+    } finally {
+      setSyncing(false);
+    }
+  }
+
   useEffect(() => {
-    loadSettings().then(setSettings);
+    loadSettings().then((s) => {
+      setSettings(s);
+      void syncShared(s.skillsUrl);
+    });
     void reloadDrafts();
   }, []);
   useEffect(() => {
@@ -230,7 +269,7 @@ export function App() {
           <button className="ghost" onClick={exportLog} title="실행 기록을 JSON으로 저장">
             기록 내보내기
           </button>
-          <button className="ghost" onClick={() => setShowSettings((v) => !v)}>
+          <button className="ghost" id="open-settings" onClick={() => setShowSettings((v) => !v)}>
             설정
           </button>
         </div>
@@ -298,9 +337,20 @@ export function App() {
           </button>
           <p className="hint">기본은 응답 60초, 스킬별 전체 제한 시간입니다. 느린 로컬 모델이면 배율을 올리세요.</p>
           <p className="hint">API 주소의 호스트는 dogent.config.ts의 llmPermissions에도 있어야 합니다.</p>
+          <label>
+            공유 스킬 저장소 (index.json 주소)
+            <input
+              id="skills-url"
+              value={settings.skillsUrl}
+              onChange={(e) => setSettings({ ...settings, skillsUrl: e.target.value.trim() })}
+              placeholder="비워 두면 확장에 든 스킬만 씁니다"
+            />
+          </label>
           <button
+            id="save-settings"
             onClick={async () => {
               await saveSettings(settings);
+              void syncShared(settings.skillsUrl);
               setShowSettings(false);
             }}
           >
@@ -359,12 +409,30 @@ export function App() {
             <option value={FREE_SKILL_ID}>자유 요청 (스킬 없이 현재 화면 조작)</option>
             {skills.map((s) => (
               <option key={s.id} value={s.id}>
-                {isDraft(s.id) ? '[초안] ' : ''}
+                {isDraft(s.id) ? '[초안] ' : isShared(s.id) ? '[공유] ' : ''}
                 {s.name} ({s.risk})
               </option>
             ))}
           </select>
         </label>
+        {settings.skillsUrl && (
+          <p className="hint" id="shared-status">
+            {syncing
+              ? '공유 스킬을 받는 중…'
+              : shared
+                ? `공유 스킬 ${shared.skills.length}개 · ${new Date(shared.syncedAt).toLocaleString('ko-KR')} 기준`
+                : '공유 스킬을 받지 못했습니다'}{' '}
+            <button className="ghost" id="sync-skills" disabled={syncing || running} onClick={() => void syncShared(settings.skillsUrl)}>
+              다시 받기
+            </button>
+          </p>
+        )}
+        {syncError && <p className="notice error">{syncError}</p>}
+        {shared?.errors.map((e) => (
+          <p key={e} className="notice error">
+            공유 스킬 {e}
+          </p>
+        ))}
         {skill && <p className="hint">{skill.description}</p>}
         {skill?.inputs.map((i) => (
           <label key={i.name}>

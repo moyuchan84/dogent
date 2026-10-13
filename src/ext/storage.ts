@@ -16,6 +16,7 @@ const BUILT_IN = {
   baseUrl: (import.meta.env.WXT_LLM_BASE_URL as string | undefined) ?? '',
   apiKey: (import.meta.env.WXT_LLM_API_KEY as string | undefined) ?? '',
   model: (import.meta.env.WXT_LLM_MODEL as string | undefined) ?? '',
+  skillsUrl: (import.meta.env.WXT_SKILLS_URL as string | undefined) ?? '',
 };
 
 /** 빌드에 공용 API 키가 들어 있는지. 들어 있으면 설정 화면에서 키를 묻지 않아도 된다. */
@@ -23,12 +24,14 @@ export const hasBuiltInKey = BUILT_IN.apiKey !== '';
 
 export async function loadSettings(): Promise<LlmSettings> {
   const stored = (await browser.storage.local.get(SETTINGS_KEY))[SETTINGS_KEY] as Partial<LlmSettings> | undefined;
-  return {
+  const merged = {
     ...dogentConfig.llmDefaults,
     ...(BUILT_IN.baseUrl ? { baseUrl: BUILT_IN.baseUrl } : {}),
     ...(BUILT_IN.model ? { model: BUILT_IN.model } : {}),
     ...stored,
   };
+  // 저장소 주소는 비워 저장했더라도 배포에 든 주소가 있으면 그것을 쓴다.
+  return { ...merged, skillsUrl: merged.skillsUrl || BUILT_IN.skillsUrl };
 }
 
 /**

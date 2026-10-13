@@ -12,6 +12,7 @@ export * from './paths';
 export * from './planner';
 export * from './policy';
 export * from './prompt';
+export * from './shared';
 export * from './skill';
 export * from './snapshot';
 export * from './transform';

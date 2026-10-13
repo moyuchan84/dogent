@@ -16,5 +16,7 @@ export const dogentConfig = {
     timeoutScale: 1,
     skillDirect: true,
     pathCache: true,
+    // 공유 스킬 저장소. 배포할 때는 .env.local의 WXT_SKILLS_URL에 적는다.
+    skillsUrl: '',
   },
 };

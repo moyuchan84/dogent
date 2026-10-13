@@ -566,6 +566,39 @@ limits:
     await holdApi('DELETE');
   });
 
+  await scenario('공유 스킬: 저장소에서 받은 스킬을 다시 빌드하지 않고 실행', async (openPages) => {
+    const { panel } = await openPages('/wip.html');
+    const setUrl = async (url) => {
+      await panel.click("#open-settings");
+      await panel.fill('#skills-url', url);
+      await panel.click('#save-settings');
+    };
+    await setUrl(`${SITE}/shared/index.json`);
+    try {
+      const option = panel.locator('#skill option[value=wip-shared]');
+      await option.waitFor({ state: 'attached', timeout: 10_000 });
+      assert.equal(await option.innerText(), '[공유] 재공 내려받기(공유) (R1)');
+      assert.match(await panel.locator('#shared-status').innerText(), /공유 스킬 1개/);
+      // 목록의 해시와 내용이 다른 스킬은 받지 않고 이유를 보여준다.
+      assert.equal(await panel.locator('#skill option[value=tampered]').count(), 0);
+      assert.match(await panel.locator('body').innerText(), /tampered: .*해시와 다릅니다/);
+
+      await panel.selectOption('#skill', 'wip-shared');
+      await panel.fill('[data-input=line]', '8라인');
+      const r = await run(panel);
+      check(r, () => {
+        assert.equal(r.status, 'done');
+        assert.equal(r.files[0]?.name, '재공내려받기_8라인.xlsx');
+      });
+      // 패널을 다시 열어도 받아 둔 스킬이 남아 있다.
+      await panel.reload();
+      await panel.locator('#skill option[value=wip-shared]').waitFor({ state: 'attached', timeout: 10_000 });
+      return `${r.sec}초`;
+    } finally {
+      await setUrl('');
+    }
+  });
+
   await scenario('로그인 화면이면 중단', async (openPages) => {
     const { panel } = await openPages('/login.html');
     await panel.selectOption('#skill', 'wip-check');
