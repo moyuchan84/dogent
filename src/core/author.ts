@@ -89,13 +89,14 @@ export function draftSkill(meta: DraftMeta, start: DraftStart, steps: AuthorStep
     if (check) lines.push(`   - 검사: ${check}`);
   };
   /** 이름을 읽지 못했거나 여럿이라 그대로는 실행할 수 없는 조작 */
-  const vague = (what: string, step: AuthorStep & { name: string; dup?: boolean }) => {
+  const vague = (what: string, step: AuthorStep & { name: string; dup?: boolean; row?: string }) => {
     if (step.name === '') {
       notes.push(`${n + 1}단계: 요소의 이름을 읽지 못했습니다. 어떤 요소인지 글로 설명해 주세요 (모델이 찾습니다).`);
       lines.push(`${++n}. 화면에서 (여기에 요소를 설명) ${what}`);
       return true;
     }
-    if (step.dup) notes.push(`${n + 1}단계: "${step.name}" 이름의 요소가 화면에 여러 개입니다. 실행할 때 모델이 고르게 되니 위치 설명을 덧붙이세요.`);
+    if (step.dup && step.row) notes.push(`${n + 1}단계: "${step.name}"이(가) 표의 행마다 있어 "${step.row}" 글자가 있는 행의 것으로 적었습니다. 행이 실행할 때마다 달라지면 "row"를 {입력값}으로 바꾸세요.`);
+    else if (step.dup) notes.push(`${n + 1}단계: "${step.name}" 이름의 요소가 화면에 여러 개입니다. 실행할 때 모델이 고르게 되니 위치 설명을 덧붙이세요.`);
     return false;
   };
 
@@ -134,7 +135,7 @@ export function draftSkill(meta: DraftMeta, start: DraftStart, steps: AuthorStep
       const submit = SUBMIT_PATTERN.test(step.name);
       push(
         `click으로 "${step.name}" ${toggle ? '항목을 선택한다' : '버튼을 한 번 누른다'}. args는 다음을 그대로 쓴다.${submit ? ' 누르기 전에 사용자 승인을 받는다.' : ''}`,
-        { ref: step.name },
+        step.dup && step.row ? { ref: step.name, row: step.row } : { ref: step.name },
         quotable(step.name) ? parts.join(' and ') : undefined,
       );
       if (submit) {

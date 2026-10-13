@@ -42,6 +42,9 @@ const TABLE_ROLES = new Set(['grid', 'table', 'treegrid']);
 const MAX_ELEMENTS = 300;
 const MAX_TEXTS = 150;
 const MAX_OPTIONS = 40;
+/** 표 하나에서 따로 내보내는 칸 안 요소의 최대 개수 */
+const MAX_IN_TABLE = 60;
+const IN_CELL = 'a[href],button,input,select,textarea,[role],[onclick]';
 
 const norm = (s: string | null | undefined) => (s ?? '').replace(/\s+/g, ' ').trim();
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}…` : s);
@@ -123,12 +126,55 @@ export function createPageAgent(
     };
   }
 
+  /** 머리글이 없고 안에 입력 요소나 버튼을 담은 <table>은 화면 배치용이다. 표로 읽지 않고 안을 그대로 훑는다. */
+  function layoutTable(el: Element): boolean {
+    if (el.tagName !== 'TABLE' || TABLE_ROLES.has(el.getAttribute('role') ?? '')) return false;
+    if (el.getAttribute('role') === 'presentation' || el.getAttribute('role') === 'none') return true;
+    return tableParts(el).header.length === 0 && el.querySelector(`${IN_CELL},table`) !== null;
+  }
+
+  /**
+   * 요소가 놓인 표의 행("칸 | 칸")과 열 머리글을 돌려준다.
+   * 같은 이름의 요소가 행마다 있을 때 행을 가리고, 이름 없는 입력 칸에 열 이름을 붙이는 데 쓴다.
+   */
+  function placeOf(el: Element): { row?: string; column?: string } {
+    for (let p = el.parentElement; p; p = p.parentElement) {
+      const role = p.getAttribute('role') ?? '';
+      if (p.tagName === 'TABLE' || TABLE_ROLES.has(role)) {
+        if (layoutTable(p)) continue;
+        const { header, rows, cellsOf } = tableParts(p);
+        const row = rows.find((r) => r.contains(el));
+        if (!row) return {};
+        const cells = cellsOf(row);
+        const text = cells
+          .map((c) => cellValue(c))
+          .filter((t) => t !== '')
+          .join(' | ');
+        return {
+          row: text ? clip(text, 120) : undefined,
+          column: header[cells.findIndex((c) => c.contains(el))] || undefined,
+        };
+      }
+    }
+    return {};
+  }
+
+  /** 표 안 요소의 설명. 라벨 없는 입력 칸은 값이 아니라 열 머리글을 이름으로 쓴다. */
+  function describeInTable(el: Element) {
+    const desc = describe(el);
+    if (!desc) return null;
+    const { row, column } = placeOf(el);
+    const unnamed = !labelOf(el) && !norm(el.getAttribute('placeholder'));
+    const field = ['textbox', 'combobox', 'checkbox', 'radio'].includes(desc.role);
+    return { ...desc, name: field && unnamed && column ? column : desc.name, row };
+  }
+
   function describe(el: Element): Omit<Extract<SnapshotItem, { kind: 'el' }>, 'kind' | 'ref'> | null {
     const tag = el.tagName;
     const role = el.getAttribute('role') ?? '';
     const disabled = el.hasAttribute('disabled') || el.getAttribute('aria-disabled') === 'true' || undefined;
 
-    if (tag === 'TABLE' || TABLE_ROLES.has(role)) {
+    if ((tag === 'TABLE' || TABLE_ROLES.has(role)) && !layoutTable(el)) {
       const { header, rows } = tableParts(el);
       if (tag === 'TABLE' && header.length === 0 && rows.length === 0) return null;
       const name =
@@ -199,6 +245,7 @@ export function createPageAgent(
         elements++;
         refs.set(nextRef, el);
         items.push({ kind: 'el', ref: nextRef++, ...desc });
+        if (desc.role === 'table') walkTable(el);
         return;
       }
       if (/^H[1-4]$/.test(el.tagName)) {
@@ -222,6 +269,28 @@ export function createPageAgent(
             items.push({ kind: 'text', text: clip(text, 150) });
           }
         }
+      }
+    }
+
+    /** 표는 통째로 한 요소지만, 칸 안의 링크·버튼·입력란은 따로 누를 수 있게 행 글자와 함께 내보낸다. */
+    function walkTable(table: Element): void {
+      let count = 0;
+      for (const el of table.querySelectorAll(IN_CELL)) {
+        if (el.closest('table,[role=grid],[role=table],[role=treegrid]') !== table) continue;
+        // 버튼 안의 요소처럼 이미 내보낸 요소에 든 것은 건너뛴다.
+        if ([...refs.values()].some((seen) => seen !== table && seen.contains(el))) continue;
+        if (!visible(el) || el.closest('[hidden],[aria-hidden=true]')) continue;
+        const desc = describeInTable(el);
+        if (!desc || desc.role === 'table') continue;
+        if (count >= MAX_IN_TABLE || elements >= MAX_ELEMENTS) {
+          items.push({ kind: 'text', text: '(표 안의 나머지 요소는 생략됨)' });
+          if (elements >= MAX_ELEMENTS) truncated = true;
+          return;
+        }
+        count++;
+        elements++;
+        refs.set(nextRef, el);
+        items.push({ kind: 'el', ref: nextRef++, ...desc });
       }
     }
 
@@ -361,13 +430,21 @@ export function createPageAgent(
     return snapshot().items.filter((i) => i.kind === 'el' && i.name === name && (!role || i.role === role)).length;
   }
 
+  /** 녹화한 요소의 행을 가리킬 짧은 글자. 그 행에서 요소 자신의 이름이 아닌 첫 칸의 글자다. */
+  function rowKey(el: Element): string | undefined {
+    const name = describeInTable(el)?.name;
+    return placeOf(el)
+      .row?.split(' | ')
+      .find((t) => t !== name && !t.endsWith('…'));
+  }
+
   function onClick(e: Event): void {
     if (!recording) return;
     for (let el = e.target as Element | null; el; el = el.parentElement) {
-      const desc = describe(el);
+      const desc = describeInTable(el);
       if (!desc) continue;
       if (CLICK_ROLES.has(desc.role)) {
-        onRecord({ kind: 'click', role: desc.role, name: desc.name, dup: sameName(desc.name) > 1 });
+        onRecord({ kind: 'click', role: desc.role, name: desc.name, dup: sameName(desc.name) > 1, row: rowKey(el) });
       }
       return;
     }
@@ -376,7 +453,7 @@ export function createPageAgent(
   function onChange(e: Event): void {
     if (!recording) return;
     const el = e.target as Element | null;
-    const desc = el && describe(el);
+    const desc = el && describeInTable(el);
     // 비밀번호 칸은 describe가 null을 돌려주므로 녹화되지 않는다.
     if (!el || !desc) return;
     if (desc.role === 'combobox' && el.tagName === 'SELECT') {

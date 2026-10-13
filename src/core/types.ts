@@ -23,6 +23,8 @@ export type SnapshotItem =
       value?: string;
       detail?: string;
       disabled?: boolean;
+      /** 표 안의 요소면 그 행의 글자 ("칸 | 칸") */
+      row?: string;
     };
 
 export type ElementItem = Extract<SnapshotItem, { kind: 'el' }>;
@@ -51,7 +53,7 @@ export interface PageSnapshot {
  * dup은 같은 이름의 요소가 화면에 여럿 있어 이름만으로 특정할 수 없다는 뜻이다.
  */
 export type RecordedEvent =
-  | { kind: 'click'; role: string; name: string; dup: boolean }
+  | { kind: 'click'; role: string; name: string; dup: boolean; row?: string }
   | { kind: 'type'; name: string; value: string; dup: boolean; multiline: boolean; numeric: boolean }
   | { kind: 'select'; name: string; value: string; options: string[]; dup: boolean };
 
