@@ -26,6 +26,8 @@ export function createMockSite() {
   const fwLog = [];
   // 저장된 재공 수량 조정. 한 번의 저장이 행 배열 하나다.
   const adjustLog = [];
+  // 접수된 홀드 해제 요청
+  const holdLog = [];
   return createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', 'http://localhost');
     if (url.pathname === '/api/adjust') {
@@ -42,6 +44,21 @@ export function createMockSite() {
       }
       if (req.method === 'DELETE') adjustLog.length = 0;
       return json(adjustLog);
+    }
+    if (url.pathname === '/api/hold') {
+      const json = (body) => {
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify(body));
+      };
+      if (req.method === 'POST') {
+        let body = '';
+        for await (const chunk of req) body += chunk;
+        const entry = { id: `HR-${String(holdLog.length + 1).padStart(6, '0')}`, ...JSON.parse(body) };
+        holdLog.push(entry);
+        return json({ id: entry.id });
+      }
+      if (req.method === 'DELETE') holdLog.length = 0;
+      return json(holdLog);
     }
     if (url.pathname === '/api/fw') {
       const json = (body) => {

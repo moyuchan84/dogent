@@ -532,6 +532,39 @@ limits:
     }
   });
 
+  const holdApi = (method = 'GET') => fetch(`${SITE}/api/hold`, { method }).then((r) => r.json());
+
+  await scenario('새 창과 알림 창: 팝업에서 Lot을 고르고 확인·알림 창을 거쳐 상신', async (openPages) => {
+    const { target, panel } = await openPages('/hold.html');
+    await holdApi('DELETE');
+    // 브라우저의 창이 실제로 뜨면 실패로 본다 (에이전트가 대신 받아야 한다).
+    const native = [];
+    context.on('dialog', (d) => {
+      native.push(d.message());
+      d.dismiss().catch(() => {});
+    });
+    await panel.selectOption('#skill', 'hold-release');
+    await panel.fill('[data-input=lot]', 'P7-00031');
+    await panel.fill('[data-input=reason]', '설비 점검이 끝나 공정을 다시 진행함');
+    const dialog = await runUntilApproval(panel);
+    assert.ok(dialog.includes('P7-00031'), '승인 대화상자에 팝업에서 고른 Lot이 보여야 함');
+    assert.deepEqual(await holdApi(), [], '승인 전에는 상신되면 안 됨');
+    assert.equal(context.pages().filter((p) => p.url().includes('lot-popup')).length, 0, '팝업은 닫혀 있어야 함');
+    await panel.click('#approve');
+    const r = await result(panel);
+    const log = await panel.locator('.log').innerText();
+    assert.equal(r.status, 'done', `${r.text}\n${log}`);
+    assert.match(r.text, /HR-000001/);
+    assert.deepEqual(await holdApi(), [{ id: 'HR-000001', lot: 'P7-00031', reason: '설비 점검이 끝나 공정을 다시 진행함' }]);
+    assert.match(log, /새 창이 열려/);
+    assert.match(log, /원래 창으로 돌아왔습니다/);
+    assert.doesNotMatch(log, /모델 응답/);
+    assert.deepEqual(native, [], '브라우저의 알림 창이 실제로 떴음');
+    // 실행이 끝나면 화면의 알림·확인 창은 원래대로 돌아간다.
+    assert.equal(await target.evaluate(() => '__dogentDialogs' in window), false);
+    await holdApi('DELETE');
+  });
+
   await scenario('로그인 화면이면 중단', async (openPages) => {
     const { panel } = await openPages('/login.html');
     await panel.selectOption('#skill', 'wip-check');

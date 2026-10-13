@@ -2,14 +2,17 @@ import { directParts, parseAction, type Action } from './actions';
 import { capture, evalCheck, stepCaptures, stepCheck, stripCheckLines, type Clause } from './check';
 import { DatasetStore } from './dataset';
 import { buildWorkbook, readDownloadedTable } from './excel';
-import { checkAction, findElement, hostAllowed } from './policy';
+import { SUBMIT_PATTERN, checkAction, findElement, hostAllowed } from './policy';
 import { buildTurnMessages } from './prompt';
 import { checkInputRules, extractSteps, fillTemplate, fillValue, type Skill, type SkillInputs } from './skill';
 import { renderSnapshot } from './snapshot';
 import { transform } from './transform';
 import type {
+  ActResult,
   ApprovalRequest,
   BrowserPort,
+  ConfirmPolicy,
+  PageDialog,
   ElementItem,
   FilePort,
   HistoryEntry,
@@ -74,7 +77,7 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps): Promise<Ru
   const fill = (text: string) => fillValue(skill, inputs, text);
   const checks = extractSteps(skill.body).map((raw) =>
     stepCheck(raw)?.map((c): Clause => {
-      if (c.kind === 'text') return { ...c, text: fill(c.text) };
+      if (c.kind === 'text' || c.kind === 'dialog') return { ...c, text: fill(c.text) };
       if (c.kind === 'value') return { ...c, expected: fill(c.expected) };
       return c;
     }) ?? null,
@@ -96,16 +99,43 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps): Promise<Ru
   // 없는 단계는 모델의 next_step으로 한 칸씩 넘어간다.
   let current = 1;
   let didTools = new Set<string>();
+  // 지금 단계에서 페이지가 띄운 알림·확인 창의 내용. 실제 창은 뜨지 않고 내용만 받아 둔 것이다.
+  let stepDialogs: string[] = [];
+  // 동작이 끝난 뒤에 늦게 뜬 창. 다음 차례에 모델에게 알려준다.
+  const lateDialogs: string[] = [];
+  const describeDialog = (d: PageDialog) =>
+    d.kind === 'alert'
+      ? `알림 창: "${d.message}"`
+      : `${d.kind === 'confirm' ? '확인' : '입력'} 창 "${d.message}" → ${d.accepted ? '확인' : '취소'}`;
   const unmetNow = (snap: PageSnapshot) => {
     const check = checks[current - 1];
-    return check ? evalCheck(check, { snap, datasets, didTools }) : null;
+    return check ? evalCheck(check, { snap, datasets, didTools, dialogs: stepDialogs }) : null;
   };
   let lastStep = 0;
   /** 지금 단계를 끝내고 다음 단계로 넘어간다. 그 시점의 화면에서 기록 값을 읽는다. */
   const completeStep = (snap: PageSnapshot) => {
-    for (const c of captures[current - 1]) outputs[c.name] = capture(c, snap) ?? '(화면에서 찾지 못함)';
+    for (const c of captures[current - 1]) {
+      outputs[c.name] = capture(c, snap, stepDialogs) ?? (c.from === 'dialog' ? '(알림 창에서 찾지 못함)' : '(화면에서 찾지 못함)');
+    }
     current++;
     didTools = new Set();
+    stepDialogs = [];
+  };
+  /** 화면 조작의 결과에 그 뒤에 뜬 창의 내용을 붙인다. 취소한 확인 창이 있으면 동작이 이뤄지지 않은 것으로 본다. */
+  const acted = (r: ActResult): Outcome => {
+    const shown = r.dialogs ?? [];
+    if (shown.length === 0) return { ok: r.ok, result: r.message };
+    stepDialogs.push(...shown.map((d) => d.message));
+    const result = `${r.message}. ${shown.map(describeDialog).join(' / ')}`;
+    const refused = shown.find((d) => d.kind !== 'alert' && !d.accepted);
+    if (!refused) return { ok: r.ok, result };
+    const hint =
+      refused.kind === 'prompt'
+        ? '입력 창에는 답할 수 없습니다'
+        : SUBMIT_PATTERN.test(refused.message)
+          ? '저장·상신 계열 확인 창은 승인받은 제출 단계의 버튼에서만 확인을 누릅니다'
+          : '확인을 눌러야 하면 click의 args에 "accept_dialog": true 를 넣으세요';
+    return { ok: false, result: `${result}. ${hint}` };
   };
 
   const end =(status: RunStatus, message: string): RunResult => {
@@ -173,7 +203,9 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps): Promise<Ru
   async function decide(n: number, snap: PageSnapshot): Promise<Action> {
     const page = renderSnapshot(snap);
     const lines = page.split('\n').map((l) => l.replace(/^\[\d+\] /, ''));
-    const changes = seenLines && lines.filter((l) => !seenLines!.has(l)).slice(0, MAX_CHANGES);
+    const late = lateDialogs.splice(0);
+    const fresh = seenLines && lines.filter((l) => !seenLines!.has(l)).slice(0, MAX_CHANGES);
+    const changes = fresh || late.length > 0 ? [...late, ...(fresh ?? [])] : null;
     seenLines = new Set(lines);
     let messages = buildTurnMessages({
       skill,
@@ -204,7 +236,8 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps): Promise<Ru
     }
   }
 
-  async function execute(action: Action, snap: PageSnapshot): Promise<Outcome> {
+  /** approved는 사용자 승인을 받은 저장·상신 버튼을 누르는 경우다. */
+  async function execute(action: Action, snap: PageSnapshot, approved = false): Promise<Outcome> {
     switch (action.tool) {
       case 'next_step': {
         if (current >= steps.length) {
@@ -218,17 +251,22 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps): Promise<Ru
         return { ok: r.ok, result: r.message };
       }
       case 'click': {
-        const r = await browser.click(action.args.ref);
-        return { ok: r.ok, result: r.message };
+        // 승인받은 제출의 확인 창은 확인을 누른다. 그 밖에는 스킬이 요청한 경우에만, 저장·상신을 묻는 창이 아닐 때 누른다.
+        const confirm: ConfirmPolicy | undefined = approved
+          ? { accept: true }
+          : action.args.accept_dialog
+            ? { accept: true, unless: SUBMIT_PATTERN.source }
+            : undefined;
+        return acted(await browser.click(action.args.ref, confirm));
       }
-      case 'type': {
-        const r = await browser.type(action.args.ref, action.args.text);
-        return { ok: r.ok, result: r.message };
+      case 'close_tab': {
+        if (!browser.closeTab) return { ok: false, result: '이 환경에서는 창을 닫을 수 없습니다' };
+        return acted(await browser.closeTab());
       }
-      case 'select': {
-        const r = await browser.select(action.args.ref, action.args.value);
-        return { ok: r.ok, result: r.message };
-      }
+      case 'type':
+        return acted(await browser.type(action.args.ref, action.args.text));
+      case 'select':
+        return acted(await browser.select(action.args.ref, action.args.value));
       case 'wait_for': {
         const found = await browser.waitFor(action.args.text, action.args.timeout_sec * 1000);
         return found
@@ -278,7 +316,8 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps): Promise<Ru
         const tableEl = findElement(snap, action.args.ref)!;
         const rows = ds.rows.map((r) => r.map(cellText));
         const r = await browser.fillTable(action.args.ref, ds.columns, rows, action.args.add_ref);
-        if (!r.ok) return { ok: false, result: r.message };
+        if (!r.ok) return acted(r);
+        stepDialogs.push(...(r.dialogs ?? []).map((d) => d.message));
         // 넣은 값을 화면에서 다시 읽어 원본과 대조한다. 다르면 실패로 돌려 다음 단계로 넘어가지 못하게 한다.
         const fill: Fill = { table: tableEl.name, dataset: ds.name };
         const diffs = await verifyFill(fill, await browser.snapshot());
@@ -348,6 +387,10 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps): Promise<Ru
       emit({ type: 'observe', n, url: snap.url, title: snap.title });
       if (snap.hasPassword) {
         return end('aborted', '로그인 화면이 감지되었습니다. 직접 로그인한 뒤 다시 실행해 주세요');
+      }
+      if (snap.dialogs?.length) {
+        stepDialogs.push(...snap.dialogs.map((d) => d.message));
+        lateDialogs.push(...snap.dialogs.map(describeDialog));
       }
 
       // 검사가 충족된 단계는 모델을 부르지 않고 넘긴다.
@@ -419,7 +462,7 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps): Promise<Ru
           if (!approved) return end('aborted', `사용자가 "${button}"을(를) 승인하지 않았습니다`);
           submitted.add(current);
           try {
-            outcome = await execute(action, snap);
+            outcome = await execute(action, snap, true);
           } catch (e) {
             if (signal?.aborted) throw e;
             outcome = { ok: false, result: (e as Error).message };

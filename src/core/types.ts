@@ -42,6 +42,8 @@ export interface PageSnapshot {
   title: string;
   hasPassword: boolean;
   items: SnapshotItem[];
+  /** 직전에 읽은 뒤로 페이지가 띄운 창 (동작 결과로 이미 돌려준 것은 빠진다) */
+  dialogs?: PageDialog[];
 }
 
 /**
@@ -53,9 +55,24 @@ export type RecordedEvent =
   | { kind: 'type'; name: string; value: string; dup: boolean; multiline: boolean; numeric: boolean }
   | { kind: 'select'; name: string; value: string; options: string[]; dup: boolean };
 
+/** 페이지가 띄운 알림·확인·입력 창 하나. accepted는 확인을 누른 것으로 답했는지다. */
+export interface PageDialog {
+  kind: 'alert' | 'confirm' | 'prompt';
+  message: string;
+  accepted: boolean;
+}
+
+/** 확인 창에 답하는 방법. accept여도 메시지가 unless(정규식)에 걸리면 취소한다. */
+export interface ConfirmPolicy {
+  accept: boolean;
+  unless?: string;
+}
+
 export interface ActResult {
   ok: boolean;
   message: string;
+  /** 이 동작 뒤에 페이지가 띄운 창. 실제로 띄우지 않고 내용만 받아 둔 것이다. */
+  dialogs?: PageDialog[];
 }
 
 /** 화면의 내려받기 버튼으로 받은 파일. url은 파일이 온 주소로, 페이지가 만든 파일이면 blob: 또는 data: 로 시작한다. */
@@ -68,7 +85,13 @@ export interface DownloadedFile {
 export interface BrowserPort {
   snapshot(): Promise<PageSnapshot>;
   navigate(url: string): Promise<ActResult>;
-  click(ref: number): Promise<ActResult>;
+  /**
+   * confirm은 누른 뒤 뜨는 확인 창에 답하는 방법이다. 주지 않으면 취소한다.
+   * 누른 결과로 새 창이나 탭이 열리면 그 뒤의 snapshot과 동작은 새 창을 대상으로 한다.
+   */
+  click(ref: number, confirm?: ConfirmPolicy): Promise<ActResult>;
+  /** 에이전트가 따라 들어간 새 창을 닫고 원래 창으로 돌아간다. */
+  closeTab?(): Promise<ActResult>;
   type(ref: number, text: string): Promise<ActResult>;
   select(ref: number, value: string): Promise<ActResult>;
   waitFor(text: string, timeoutMs: number): Promise<boolean>;

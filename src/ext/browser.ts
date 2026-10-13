@@ -1,6 +1,17 @@
 import { browser, type Browser } from 'wxt/browser';
+import { dogentConfig } from '@/dogent.config';
 import { mergeFrames } from '../core/snapshot';
-import type { ActResult, BrowserPort, DownloadedFile, FrameSnapshot, PageSnapshot, TableData } from '../core/types';
+import type {
+  ActResult,
+  BrowserPort,
+  ConfirmPolicy,
+  DownloadedFile,
+  FrameSnapshot,
+  PageDialog,
+  PageSnapshot,
+  TableData,
+} from '../core/types';
+import { dialogHook, type DialogCommand } from '../page/dialogs';
 
 type Reply<T> = { ok: true; value: T } | { ok: false; error: string };
 
@@ -22,6 +33,10 @@ async function invoke(method: string, args: unknown[]): Promise<Reply<unknown>> 
 }
 
 const MAX_DOWNLOAD_BYTES = 30 * 1024 * 1024;
+const RUN_TIMEOUT_MS = 30_000;
+const HOOK_SCRIPT_ID = 'dogent-dialog-hook';
+/** 알림 창 처리기가 켜져 있다는 표시의 수명. 화면을 읽을 때마다 늘린다. 패널이 갑자기 닫혀도 이 시간이 지나면 풀린다. */
+const HOOK_TTL_MS = 10 * 60_000;
 
 /** 응답의 Content-Disposition에 적힌 파일 이름 */
 function dispositionName(header: string | null): string | undefined {
@@ -78,13 +93,75 @@ async function readBlob(url: string, maxBytes: number): Promise<{ base64: string
 export class ChromeBrowser implements BrowserPort {
   private refs = new Map<number, { frame: number; localRef: number }>();
   private active = false;
+  // 에이전트가 따라 들어간 새 창의 바깥 창들. 지금 창이 닫히면 마지막 것으로 돌아간다.
+  private openers: number[] = [];
+  // 새로 열렸지만 아직 옮겨 가지 않은 창
+  private opened: number | null = null;
+  private clicking = false;
 
   constructor(private tabId: number) {}
+
+  // 클릭하는 동안 열린 창은 연 탭이 무엇으로 적히든 받는다. 대상 탭이 그 창의 활성 탭이 아니면
+  // target=_blank 링크로 열린 탭의 openerTabId가 활성 탭으로 적히기 때문이다.
+  private onTabCreated = (tab: Browser.tabs.Tab) => {
+    if (tab.id === undefined || tab.openerTabId === undefined) return;
+    if (tab.openerTabId === this.tabId || this.clicking) this.opened = tab.id;
+  };
+
+  private async exists(tabId: number): Promise<boolean> {
+    return browser.tabs.get(tabId).then(
+      () => true,
+      () => false,
+    );
+  }
+
+  /** 새 창이 열렸으면 그 창으로, 지금 창이 닫혔으면 바깥 창으로 대상을 옮긴다. 옮겼으면 그 사실을 문장으로 돌려준다. */
+  private async follow(): Promise<string> {
+    let moved = '';
+    if (this.opened !== null) {
+      const id = this.opened;
+      this.opened = null;
+      if (await this.exists(id)) {
+        this.openers.push(this.tabId);
+        this.tabId = id;
+        await this.waitLoaded();
+        moved = ' 새 창이 열려 그 창으로 옮겼습니다';
+      }
+    }
+    while (this.openers.length > 0 && !(await this.exists(this.tabId))) {
+      this.tabId = this.openers.pop()!;
+      moved = ' 창이 닫혀 원래 창으로 돌아왔습니다';
+    }
+    return moved;
+  }
+
+  /** 대상 창과 그 바깥 창들의 main world에서 알림·확인 창 처리기를 부른다. */
+  private async dialogs(command: DialogCommand): Promise<PageDialog[]> {
+    const found: PageDialog[] = [];
+    for (const tabId of [...this.openers, this.tabId]) {
+      const results = await browser.scripting
+        .executeScript({ target: { tabId, allFrames: true }, world: 'MAIN', func: dialogHook, args: [command] })
+        .catch(() => []);
+      for (const r of results) found.push(...((r.result as PageDialog[] | null) ?? []));
+    }
+    return found;
+  }
+
+  private hookOn(): Promise<PageDialog[]> {
+    return this.dialogs({ do: 'on', until: Date.now() + HOOK_TTL_MS });
+  }
 
   private async run<T>(method: string, args: unknown[], frameId?: number) {
     const target =
       frameId === undefined ? { tabId: this.tabId, allFrames: true } : { tabId: this.tabId, frameIds: [frameId] };
-    const call = () => browser.scripting.executeScript({ target, func: invoke, args: [method, args] });
+    // 화면에 브라우저의 알림 창이 실제로 떠 있으면 스크립트가 끝나지 않는다. 무한정 기다리지 않는다.
+    const call = () =>
+      Promise.race([
+        browser.scripting.executeScript({ target, func: invoke, args: [method, args] }),
+        sleep(RUN_TIMEOUT_MS).then(() => {
+          throw new Error('화면이 응답하지 않습니다. 브라우저의 알림 창이 떠 있으면 닫아 주세요');
+        }),
+      ]);
     let results = await call();
     // 페이지 에이전트가 아직 없는 프레임이 있을 때만 주입한다 (이미 있는 프레임은 그대로 두어 ref를 유지).
     if (results.some((r) => (r.result as Reply<T> | undefined)?.ok === false && (r.result as any).error === NO_AGENT)) {
@@ -100,8 +177,8 @@ export class ChromeBrowser implements BrowserPort {
   private async waitLoaded(maxMs = 15000): Promise<void> {
     const deadline = Date.now() + maxMs;
     while (Date.now() < deadline) {
-      const tab = await browser.tabs.get(this.tabId);
-      if (tab.status === 'complete') return;
+      const tab = await browser.tabs.get(this.tabId).catch(() => null);
+      if (!tab || tab.status === 'complete') return;
       await sleep(150);
     }
   }
@@ -121,7 +198,33 @@ export class ChromeBrowser implements BrowserPort {
 
   async setActive(on: boolean): Promise<void> {
     this.active = on;
-    await this.run('setActive', [on], 0).catch(() => {});
+    if (on) {
+      browser.tabs.onCreated.addListener(this.onTabCreated);
+      // 이동하거나 새로 열린 화면이 뜨자마자 알림 창을 띄워도 받을 수 있게, 실행 중에만 등록해 둔다.
+      await browser.scripting
+        .registerContentScripts([
+          {
+            id: HOOK_SCRIPT_ID,
+            js: ['dialog-hook.js'],
+            matches: dogentConfig.sitePermissions,
+            runAt: 'document_start',
+            world: 'MAIN',
+            allFrames: true,
+            persistAcrossSessions: false,
+          },
+        ])
+        .catch(() => {});
+      await this.hookOn();
+    } else {
+      browser.tabs.onCreated.removeListener(this.onTabCreated);
+      await this.dialogs({ do: 'off' });
+      await browser.scripting.unregisterContentScripts({ ids: [HOOK_SCRIPT_ID] }).catch(() => {});
+    }
+    for (const tabId of [...this.openers, this.tabId]) {
+      await browser.scripting
+        .executeScript({ target: { tabId, frameIds: [0] }, func: invoke, args: ['setActive', [on]] })
+        .catch(() => {});
+    }
   }
 
   /** 사람의 조작 녹화를 켜거나 끈다. 새로 열린 화면에도 걸리도록 녹화 중에는 주기적으로 다시 부른다. */
@@ -136,9 +239,15 @@ export class ChromeBrowser implements BrowserPort {
   }
 
   async snapshot(): Promise<PageSnapshot> {
+    await this.follow();
     await this.waitLoaded();
     // 화면이 바뀌면(이동, 새로 고침) 표시가 사라지므로 볼 때마다 다시 켠다.
-    if (this.active) await this.run('setActive', [true], 0).catch(() => {});
+    let dialogs: PageDialog[] | undefined;
+    if (this.active) {
+      await this.hookOn();
+      await this.run('setActive', [true], 0).catch(() => {});
+      dialogs = await this.dialogs({ do: 'drain' });
+    }
     try {
       const frames = (await this.run<FrameSnapshot>('snapshot', []))
         .filter((r): r is typeof r & { reply: { ok: true; value: FrameSnapshot } } => r.reply.ok)
@@ -147,7 +256,7 @@ export class ChromeBrowser implements BrowserPort {
       if (frames.length === 0) throw new Error('읽을 수 있는 프레임이 없습니다');
       const merged = mergeFrames(frames);
       this.refs = merged.refs;
-      return merged.snapshot;
+      return { ...merged.snapshot, dialogs };
     } catch {
       // 권한이 없는 페이지(새 탭, 허용 목록 밖 사이트 등)는 주소만 알려준다.
       this.refs = new Map();
@@ -157,6 +266,7 @@ export class ChromeBrowser implements BrowserPort {
         title: tab.title ?? '',
         hasPassword: false,
         items: [{ kind: 'text', text: '(이 페이지는 Dogent가 읽을 수 없습니다)' }],
+        dialogs,
       };
     }
   }
@@ -169,19 +279,52 @@ export class ChromeBrowser implements BrowserPort {
     return { ok: true, message: `이동함: ${tab.url ?? url}` };
   }
 
-  private async act(method: 'click' | 'type' | 'select', ref: number, extra: unknown[]): Promise<ActResult> {
+  private async act(
+    method: 'click' | 'type' | 'select',
+    ref: number,
+    extra: unknown[],
+    confirm?: ConfirmPolicy,
+  ): Promise<ActResult> {
     const target = this.refs.get(ref);
     if (!target) return { ok: false, message: `ref ${ref} 이(가) 현재 화면에 없습니다` };
     await this.point(target, POINT_LABEL[method]);
-    const [res] = await this.run<ActResult>(method, [target.localRef, ...extra], target.frame);
-    if (!res) return { ok: false, message: '프레임이 사라졌습니다' };
-    if (!res.reply.ok) return { ok: false, message: res.reply.error };
-    await this.settle();
-    return res.reply.value;
+    if (confirm) await this.dialogs({ do: 'policy', confirm });
+    this.clicking = method === 'click';
+    try {
+      const acted = this.tabId;
+      const [res] = await this.run<ActResult>(method, [target.localRef, ...extra], target.frame).catch(async (e) => {
+        // 누르자마자 창이 스스로 닫히면(팝업에서 값을 고른 경우 등) 결과를 받지 못한다. 눌린 것으로 본다.
+        if (await this.exists(acted)) throw e;
+        return [{ frameId: target.frame, reply: { ok: true as const, value: { ok: true, message: '클릭함' } } }];
+      });
+      if (!res) {
+        if (await this.exists(acted)) return { ok: false, message: '프레임이 사라졌습니다' };
+        return { ok: true, message: `클릭함.${await this.follow()}`, dialogs: await this.dialogs({ do: 'drain' }) };
+      }
+      if (!res.reply.ok) return { ok: false, message: res.reply.error };
+      await this.settle();
+      const moved = await this.follow();
+      if (moved && this.active) await this.hookOn();
+      const dialogs = this.active ? await this.dialogs({ do: 'drain' }) : undefined;
+      return { ...res.reply.value, message: moved ? `${res.reply.value.message}.${moved}` : res.reply.value.message, dialogs };
+    } finally {
+      this.clicking = false;
+      if (confirm) await this.dialogs({ do: 'policy', confirm: null });
+    }
   }
 
-  click(ref: number) {
-    return this.act('click', ref, []);
+  click(ref: number, confirm?: ConfirmPolicy) {
+    return this.act('click', ref, [], confirm);
+  }
+
+  async closeTab(): Promise<ActResult> {
+    if (this.openers.length === 0) {
+      return { ok: false, message: '에이전트가 따라 들어간 새 창이 없습니다. 처음 창은 닫지 않습니다' };
+    }
+    await browser.tabs.remove(this.tabId).catch(() => {});
+    this.tabId = this.openers.pop()!;
+    await browser.tabs.update(this.tabId, { active: true }).catch(() => {});
+    return { ok: true, message: '새 창을 닫고 원래 창으로 돌아옴' };
   }
 
   type(ref: number, text: string) {

@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dogent 도입 흐름</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  /* 배치: 한 단짜리 문서. 위에서 현재 상태를 표로 요약하고, 아래로 "지금 하는 방법" → "스킬 만들기" → "최종 흐름" 순서. */
+  :root {
+    --bg: #f6f7fa;
+    --surface: #ffffff;
+    --ink: #17202e;
+    --muted: #5b6678;
+    --line: #dbe0e8;
+    --accent: #1a56c4;
+    --accent-soft: #e6eefb;
+    --now: #18794e;
+    --now-soft: #e2f3ea;
+    --manual: #9a5b00;
+    --manual-soft: #fbefd8;
+    --plan: #55607a;
+    --plan-soft: #e9ecf3;
+    --code-bg: #eef1f6;
+    --sans: "IBM Plex Sans KR", "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif;
+    --mono: "IBM Plex Mono", "D2Coding", Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #11151c; --surface: #1a202b; --ink: #e6eaf2; --muted: #9aa5b8; --line: #2c3545;
+      --accent: #7fa8f5; --accent-soft: #1d2b47;
+      --now: #5fcf98; --now-soft: #173327; --manual: #e6b25a; --manual-soft: #3a2c12;
+      --plan: #a7b1c8; --plan-soft: #262d3b; --code-bg: #232a37;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #11151c; --surface: #1a202b; --ink: #e6eaf2; --muted: #9aa5b8; --line: #2c3545;
+    --accent: #7fa8f5; --accent-soft: #1d2b47;
+    --now: #5fcf98; --now-soft: #173327; --manual: #e6b25a; --manual-soft: #3a2c12;
+    --plan: #a7b1c8; --plan-soft: #262d3b; --code-bg: #232a37;
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.7 var(--sans); padding-block: 40px 72px; padding-inline: 20px; }
+  .page { max-width: 880px; margin: 0 auto; display: grid; gap: 44px; }
+  .page > * { min-width: 0; }
+
+  h1 { font-size: 30px; line-height: 1.25; margin: 0 0 10px; letter-spacing: -0.01em; text-wrap: balance; }
+  h2 { font-size: 21px; line-height: 1.35; margin: 0 0 6px; text-wrap: balance; }
+  h3 { font-size: 16px; margin: 0 0 4px; }
+  p { margin: 0; }
+  .lede { color: var(--muted); max-width: 62ch; }
+  .sub { color: var(--muted); margin-bottom: 18px; max-width: 66ch; }
+  .meta { font-size: 13px; color: var(--muted); margin-top: 12px; }
+  a { color: var(--accent); }
+
+  code { font: 13px/1.5 var(--mono); background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+  pre { margin: 8px 0 0; background: var(--code-bg); border-radius: 6px; padding: 12px 14px; overflow-x: auto; font: 13px/1.6 var(--mono); }
+  pre code { background: none; padding: 0; }
+
+  .tag { display: inline-block; font-size: 12px; font-weight: 600; padding: 1px 9px; border-radius: 999px; white-space: nowrap; }
+  .tag.now { color: var(--now); background: var(--now-soft); }
+  .tag.manual { color: var(--manual); background: var(--manual-soft); }
+  .tag.plan { color: var(--plan); background: var(--plan-soft); }
+
+  /* 요약: 한 문장 답 */
+  .answer { background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: 6px; padding: 18px 20px; display: grid; gap: 8px; }
+  .answer b { font-weight: 600; }
+
+  /* 단계별 현재/최종 표 */
+  .stages { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .stage { display: grid; grid-template-columns: 132px 1fr 1fr; gap: 0; border-top: 1px solid var(--line); }
+  .stage:first-child { border-top: 0; }
+  .stage > div { padding: 14px 16px; min-width: 0; }
+  .stage > div + div { border-left: 1px solid var(--line); }
+  .stage .name { font-weight: 600; }
+  .stage.head > div { font-size: 12px; font-weight: 600; color: var(--muted); letter-spacing: 0.04em; padding-block: 9px; background: var(--bg); }
+  .stage p + p { margin-top: 6px; }
+  .stage .tag { margin-bottom: 6px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 13px; color: var(--muted); margin-top: 10px; }
+
+  /* 순서가 있는 절차 */
+  ol.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; counter-reset: step; }
+  ol.steps > li { counter-increment: step; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 16px 18px 16px 62px; position: relative; min-width: 0; }
+  ol.steps > li::before { content: counter(step); position: absolute; left: 18px; top: 16px; width: 28px; height: 28px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-weight: 700; display: grid; place-items: center; font-variant-numeric: tabular-nums; }
+  ol.steps p { margin-top: 4px; }
+  ol.steps ul { margin: 6px 0 0; padding-left: 18px; }
+  ol.steps li li { margin: 2px 0; }
+  .who { font-size: 12px; color: var(--muted); font-weight: 500; margin-left: 6px; }
+
+  /* 한 줄 흐름 */
+  .rail { display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; }
+  .rail > div { flex: 1 1 140px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; min-width: 0; }
+  .rail .k { font-size: 12px; color: var(--muted); font-weight: 600; }
+  .rail .v { font-weight: 600; margin: 2px 0 4px; }
+  .rail small { color: var(--muted); font-size: 13px; line-height: 1.5; display: block; }
+
+  .note { border: 1px dashed var(--line); border-radius: 8px; padding: 14px 18px; }
+  .note ul, .plain { margin: 6px 0 0; padding-left: 18px; }
+  .note li, .plain li { margin: 3px 0; }
+
+  .tablewrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+  table { border-collapse: collapse; width: 100%; min-width: 560px; }
+  th, td { text-align: left; padding: 10px 14px; border-top: 1px solid var(--line); vertical-align: top; }
+  thead th { border-top: 0; font-size: 12px; color: var(--muted); letter-spacing: 0.04em; background: var(--bg); }
+
+  @media (max-width: 680px) {
+    h1 { font-size: 25px; }
+    .stage { grid-template-columns: 1fr; }
+    .stage > div + div { border-left: 0; border-top: 1px dashed var(--line); }
+    .stage.head { display: none; }
+    .stage > div[data-col]::before { content: attr(data-col); display: block; font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 4px; }
+  }
+</style>
+</head>
+<body>
+<main class="page">
+
+<header>
+  <h1>Dogent 도입 흐름</h1>
+  <p class="lede">사내 PC에 설치해서 써 보고, 엔지니어가 새 스킬을 만들어 실행하고, 그 스킬을 공유·적용·자동화하기까지. 지금 만들어진 것으로 되는 부분과 아직 안 되는 부분을 나눠 적었습니다.</p>
+  <p class="meta">기준: 2026-10-14, Phase 2 진행 중 (크롬 확장 단독 구성) · 상세는 <code>README.md</code>, <code>docs/04-roadmap.md</code>, <code>docs/06-skill-authoring.md</code></p>
+</header>
+
+<section class="answer">
+  <p><b>지금 되는 것.</b> 확장을 직접 빌드해 개발자 모드로 설치하면, 사내 PC에서 스킬 실행과 스킬 만들기(녹화 → 품질 검사 → 시험 실행)까지 해 볼 수 있습니다.</p>
+  <p><b>지금 손으로 해야 하는 것.</b> 설치, 대상 시스템 주소 등록, 스킬 공유는 모두 "설정 파일 수정 → 다시 빌드 → 확장 다시 로드"를 거칩니다. 만든 스킬을 다른 사람이 쓰려면 스킬 파일을 저장소에 넣고 확장을 다시 만들어 나눠야 합니다.</p>
+  <p><b>아직 없는 것.</b> 정책 배포에 의한 자동 설치, 확장을 다시 깔지 않는 스킬 동기화, 스케줄 실행(자동화), 중앙 관리(Hub)는 Phase 2 후반~Phase 3 계획입니다.</p>
+</section>
+
+<section>
+  <h2>단계별로 본 지금과 최종</h2>
+  <p class="sub">왼쪽이 오늘 저장소에 있는 것으로 할 수 있는 방법, 오른쪽이 로드맵대로 다 만들어졌을 때의 모습입니다.</p>
+  <div class="stages">
+    <div class="stage head"><div>단계</div><div>지금</div><div>최종 (계획)</div></div>
+
+    <div class="stage">
+      <div class="name">설치</div>
+      <div data-col="지금"><span class="tag manual">수동</span>
+        <p>소스를 빌드한 폴더(<code>.output/chrome-mv3</code>)를 <code>chrome://extensions</code>에서 개발자 모드로 로드합니다. PC마다 직접 해야 합니다.</p></div>
+      <div data-col="최종 (계획)"><span class="tag plan">Phase 2 후반</span>
+        <p>사내 인증서로 서명한 확장을 사내 파일 서버에 올리고, 브라우저 정책으로 자동 설치·자동 업데이트합니다. 사용자는 아무것도 하지 않습니다.</p></div>
+    </div>
+
+    <div class="stage">
+      <div class="name">모델·시스템 연결</div>
+      <div data-col="지금"><span class="tag manual">수동</span>
+        <p>빌드하는 PC의 <code>.env.local</code>에 Gemma API 주소와 공용 키를, <code>dogent.config.ts</code>에 대상 시스템 주소를 적고 빌드합니다. 사용자는 설정을 입력하지 않습니다.</p>
+        <p>사내 Gemma로는 아직 돌려 보지 않았습니다. OpenAI 호환 <code>/chat/completions</code> 형식을 가정합니다.</p></div>
+      <div data-col="최종 (계획)"><span class="tag plan">Phase 3</span>
+        <p>허용 도메인, 모델 주소, 금지 동작을 운영자가 Hub에서 정책으로 내려보냅니다. 공용 키는 확장에 넣지 않고 Hub가 모델 호출에 대신 붙여, 사용자별 사용량을 구분하고 키를 바꿀 때 재배포하지 않습니다.</p></div>
+    </div>
+
+    <div class="stage">
+      <div class="name">스킬 실행</div>
+      <div data-col="지금"><span class="tag now">됨</span>
+        <p>패널에서 스킬을 골라 입력값을 넣고 실행합니다. 말로 요청하면 맞는 스킬과 입력값을 찾아 줍니다. 스킬이 없으면 "자유 요청"으로 현재 화면을 조작합니다.</p>
+        <p>저장·상신은 사용자 승인을 받아야 누르고, "시험 실행"은 그 직전에 멈춥니다.</p></div>
+      <div data-col="최종 (계획)"><span class="tag plan">Phase 3</span>
+        <p>같은 방식에 더해, 데스크탑 클라이언트가 PC의 폴더와 엑셀 양식을 다루고 여러 시스템을 묶은 리포트를 만듭니다.</p></div>
+    </div>
+
+    <div class="stage">
+      <div class="name">스킬 만들기</div>
+      <div data-col="지금"><span class="tag now">됨</span>
+        <p>패널의 "스킬 만들기"에서 업무를 한 번 해 보이면 절차서 초안이 나옵니다. 품질 검사(등급 A~F)와 시험 실행을 통과하면 배포를 요청할 수 있습니다.</p>
+        <p>초안은 만든 PC에서만 보이고 실행됩니다.</p></div>
+      <div data-col="최종 (계획)"><span class="tag plan">Phase 3</span>
+        <p>표의 페이지 넘김, 표 일괄 입력, 새 창을 여는 조작까지 녹화로 만들 수 있게 넓힙니다.</p></div>
+    </div>
+
+    <div class="stage">
+      <div class="name">공유·적용</div>
+      <div data-col="지금"><span class="tag manual">수동</span>
+        <p>초안의 <code>SKILL.md</code>를 내려받아 저장소의 <code>skills/&lt;id&gt;/</code>에 넣고 검토를 받습니다. 병합된 뒤 확장을 다시 빌드해 나눠야 다른 사람의 목록에 나타납니다.</p>
+        <p>즉 스킬 하나를 공유하려면 확장을 다시 배포해야 합니다.</p></div>
+      <div data-col="최종 (계획)"><span class="tag plan">Phase 3</span>
+        <p>검토를 통과한 스킬이 Git에서 각 PC로 동기화됩니다. 확장을 다시 깔지 않습니다. 개인용 스킬과 공용 스킬을 구분해 보여줍니다.</p></div>
+    </div>
+
+    <div class="stage">
+      <div class="name">자동화</div>
+      <div data-col="지금"><span class="tag plan">없음</span>
+        <p>사람이 패널에서 실행을 눌러야 합니다. 스킬에 <code>schedulable</code> 선언은 있지만 정해진 시각에 돌리는 기능은 없습니다.</p></div>
+      <div data-col="최종 (계획)"><span class="tag plan">Phase 3</span>
+        <p>데스크탑 클라이언트의 스케줄러가 조회·내려받기 스킬(R0~R1)을 정해진 시각에 돌립니다. 저장·상신이 있는 스킬(R3)은 사람의 승인이 필요하므로 무인으로 돌리지 않습니다.</p></div>
+    </div>
+
+    <div class="stage">
+      <div class="name">운영</div>
+      <div data-col="지금"><span class="tag manual">수동</span>
+        <p>실행 기록은 각 PC에 남고, 패널의 "기록 내보내기"로 JSON 파일을 받아 봅니다.</p></div>
+      <div data-col="최종 (계획)"><span class="tag plan">Phase 3~4</span>
+        <p>Hub가 기록을 모아 스킬별 실행 횟수·성공률을 보여주고, 성공률이 떨어지면 화면이 바뀐 것으로 보고 스킬 담당 부서에 알립니다. 문제가 생기면 중앙에서 멈춥니다.</p></div>
+    </div>
+  </div>
+  <div class="legend">
+    <span><span class="tag now">됨</span> 지금 그대로 쓸 수 있음</span>
+    <span><span class="tag manual">수동</span> 되지만 사람이 빌드·파일 복사를 해야 함</span>
+    <span><span class="tag plan">계획</span> 아직 만들지 않음</span>
+  </div>
+</section>
+
+<section>
+  <h2>지금 사내 PC에서 해 보는 순서</h2>
+  <p class="sub">개발자 한 명이 빌드해서 폴더를 건네면, 엔지니어는 3번부터 하면 됩니다.</p>
+  <ol class="steps">
+    <li>
+      <h3>먼저 확인할 것 <span class="who">개발 · 보안</span></h3>
+      <ul>
+        <li>사내 PC의 Chrome에서 <b>개발자 모드로 확장을 로드할 수 있는지</b>. 정책으로 막혀 있으면 이 방법은 쓸 수 없고, 서명·정책 배포가 먼저 필요합니다.</li>
+        <li>확장이 쓰는 권한: <code>sidePanel</code>, <code>scripting</code>, <code>storage</code>, <code>tabs</code>, <code>downloads</code>, 그리고 대상 시스템과 모델 API 주소에 대한 접근.</li>
+        <li>사내망에서 <code>pnpm install</code>이 되는지 (사내 npm 저장소). 안 되면 밖에서 빌드한 <code>.output/chrome-mv3</code> 폴더나 <code>pnpm zip</code>으로 만든 압축 파일을 반입합니다.</li>
+        <li>사내 Gemma API의 주소·키와 형식 (OpenAI 호환 <code>/chat/completions</code>인지). 다르면 <code>src/core/llm.ts</code>를 고쳐야 합니다.</li>
+      </ul>
+    </li>
+    <li>
+      <h3>공용 키와 대상 주소를 넣고 빌드 <span class="who">개발</span></h3>
+      <p>Gemma API의 공용 키는 저장소가 아니라 빌드하는 PC의 <code>.env.local</code>에 적습니다. 이 파일은 Git에 올라가지 않고, 빌드할 때 확장 안에 들어갑니다. 조작할 시스템의 주소는 <code>dogent.config.ts</code>에 적습니다. 여기 없는 사이트는 스킬에 적어도 동작하지 않습니다.</p>
+<pre><code>cp .env.example .env.local       // 복사한 뒤 값을 채움
+  WXT_LLM_BASE_URL=https://gemma.example.internal/v1
+  WXT_LLM_API_KEY=(공용 키)
+  WXT_LLM_MODEL=(모델 이름)
+
+// dogent.config.ts
+sitePermissions: ['https://mes.example.internal/*'],   // 조작할 사내 시스템
+
+pnpm install
+pnpm build        // .output/chrome-mv3 폴더가 만들어짐
+pnpm zip          // 나눠 줄 압축 파일</code></pre>
+      <p>공용 키는 확장 파일 안에 글자 그대로 들어가므로, 빌드 결과물은 사내에서만 나누고 저장소에는 올리지 않습니다.</p>
+    </li>
+    <li>
+      <h3>확장 설치 <span class="who">엔지니어</span></h3>
+      <p><code>chrome://extensions</code> → 개발자 모드 켜기 → "압축해제된 확장 프로그램을 로드합니다" → 받은 폴더 선택. 툴바의 Dogent 아이콘을 누르면 오른쪽에 패널이 열립니다.</p>
+      <p>지금까지는 Chromium으로만 시험했습니다. Edge는 따로 확인이 필요합니다.</p>
+    </li>
+    <li>
+      <h3>모델 연결 <span class="who">엔지니어</span></h3>
+      <p>공용 키를 넣어 빌드한 확장이면 할 일이 없습니다. 설치하면 바로 모델에 연결되고, 키는 설정 화면에 보이지 않습니다. 키 없이 빌드한 확장이면 패널 → 설정에서 API 주소, 모델 이름, API 키를 넣습니다.</p>
+      <p>번들된 스킬과 녹화로 만든 스킬은 단계마다 누를 요소와 값이 적혀 있어 대부분 모델 없이 돕니다. 모델은 말로 한 요청을 해석할 때, 자유 요청, 그리고 화면이 달라져 적힌 대로 안 될 때 쓰입니다.</p>
+    </li>
+    <li>
+      <h3>화면이 읽히는지 확인 <span class="who">엔지니어</span></h3>
+      <p>업무 화면을 열고 로그인한 뒤, 스킬 목록에서 "자유 요청"을 골라 "이 화면에서 조회 버튼을 눌러줘"처럼 시켜 봅니다. 화면에 파란 테두리가 뜨고 요소가 가리켜지면 그 시스템을 읽고 조작할 수 있는 것입니다.</p>
+      <p>로그인 화면에서는 일부러 멈춥니다. 비밀번호는 읽지도 입력하지도 않습니다.</p>
+    </li>
+    <li>
+      <h3>스킬을 만들어 실행 <span class="who">엔지니어</span></h3>
+      <p>아래 "새 스킬을 만드는 흐름"대로 녹화 → 검사 → 초안 저장 → 시험 실행을 합니다. 여기까지는 다시 빌드하지 않고 그 PC에서 바로 됩니다.</p>
+    </li>
+    <li>
+      <h3>다른 사람과 공유 <span class="who">엔지니어 → 검토자 → 개발</span></h3>
+      <p>"내 초안"에서 <code>SKILL.md</code>를 내려받아 저장소의 <code>skills/&lt;id&gt;/SKILL.md</code>로 올리고 검토를 받습니다. 병합 후 개발자가 다시 빌드한 폴더를 나누면 모두의 스킬 목록에 나타납니다.</p>
+<pre><code>pnpm skill:lint   // 저장소의 스킬 전체를 같은 규칙으로 검사 (전부 A등급이어야 통과)
+pnpm build</code></pre>
+    </li>
+  </ol>
+</section>
+
+<section>
+  <h2>실제 화면에서 되는 것과 안 되는 것</h2>
+  <p class="sub">모의 사이트로 검증한 범위입니다. 실제 사내 시스템에서는 Phase 0의 화면 구조 조사로 확인해야 합니다.</p>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>화면의 구성</th><th>상태</th><th>비고</th></tr></thead>
+      <tbody>
+        <tr><td>표준 HTML의 입력란·선택 상자·버튼·링크</td><td><span class="tag now">됨</span></td><td>라벨이나 버튼 글자로 요소를 찾습니다</td></tr>
+        <tr><td>iframe 안의 업무 화면</td><td><span class="tag now">됨</span></td><td>포털 안에 들어 있는 화면</td></tr>
+        <tr><td>HTML 표 읽기, 페이지 넘기며 전부 추출</td><td><span class="tag now">됨</span></td><td>추출한 행 수를 화면의 총 건수와 대조</td></tr>
+        <tr><td>엑셀·CSV 내려받기 버튼으로 받은 파일 읽기</td><td><span class="tag now">됨</span></td><td>xlsx, csv. 구형 xls는 안 됨</td></tr>
+        <tr><td>엑셀 파일을 화면의 입력 표에 일괄 입력</td><td><span class="tag now">됨</span></td><td>입력 후와 저장 전에 화면 값을 원본과 대조</td></tr>
+        <tr><td>팝업 창에서 값 고르기, 알림·확인 창</td><td><span class="tag now">됨</span></td><td>확인 창은 기본 취소. 저장·상신을 묻는 창은 승인받은 제출에서만 확인</td></tr>
+        <tr><td>표 안의 링크·버튼을 따로 누르기</td><td><span class="tag plan">안 됨</span></td><td>표는 통째로 한 요소로 읽힙니다</td></tr>
+        <tr><td>전용 그리드(화면에 보이는 행만 그리는 방식), 캔버스로 그린 화면</td><td><span class="tag plan">안 됨</span></td><td>내려받기 버튼이 있으면 그쪽을 쓰고, 없으면 시스템별 처리기를 따로 만들어야 합니다</td></tr>
+        <tr><td>IE 전용, ActiveX, 설치형 프로그램</td><td><span class="tag plan">범위 밖</span></td><td></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2>새 스킬을 만드는 흐름</h2>
+  <p class="sub">엔지니어가 형식을 외우지 않고 만들 수 있게, 초안의 모양과 품질 기준을 도구가 정합니다. 1~4는 지금 패널에서 됩니다.</p>
+  <ol class="steps">
+    <li>
+      <h3>녹화 <span class="tag now">됨</span></h3>
+      <p>업무의 첫 화면을 열고, 패널 → 스킬 만들기에서 스킬 ID·이름·설명·담당 부서를 적은 뒤 "녹화 시작". 평소대로 업무를 한 번 합니다. 표를 엑셀로 내려야 하면 "화면의 표 읽기 추가"를 누르거나 화면의 엑셀 내려받기 버튼을 누릅니다.</p>
+    </li>
+    <li>
+      <h3>입력받을 값 고르기 <span class="tag now">됨</span></h3>
+      <p>녹화된 조작마다 "실행할 때마다 입력받기"를 켜면 스킬의 입력 항목이 되고(라인, IP, 사유 등), 끄면 녹화한 값으로 고정됩니다. 실수로 누른 것은 뺍니다.</p>
+    </li>
+    <li>
+      <h3>품질 검사 <span class="tag now">됨</span></h3>
+      <p>초안에 등급과 지적 사항이 붙습니다. 오류가 있으면(F) 저장할 수 없고, 배포를 요청하려면 B 이상이어야 합니다. 저장·상신 버튼을 눌렀으면 승인 통제가 자동으로 선언됩니다.</p>
+    </li>
+    <li>
+      <h3>시험 실행 <span class="tag now">됨</span></h3>
+      <p>"초안으로 저장"하면 실행 탭의 목록에 <code>[초안]</code>으로 나타납니다. 녹화할 때와 다른 값으로 돌려 봅니다. 저장·상신이 있으면 "시험 실행"을 켜서 제출 직전에 멈추게 합니다. 내용을 고치면 다시 돌려야 합니다.</p>
+    </li>
+    <li>
+      <h3>배포 요청과 검토 <span class="tag manual">수동</span></h3>
+      <p><code>SKILL.md</code>를 내려받아 저장소에 올립니다. 검토자는 도구가 판단할 수 없는 것만 봅니다: 자동화해도 되는 업무인지, 고정한 값이 맞는지, 넣으면 안 되는 값의 규칙(<code>policy.yaml</code>)이 충분한지.</p>
+    </li>
+    <li>
+      <h3>적용 <span class="tag manual">수동</span></h3>
+      <p>병합 후 확장을 다시 빌드해 나눕니다. 최종 모습에서는 이 단계가 스킬 동기화로 바뀌어 사람 손이 가지 않습니다.</p>
+    </li>
+  </ol>
+</section>
+
+<section>
+  <h2>다 만들어졌을 때의 흐름</h2>
+  <p class="sub">로드맵의 Phase 3(파일럿)까지 끝난 뒤의 모습입니다. 아래는 전부 계획이며 아직 만들지 않았습니다.</p>
+  <div class="rail">
+    <div><div class="k">설치</div><div class="v">정책 배포</div><small>서명된 확장과 데스크탑 클라이언트가 자동 설치·업데이트</small></div>
+    <div><div class="k">생성</div><div class="v">녹화 → 검사 → 시험</div><small>엔지니어가 자기 PC에서. 지금과 같음</small></div>
+    <div><div class="k">공유</div><div class="v">Git 검토</div><small>배포 요청을 올리면 CI가 같은 규칙으로 다시 검사</small></div>
+    <div><div class="k">적용</div><div class="v">스킬 동기화</div><small>승인된 버전만 각 PC로. canary → pilot → 전체</small></div>
+    <div><div class="k">자동화</div><div class="v">스케줄 실행</div><small>조회·내려받기(R0~R1)만 무인. 결과 파일은 지정 폴더에</small></div>
+    <div><div class="k">운영</div><div class="v">Hub</div><small>성공률, 화면 변경 감지, 정책 배포, 긴급 정지</small></div>
+  </div>
+
+  <div class="note" style="margin-top:16px">
+    <h3>자동화의 범위</h3>
+    <ul>
+      <li>사용자 PC와 그 사람의 로그인 세션 안에서만 돕니다. 서버에서 사람 없이 도는 완전 자동화는 범위 밖입니다.</li>
+      <li>저장·상신·삭제가 들어가는 스킬은 스케줄로 돌려도 승인 화면에서 사람을 기다립니다. 결재를 대신하지 않습니다.</li>
+      <li>로그인이 풀려 있으면 중단하고 알립니다. 계정이나 비밀번호를 저장해 다시 로그인하지 않습니다.</li>
+    </ul>
+  </div>
+</section>
+
+<section>
+  <h2>거기까지 남은 일</h2>
+  <p class="sub">지금의 수동 단계를 없애는 데 필요한 작업을 순서대로 적었습니다.</p>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>없애려는 불편</th><th>필요한 작업</th><th>단계</th></tr></thead>
+      <tbody>
+        <tr><td>사내 Gemma로 돌려 본 적이 없음</td><td>API 형식·속도·할당량 실측, 실제 화면 10개로 요소 고르기 정답률 측정</td><td>Phase 0</td></tr>
+        <tr><td>PC마다 개발자 모드로 직접 설치</td><td>확장 서명, 사내 파일 서버 게시, 브라우저 정책 설치</td><td>Phase 2</td></tr>
+        <tr><td>화면이 조금 바뀌면 모델을 다시 부름</td><td>모델이 찾아낸 경로를 저장해 다음 실행에 재사용, 실패하면 다시 찾기</td><td>Phase 2</td></tr>
+        <tr><td>스킬 하나 공유하려고 확장을 다시 배포</td><td>스킬 Git 동기화, 개인·공용 구분</td><td>Phase 3</td></tr>
+        <tr><td>주소·모델 설정을 파일로 관리</td><td>Hub의 정책 배포</td><td>Phase 3</td></tr>
+        <tr><td>사람이 눌러야 실행됨</td><td>데스크탑 클라이언트와 스케줄러, 폴더 접근</td><td>Phase 3</td></tr>
+        <tr><td>스킬이 깨져도 실패해 봐야 앎</td><td>실행 기록 중앙 수집, 스킬별 성공률 모니터링</td><td>Phase 3</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+</main>
+</body>
+</html>
