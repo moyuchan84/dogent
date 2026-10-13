@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>재공 현황 조회 - 모의 MES</title>
+<style>
+  body { font: 14px "Malgun Gothic", sans-serif; margin: 24px; color: #1c2733; }
+  h1 { font-size: 20px; }
+  .cond { display: flex; gap: 14px; align-items: end; padding: 12px; background: #f0f3f7; border-radius: 6px; flex-wrap: wrap; }
+  .cond label { display: grid; gap: 3px; font-size: 12px; color: #55606e; }
+  select, input, button { font: inherit; padding: 5px 8px; }
+  .bar { display: flex; justify-content: space-between; align-items: center; margin: 14px 0 6px; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { border: 1px solid #d5dbe3; padding: 4px 8px; text-align: left; }
+  th { background: #e8edf3; }
+  td.num { text-align: right; }
+  .hold { color: #b3261e; font-weight: 600; }
+  #msg { color: #b3261e; margin-top: 8px; }
+</style>
+</head>
+<body>
+<h1>재공 현황 조회</h1>
+
+<div class="cond">
+  <label for="line">라인
+    <select id="line">
+      <option value="">선택</option>
+      <option>6라인</option><option>7라인</option><option>8라인</option>
+    </select>
+  </label>
+  <label for="step">공정
+    <select id="step">
+      <option>전체</option>
+      <option>PHOTO</option><option>ETCH</option><option>DIFF</option><option>CMP</option><option>IMP</option>
+    </select>
+  </label>
+  <label for="product">제품코드
+    <input id="product" placeholder="일부만 입력해도 됩니다">
+  </label>
+  <button id="query">조회</button>
+  <button id="saveCond">조건 저장</button>
+</div>
+<div id="msg"></div>
+
+<div class="bar">
+  <span id="total"></span>
+  <span>
+    <button id="prev" disabled>이전</button>
+    <span id="pageinfo"></span>
+    <button id="next" disabled>다음</button>
+  </span>
+</div>
+
+<div id="gridwrap">
+  <table id="wipGrid" aria-label="재공 목록">
+    <thead><tr><th>Lot ID</th><th>제품</th><th>공정</th><th>수량</th><th>상태</th><th>정체시간</th></tr></thead>
+    <tbody></tbody>
+  </table>
+</div>
+
+<script>
+  // ?expired=1 이면 세션이 만료된 것처럼 로그인 화면으로 보낸다.
+  if (location.search.includes('expired=1')) location.replace('login.html');
+
+  const PAGE_SIZE = 50;
+  const $ = (id) => document.getElementById(id);
+  let rows = [];
+  let page = 0;
+
+  function render() {
+    const pages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+    const tbody = $('wipGrid').querySelector('tbody');
+    tbody.innerHTML = '';
+    for (const r of rows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)) {
+      const tr = document.createElement('tr');
+      r.forEach((cell, i) => {
+        const td = document.createElement('td');
+        td.textContent = cell;
+        if (i === 3 || i === 5) td.className = 'num';
+        if (i === 4 && cell === 'HOLD') td.className = 'hold';
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    }
+    $('total').textContent = '총 ' + rows.length + '건';
+    $('pageinfo').textContent = (page + 1) + ' / ' + pages + ' 페이지';
+    $('prev').disabled = page === 0;
+    $('next').disabled = page >= pages - 1;
+  }
+
+  $('query').addEventListener('click', async () => {
+    $('msg').textContent = '';
+    const line = $('line').value;
+    if (!line) { $('msg').textContent = '라인을 선택하세요.'; return; }
+    const wrap = $('gridwrap');
+    wrap.setAttribute('aria-busy', 'true');
+    $('total').textContent = '조회 중...';
+    const params = new URLSearchParams({ line, step: $('step').value });
+    const [data] = await Promise.all([
+      fetch('/api/wip?' + params).then((r) => r.json()),
+      new Promise((r) => setTimeout(r, 600)),
+    ]);
+    const product = $('product').value.trim();
+    rows = product ? data.rows.filter((r) => r[1].includes(product)) : data.rows;
+    page = 0;
+    wrap.removeAttribute('aria-busy');
+    render();
+  });
+  $('prev').addEventListener('click', () => { page--; render(); });
+  $('next').addEventListener('click', () => { page++; render(); });
+  $('saveCond').addEventListener('click', () => { $('msg').textContent = '조회 조건을 저장했습니다.'; });
+</script>
+</body>
+</html>

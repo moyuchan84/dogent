@@ -1,0 +1,120 @@
+# Dogent
+
+스킬(업무 절차서)을 따라 사내 웹 시스템을 조작하는 브라우저 업무 에이전트. 기획·설계 문서는 [docs/](docs/)에 있습니다.
+
+현재 단계: **Phase 1 (PoC)** — 크롬 확장 단독, 조회 업무(재공 확인) 1건.
+
+## 빠르게 돌려 보기
+
+Gemma 없이 모의 사이트와 모의 모델로 전체 흐름을 확인할 수 있습니다.
+
+```bash
+pnpm install
+pnpm build            # .output/chrome-mv3 에 확장 생성
+pnpm mock:site        # 터미널 1: 모의 재공 조회 사이트 http://localhost:4173/wip.html
+pnpm mock:llm         # 터미널 2: 모의 모델 API http://localhost:4174/v1
+```
+
+1. Chrome에서 `chrome://extensions` → 개발자 모드 → "압축해제된 확장 프로그램을 로드합니다" → `.output/chrome-mv3` 선택
+2. `http://localhost:4173/wip.html` (또는 iframe 구성인 `/portal.html`)을 연다
+3. 툴바의 Dogent 아이콘을 눌러 사이드 패널을 연다
+4. "7라인 재공 확인해줘" 입력 → 해석 → 실행
+
+조회, 페이지 넘기며 추출, 가공을 거쳐 `재공확인_7라인.xlsx`(원본 / 정체Lot / 공정별집계)가 다운로드됩니다.
+
+모의 모델은 재공 확인 스킬 하나를 규칙으로 따라가는 스크립트입니다. 배관이 도는지만 확인하며, 모델의 판단 능력은 검증하지 못합니다.
+
+## 로컬 Ollama로 돌려 보기
+
+실제 모델의 판단으로 돌려 보려면 모의 모델 대신 Ollama 중계 서버를 띄웁니다. 포트가 모의 모델과 같아서 확장을 다시 빌드할 필요가 없습니다.
+
+```bash
+ollama pull gemma3:12b     # 사내 모델과 가까운 Gemma 계열 권장
+pnpm mock:site             # 터미널 1
+pnpm ollama:proxy          # 터미널 2 (pnpm mock:llm 대신)
+```
+
+그다음 사이드 패널 → 설정에서 다음을 바꾸고 저장합니다. API 주소는 기본값 `http://localhost:4174/v1` 그대로 둡니다.
+
+- 모델 이름: Ollama 모델명 (예: `gemma3:12b`)
+- JSON 출력 모드: 켬 (Ollama의 JSON 강제 출력을 써서 형식 오류가 줄어듭니다)
+- 제한 시간 배율: GPU 없이 CPU로 도는 PC라면 3 이상. 기본은 응답 1회 60초, 스킬 전체 300초라서 느린 환경에서는 그 전에 끊깁니다
+
+중계 서버 터미널에 요청마다 입력·출력 토큰 수와 소요 시간이 찍힙니다. 한 번 실행에 모델을 11회 이상 부르고 회당 입력이 수천 토큰이므로, CPU만으로는 8B급 모델도 한 번 실행에 10분 이상 걸릴 수 있습니다. 그런 PC에서는 `gemma3:4b` 같은 작은 모델로 흐름을 먼저 확인하는 편이 낫습니다.
+
+확장이 Ollama(11434)를 직접 부르지 않고 중계 서버를 거치는 이유는 두 가지입니다.
+
+- Ollama는 `chrome-extension://` 출처의 요청을 403으로 거절합니다.
+- Ollama의 OpenAI 호환 API는 컨텍스트 길이를 요청마다 정할 수 없고 기본값이 작아, 화면 스냅샷이 든 긴 프롬프트의 앞부분이 잘립니다. 중계 서버는 고유 API로 `num_ctx`(기본 8192, `OLLAMA_NUM_CTX`로 변경)를 지정합니다.
+
+사람 손을 거치지 않고 반복 측정하려면 다음을 씁니다. 실제 Chromium에 확장을 올려 같은 시나리오를 돌리고, 실패하면 모델이 한 동작 기록을 출력합니다.
+
+```bash
+# PowerShell:  $env:OLLAMA_MODEL='gemma3:12b'; $env:RUNS='20'; pnpm e2e:ollama
+OLLAMA_MODEL=gemma3:12b RUNS=20 pnpm e2e:ollama
+```
+
+`HEADED=1`을 주면 브라우저 창이 떠서 에이전트가 화면을 조작하는 모습을 볼 수 있습니다(업무 화면 창과 패널 창이 따로 열림). 모의 모델에도 쓸 수 있습니다: `HEADED=1 pnpm e2e`.
+
+`TIMEOUT_SCALE=3`으로 제한 시간을 늘리고, `ONLY=iframe`처럼 이름 일부를 주면 그 시나리오만 돌립니다.
+
+## 사내 Gemma에 연결하기
+
+1. `dogent.config.ts`의 `llmPermissions`에 Gemma API 호스트를, `sitePermissions`에 대상 시스템 주소를 넣는다
+2. `skills/wip-check/SKILL.md`의 `domains`와 1단계의 화면 주소를 실제 시스템으로 바꾼다
+3. `pnpm build` 후 확장을 다시 로드한다
+4. 사이드 패널 → 설정에서 API 주소(`.../v1`), 모델 이름, API 키를 입력한다
+
+API는 OpenAI 호환 `/chat/completions` 형식을 가정합니다. 형식이 다르면 `src/core/llm.ts`만 고치면 됩니다. 툴 호출 기능은 쓰지 않고, 모델이 JSON 객체 하나를 답하면 스키마로 검증해 어긋날 때 다시 요청합니다.
+
+## 검증
+
+```bash
+pnpm typecheck
+pnpm test             # 단위·통합 테스트 (jsdom에 모의 사이트를 올려 스킬을 끝까지 실행)
+pnpm build && pnpm e2e   # 빌드된 확장을 실제 Chromium에 올려 실행 (최초 1회: pnpm exec playwright install chromium)
+```
+
+## 구조
+
+```
+src/core/      에이전트 코어. 브라우저·확장 API에 의존하지 않는다 (Phase 3에서 데스크탑 클라이언트로 그대로 옮김)
+  skill.ts       SKILL.md 파싱, 입력 검증
+  loop.ts        관찰 → 판단 → 검사 → 실행 반복, 중단 조건
+  actions.ts     도구별 인자 스키마, 모델 응답 검증
+  policy.ts      허용 도메인, 저장·상신 계열 버튼 차단
+  prompt.ts      모델에 주는 지시문과 차례별 입력
+  dataset.ts     표 데이터 보관 (모델에는 컬럼과 샘플 행만 전달)
+  transform.ts   선언형 가공 (filter / group / sort / select / limit)
+  excel.ts       엑셀 저장
+  planner.ts     자연어 요청 → 스킬과 입력값
+src/page/      페이지 안에서 도는 부분. 화면을 요소 목록으로 읽고 ref로 조작한다
+src/ext/       chrome.* 를 쓰는 어댑터 (탭 제어, 설정·실행 기록 저장, 스킬 번들)
+entrypoints/   확장 진입점 (사이드 패널, 백그라운드, 페이지 에이전트)
+skills/        스킬 문서. 형식은 docs/05-skill-spec.md
+mock-site/     개발·테스트용 모의 재공 조회 사이트
+tools/         모의 모델 서버
+```
+
+## Phase 1에 들어 있는 것과 없는 것
+
+들어 있는 것
+
+- 화면 스냅샷(요소 번호 부여, iframe, 표 요약), 이동·클릭·입력·선택·대기, 표 추출(페이지 넘김)
+- 스킬 문서 로딩, 자연어 요청 해석, 입력 폼
+- 단계 진행을 루프가 관리 (모델은 `next_step`으로 한 칸씩만 넘어가고, `finish`는 마지막 단계에서만 가능)
+- 작은 모델 보정: 요소 이름으로 적힌 ref를 번호로 변환, 이미 열린 화면으로의 재이동 차단, 같은 페이지 중복 추출 거부
+- 모델 응답 스키마 검증과 재요청, 최대 동작 수·제한 시간·연속 실패·반복 동작 중단
+- 허용 도메인 제한(manifest 권한 + 스킬 `domains`), 저장·상신 계열 버튼 차단, 로그인 화면 감지 시 중단
+- 로컬 가공과 엑셀 저장, 실행 기록 저장·내보내기, 중지 버튼
+
+아직 없는 것 (Phase 2 이후)
+
+- 저장·상신 승인(R3), 엑셀 읽기와 웹 입력, 파일 다운로드 처리
+- 성공 경로 캐시, 스크린샷 보조 입력, `chrome.debugger` 기반 입력
+- 스킬의 "확인" 조건을 규칙으로 검증하는 기능 (지금은 모델이 화면을 보고 판단)
+- 데스크탑 클라이언트, 스킬 Git 동기화, Hub
+
+## 스킬 추가
+
+`skills/<id>/SKILL.md`를 만들고 다시 빌드하면 사이드 패널의 스킬 목록에 나타납니다. 선언부가 잘못되면 패널 상단에 오류가 표시됩니다.
