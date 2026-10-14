@@ -15,4 +15,5 @@ export * from './prompt';
 export * from './shared';
 export * from './skill';
 export * from './snapshot';
+export * from './stats';
 export * from './transform';

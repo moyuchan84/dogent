@@ -688,6 +688,39 @@ limits:
     });
     return `${r.sec}초`;
   });
+
+  await scenario('기록: 지난 실행을 다시 열어 보고 스킬별 성공률과 연속 실패를 봄', async (openPages) => {
+    const { target, panel } = await openPages('/wip.html');
+    await panel.evaluate(() => chrome.storage.local.remove('runs'));
+    // 같은 탭에서 화면만 바꿔 가며 여러 번 실행한다.
+    const once = async (path, line) => {
+      await target.goto(SITE + path);
+      await panel.reload();
+      await panel.selectOption('#skill', 'wip-check');
+      await panel.fill('[data-input=line]', line);
+      return (await run(panel)).status;
+    };
+    assert.equal(await once('/wip.html', '8라인'), 'done');
+    // 로그인이 풀려 멈춘 실행은 스킬의 실패로 세지 않는다.
+    assert.equal(await once('/login.html', '8라인'), 'aborted', '로그인 화면');
+    assert.equal(await once('/wip.html', '9라인'), 'aborted', '없는 라인 1');
+    assert.equal(await once('/wip.html', '9라인'), 'aborted', '없는 라인 2');
+
+    await panel.reload();
+    await panel.click('#tab-history');
+    const row = panel.locator('.stats tr[data-skill=wip-check]');
+    await row.waitFor();
+    assert.equal(await row.locator('[data-rate]').innerText(), '33% (1/3)');
+    assert.equal(await row.getAttribute('data-broken'), 'true');
+    assert.match(await row.innerText(), /최근 2번 연속 실패/);
+    assert.equal(await panel.locator('.runs > li').count(), 4);
+    // 가장 최근 실행을 열면 그때의 동작과 결과가 보인다.
+    await panel.locator('.runs > li').first().locator('.run-head').click();
+    assert.match(await panel.locator('.run-body').innerText(), /line=9라인/);
+    await panel.screenshot({ path: join(ROOT, 'test-results/panel-history.png'), fullPage: true });
+    await panel.click('#clear-runs');
+    await panel.getByText('아직 실행한 기록이 없습니다').waitFor();
+  });
 } finally {
   await context.close();
   site.close();

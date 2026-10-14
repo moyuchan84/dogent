@@ -148,13 +148,14 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps, memo: PathM
     return { ok: false, result: `${result}. ${hint}` };
   };
 
-  const end =(status: RunStatus, message: string): RunResult => {
+  const end = (status: RunStatus, message: string, cause?: RunResult['cause']): RunResult => {
     const progress = `스킬 ${lastStep}/${skill.steps.length}단계, 동작 ${history.length}회 수행`;
     const full = status === 'done' ? message : `${message} (${progress})`;
     emit({ type: 'end', status, message: full });
     return {
       status,
       message: full,
+      ...(cause ? { cause } : {}),
       lastStep,
       actions: history.length,
       files: savedFiles,
@@ -167,7 +168,7 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps, memo: PathM
   // 입력값 정책은 화면에 접속하기 전에 적용한다. 호출하는 쪽이 검증을 빠뜨려도 여기서 막는다.
   const violations = checkInputRules(skill, inputs);
   if (violations.length > 0) {
-    return end('aborted', `입력값이 정책에 맞지 않아 시작하지 않았습니다: ${violations.join(' / ')}`);
+    return end('aborted', `입력값이 정책에 맞지 않아 시작하지 않았습니다: ${violations.join(' / ')}`, 'policy');
   }
   // 파일 입력은 호출하는 쪽이 미리 읽어 데이터셋에 넣어 둔다.
   for (const spec of skill.inputs) {
@@ -396,7 +397,7 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps, memo: PathM
       const snap = await browser.snapshot();
       emit({ type: 'observe', n, url: snap.url, title: snap.title });
       if (snap.hasPassword) {
-        return end('aborted', '로그인 화면이 감지되었습니다. 직접 로그인한 뒤 다시 실행해 주세요');
+        return end('aborted', '로그인 화면이 감지되었습니다. 직접 로그인한 뒤 다시 실행해 주세요', 'login');
       }
       if (snap.dialogs?.length) {
         stepDialogs.push(...snap.dialogs.map((d) => d.message));
@@ -471,7 +472,7 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps, memo: PathM
           }
           const approved = await ui.approve(request);
           emit({ type: 'approval', n, request, approved, dryRun: false });
-          if (!approved) return end('aborted', `사용자가 "${button}"을(를) 승인하지 않았습니다`);
+          if (!approved) return end('aborted', `사용자가 "${button}"을(를) 승인하지 않았습니다`, 'user');
           submitted.add(current);
           try {
             outcome = await execute(action, snap, true);
