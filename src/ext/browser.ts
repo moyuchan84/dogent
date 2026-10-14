@@ -229,7 +229,22 @@ export class ChromeBrowser implements BrowserPort {
 
   /** 사람의 조작 녹화를 켜거나 끈다. 새로 열린 화면에도 걸리도록 녹화 중에는 주기적으로 다시 부른다. */
   async record(on: boolean): Promise<void> {
+    // 사람이 연 새 창도 따라가며 녹화한다. 알림·확인 창은 그대로 뜨게 두고 내용과 답만 적는다.
+    if (on) browser.tabs.onCreated.addListener(this.onTabCreated);
+    else browser.tabs.onCreated.removeListener(this.onTabCreated);
+    await this.follow();
     await this.run('record', [on]).catch(() => {});
+    await this.dialogs({ do: on ? 'watch' : 'off' });
+  }
+
+  /** 녹화하는 동안 뜬 알림·확인 창. 한 번 읽으면 비워진다. */
+  recordedDialogs(): Promise<PageDialog[]> {
+    return this.dialogs({ do: 'drain' });
+  }
+
+  /** 이 탭이 지금 다루는 창이거나, 거기서 열린 창인지 */
+  owns(tabId: number): boolean {
+    return tabId === this.tabId || tabId === this.opened || this.openers.includes(tabId);
   }
 
   /** 화면이 멈출 때까지 기다린 뒤 읽는다. 사람이 조작한 직후의 결과 화면을 볼 때 쓴다. */

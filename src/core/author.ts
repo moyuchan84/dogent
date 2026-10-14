@@ -1,5 +1,5 @@
 import { SUBMIT_PATTERN, looksLikeDownload } from './policy';
-import type { PageSnapshot, RecordedEvent } from './types';
+import type { PageDialog, PageSnapshot, RecordedEvent } from './types';
 
 /**
  * 녹화한 조작으로 스킬 초안을 만든다.
@@ -10,10 +10,12 @@ import type { PageSnapshot, RecordedEvent } from './types';
  * - 저장·상신 계열 버튼을 누르면 R3, submit_steps, submit_labels가 자동으로 선언된다.
  */
 export type AuthorStep =
-  | (Extract<RecordedEvent, { kind: 'click' }> & { expect?: string })
+  /** dialogs는 누른 뒤에 뜬 알림·확인 창과 사람이 한 답이다. */
+  | (Extract<RecordedEvent, { kind: 'click' }> & { expect?: string; dialogs?: PageDialog[] })
   /** variable이면 실행할 때마다 입력받고, 아니면 녹화한 값을 그대로 쓴다. */
   | (Extract<RecordedEvent, { kind: 'type' | 'select' }> & { variable: boolean })
-  | { kind: 'extract'; name: string };
+  /** next는 다음 페이지 버튼의 이름. 있으면 마지막 페이지까지 넘기며 읽는다. */
+  | { kind: 'extract'; name: string; next?: string };
 
 export interface DraftMeta {
   id: string;
@@ -111,8 +113,12 @@ export function draftSkill(meta: DraftMeta, start: DraftStart, steps: AuthorStep
     if (step.kind === 'extract') {
       const dataset = `data${datasets.length + 1}`;
       datasets.push(dataset);
-      push(`extract_table로 "${step.name}" 표를 데이터셋 \`${dataset}\`에 추출한다. args는 다음을 그대로 쓴다.`, { ref: step.name, dataset }, `dataset(${q(dataset)})`);
-      notes.push(`${n}단계: 표가 여러 페이지면 인자에 "next_ref": "다음" 처럼 다음 페이지 버튼 이름을 더하세요.`);
+      push(
+        `extract_table로 "${step.name}" 표를 ${step.next ? `"${step.next}" 버튼으로 마지막 페이지까지 넘기며 ` : ''}데이터셋 \`${dataset}\`에 추출한다. args는 다음을 그대로 쓴다.`,
+        step.next ? { ref: step.name, dataset, next_ref: step.next } : { ref: step.name, dataset },
+        `dataset(${q(dataset)})`,
+      );
+      if (!step.next) notes.push(`${n}단계: 표가 여러 페이지면 인자에 "next_ref": "다음" 처럼 다음 페이지 버튼 이름을 더하세요.`);
       continue;
     }
     if (step.kind === 'click') {
@@ -129,15 +135,24 @@ export function draftSkill(meta: DraftMeta, start: DraftStart, steps: AuthorStep
         continue;
       }
       const toggle = step.role === 'checkbox' || step.role === 'radio';
+      const shown = step.dialogs ?? [];
+      const agreed = shown.filter((d) => d.kind === 'confirm' && d.accepted);
+      // 마지막 알림 창의 첫 문장. 접수 번호처럼 매번 달라지는 뒷부분은 검사에 넣지 않는다.
+      const said = shown.filter((d) => d.kind === 'alert').pop()?.message.split(/[.!?\n]/)[0].trim();
       const parts = toggle
         ? [`value(${q(step.name)}) == "선택됨"`]
-        : ['did("click")', ...(step.expect ? [`text(${q(step.expect)})`] : [])];
-      const submit = SUBMIT_PATTERN.test(step.name);
+        : ['did("click")', ...(step.expect ? [`text(${q(step.expect)})`] : []), ...(said && quotable(said) ? [`dialog(${q(said)})`] : [])];
+      // 버튼 이름이 평범해도 "상신하시겠습니까?"에 확인을 눌렀으면 제출이다.
+      const submit = SUBMIT_PATTERN.test(step.name) || agreed.some((d) => SUBMIT_PATTERN.test(d.message));
+      const accept = agreed.length > 0 && !submit;
       push(
         `click으로 "${step.name}" ${toggle ? '항목을 선택한다' : '버튼을 한 번 누른다'}. args는 다음을 그대로 쓴다.${submit ? ' 누르기 전에 사용자 승인을 받는다.' : ''}`,
-        step.dup && step.row ? { ref: step.name, row: step.row } : { ref: step.name },
+        { ref: step.name, ...(step.dup && step.row ? { row: step.row } : {}), ...(accept ? { accept_dialog: true } : {}) },
         quotable(step.name) ? parts.join(' and ') : undefined,
       );
+      if (accept) notes.push(`${n}단계: 확인 창 "${agreed[0].message}"에 확인을 누르도록 적었습니다 ("accept_dialog").`);
+      if (said) notes.push(`${n}단계: 알림 창의 접수 번호 같은 값을 결과에 남기려면 \`- 기록: 이름 = dialog_text("정규식")\` 줄을 더하세요.`);
+      if (shown.some((d) => d.kind === 'prompt')) notes.push(`${n}단계: 값을 묻는 입력 창이 떴습니다. 에이전트는 이 창에 답할 수 없어 이 단계에서 멈춥니다.`);
       if (submit) {
         submitSteps.push(n);
         if (!submitLabels.includes(step.name.trim())) submitLabels.push(step.name.trim());

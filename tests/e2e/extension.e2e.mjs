@@ -446,6 +446,73 @@ try {
     await fwApi('DELETE');
   });
 
+  const startRecording = async (panel, id, name) => {
+    await panel.click('#tab-author');
+    await panel.fill('#a-id', id);
+    await panel.fill('#a-name', name);
+    await panel.fill('#a-desc', `녹화로 만든 ${name}`);
+    await panel.fill('#a-owner', '생산관리');
+    await panel.click('#rec-start');
+    await panel.locator('#rec').waitFor();
+  };
+
+  await scenario('스킬 만들기: 새 창에서 행을 고르고 확인·알림 창을 거친 조작도 녹화', async (openPages) => {
+    const { target, panel } = await openPages('/hold.html');
+    const api = (method = 'GET') => fetch(`${SITE}/api/hold`, { method }).then((r) => r.json());
+    await api('DELETE');
+    // 녹화 중에는 창이 실제로 뜨고 사람이 답한다. 여기서는 모두 확인을 누른다.
+    const accept = (d) => d.accept().catch(() => {});
+    context.on('dialog', accept);
+    try {
+      await startRecording(panel, 'hold-recorded', '홀드 해제 녹화');
+      await target.bringToFront();
+      const [popup] = await Promise.all([context.waitForEvent('page'), target.click('#find')]);
+      await popup.waitForLoadState();
+      await panel.getByText('"Lot 찾기" 누름 → "홀드 Lot 찾기" 나타남').waitFor();
+      // 녹화는 0.5초마다 새 화면에 다시 걸린다.
+      await popup.waitForTimeout(1200);
+      await popup.locator('tr', { hasText: 'P7-00031' }).locator('button').click();
+      await target.bringToFront();
+      await target.fill('#reason', '설비 점검이 끝나 공정을 다시 진행함');
+      await target.click('#submit');
+      await panel.bringToFront();
+      await panel.locator('#rec[data-count="4"]').waitFor();
+      await panel.getByText('알림 "접수되었습니다. 접수 번호: HR-000001"').waitFor();
+      await panel.screenshot({ path: join(ROOT, 'test-results/panel-author-popup.png'), fullPage: true });
+      await panel.click('#rec-stop');
+
+      const source = await panel.locator('#draft-src').inputValue();
+      assert.match(source, /\{"ref":"선택","row":"P7-00031"\}/);
+      assert.match(source, /검사: did\("click"\) and dialog\("접수되었습니다"\)/);
+      assert.match(source, /risk: R3/);
+      assert.match(source, /submit_steps: \[5\]/);
+      assert.notEqual(await panel.locator('#lint').getAttribute('data-grade'), 'F', source);
+      assert.deepEqual((await api()).length, 1, '녹화 중 사람이 한 상신 1건');
+    } finally {
+      context.off('dialog', accept);
+      await api('DELETE');
+    }
+  });
+
+  await scenario('스킬 만들기: 표를 고르면 다음 페이지 버튼으로 끝까지 읽게 할 수 있음', async (openPages) => {
+    const { target, panel } = await openPages('/wip.html');
+    await startRecording(panel, 'wip-paged', '재공 전체 읽기');
+    await target.bringToFront();
+    await target.selectOption('#line', '8라인');
+    await target.click('#query');
+    await target.locator('#next:not([disabled])').waitFor();
+    await panel.bringToFront();
+    await panel.locator('#rec[data-count="2"]').waitFor();
+    await panel.click('#rec-table');
+    await panel.locator('[data-table]').first().click();
+    await panel.locator('#rec-paging [data-next="다음"]').click();
+    await panel.locator('#rec[data-count="3"]').waitFor();
+    await panel.click('#rec-stop');
+    const source = await panel.locator('#draft-src').inputValue();
+    assert.match(source, /"dataset":"data1","next_ref":"다음"\}/);
+    assert.notEqual(await panel.locator('#lint').getAttribute('data-grade'), 'F', source);
+  });
+
   await scenario('엑셀 다운로드: 서버가 만든 파일을 한 번에 받아 정리', async (openPages) => {
     const { target, panel } = await openPages('/wip.html');
     await panel.selectOption('#skill', 'wip-download');

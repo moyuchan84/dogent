@@ -3,6 +3,8 @@ import type { ConfirmPolicy, PageDialog } from '../core/types';
 export type DialogCommand =
   | { do: 'boot' }
   | { do: 'on'; until: number }
+  /** 창은 그대로 띄우고 내용과 사람의 답만 적어 둔다. 조작을 녹화할 때 쓴다. */
+  | { do: 'watch' }
   | { do: 'off' }
   | { do: 'policy'; confirm: ConfirmPolicy | null }
   | { do: 'drain' };
@@ -53,7 +55,33 @@ export function dialogHook(command: DialogCommand): PageDialog[] | null {
     };
   };
 
+  const watch = () => {
+    if (w.__dogentDialogs) return;
+    const original = { alert: w.alert, confirm: w.confirm, prompt: w.prompt };
+    const state = { log: [] as PageDialog[], confirm: null as ConfirmPolicy | null, original };
+    w.__dogentDialogs = state;
+    w.alert = (message?: unknown) => {
+      state.log.push({ kind: 'alert', message: String(message ?? ''), accepted: true, at: Date.now() });
+      return original.alert.call(w, message);
+    };
+    w.confirm = (message?: unknown) => {
+      const at = Date.now();
+      const accepted = !!original.confirm.call(w, message);
+      state.log.push({ kind: 'confirm', message: String(message ?? ''), accepted, at });
+      return accepted;
+    };
+    w.prompt = (message?: unknown, initial?: unknown) => {
+      const at = Date.now();
+      const value = original.prompt.call(w, message, initial);
+      state.log.push({ kind: 'prompt', message: String(message ?? ''), accepted: value !== null, at });
+      return value;
+    };
+  };
+
   switch (command.do) {
+    case 'watch':
+      watch();
+      return null;
     case 'boot': {
       let until = 0;
       try {
