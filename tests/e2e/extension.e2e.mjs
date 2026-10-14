@@ -12,6 +12,7 @@
 //   ONLY            이름에 이 글자가 들어간 시나리오만 실행
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import ExcelJS from 'exceljs';
@@ -620,6 +621,92 @@ try {
     assert.deepEqual(await adjustApi(), [adjustRows.map((row) => row.map(String))]);
     assert.doesNotMatch(await panel.locator('.log').innerText(), /모델 응답/);
     await adjustApi('DELETE');
+  });
+
+  await scenario('스킬 가져오기: 받은 SKILL.md를 검사해 초안으로 쓰고, 모델이 정한 동작은 다음 실행에서 기억한 경로로 재사용', async (openPages) => {
+    const { target, panel } = await openPages('/wip.html');
+    // 1단계는 도구가 문장 앞에 있지 않아 모델이 동작을 정한다.
+    const source = `---
+id: wip-imported
+name: 재공 조회 (받은 스킬)
+description: 라인을 골라 재공을 조회한다
+version: 0.1.0
+owner: 생산관리
+risk: R1
+domains:
+  - localhost:4173
+inputs:
+  - name: line
+    label: 라인
+    type: enum
+    values: ["6라인", "7라인", "8라인"]
+    required: true
+limits:
+  max_steps: 20
+  timeout_sec: 120
+---
+
+## 단계
+
+1. 화면의 "라인" 선택 상자에서 select 도구로 값을 고른다.
+   \`{"ref": "라인", "value": "{line}"}\`
+   - 검사: value("라인") == "{line}"
+2. click으로 "조회" 버튼을 한 번 누른다. args는 다음을 그대로 쓴다.
+   \`{"ref": "조회"}\`
+   - 검사: did("click") and no_text("조회 중") and text("총")
+3. finish로 결과를 보고한다. args는 다음을 그대로 쓴다.
+   \`{"summary": "{line} 재공을 조회했습니다."}\`
+
+## 예외
+
+- 화면에 오류 메시지가 나오면 abort로 메시지 원문을 그대로 알린다.
+`;
+    const good = join(profile, 'SKILL.md');
+    const bad = join(profile, 'SKILL-bad.md');
+    writeFileSync(good, source);
+    writeFileSync(bad, source.replace('risk: R1', 'risk: R9'));
+
+    await panel.click('#tab-author');
+    // 형식이 틀린 파일은 열리기는 하지만 저장할 수 없다.
+    await panel.setInputFiles('#import-skill', bad);
+    await panel.locator('#lint[data-grade="F"]').waitFor();
+    assert.ok(await panel.locator('#draft-save').isDisabled());
+
+    await panel.setInputFiles('#import-skill', good);
+    await panel.locator('#lint[data-grade="B"]').waitFor();
+    assert.equal(await panel.locator('#draft-src').inputValue(), source);
+    assert.match(await panel.locator('.app').innerText(), /"SKILL\.md" 파일에서 가져왔습니다/);
+    assert.equal(await panel.locator('#overwrite-warning').count(), 0);
+    await panel.click('#draft-save');
+    // 같은 ID를 다른 내용으로 다시 가져오면 덮어쓴다고 알린다.
+    writeFileSync(good, source.replace('라인을 골라 재공을 조회한다', '라인별 재공 조회'));
+    await panel.setInputFiles('#import-skill', good);
+    await panel.locator('#overwrite-warning').waitFor();
+    await panel.getByText('버리기').click();
+
+    const runWith = async (line) => {
+      await target.goto(SITE + '/wip.html');
+      await panel.reload();
+      await panel.selectOption('#skill', 'wip-imported');
+      await panel.selectOption('[data-input=line]', line);
+      return run(panel);
+    };
+    const first = await runWith('7라인');
+    check(first, () => {
+      assert.equal(first.status, 'done');
+      assert.doesNotMatch(first.log, /기억한 경로/);
+    });
+    // 두 번째는 다른 값으로 돌려도, 모델이 정했던 1단계를 모델 없이 다시 한다.
+    const second = await runWith('8라인');
+    check(second, () => {
+      assert.equal(second.status, 'done');
+      assert.match(second.text, /8라인 재공을 조회했습니다/);
+      assert.match(second.log, /기억한 경로/);
+      assert.doesNotMatch(second.log, /모델 응답/);
+    });
+    assert.equal(await target.locator('#line').inputValue(), '8라인');
+    await panel.screenshot({ path: join(ROOT, 'test-results/panel-path-cache.png'), fullPage: true });
+    return `처음 ${first.sec}초, 다시 ${second.sec}초`;
   });
 
   await scenario('엑셀 다운로드: 서버가 만든 파일을 한 번에 받아 정리', async (openPages) => {
