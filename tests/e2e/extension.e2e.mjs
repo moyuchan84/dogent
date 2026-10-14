@@ -513,6 +513,115 @@ try {
     assert.notEqual(await panel.locator('#lint').getAttribute('data-grade'), 'F', source);
   });
 
+  await scenario('스킬 만들기: 모델로 다듬어도 동작은 그대로이고, 다듬은 초안으로 실행됨', async (openPages) => {
+    const { target, panel } = await openPages('/wip.html');
+    await startRecording(panel, 'wip-polished', '재공 읽기');
+    await target.bringToFront();
+    await target.selectOption('#line', '8라인');
+    await target.click('#query');
+    await target.locator('#next:not([disabled])').waitFor();
+    await panel.bringToFront();
+    await panel.locator('#rec[data-count="2"]').waitFor();
+    await panel.click('#rec-table');
+    await panel.locator('[data-table]').first().click();
+    await panel.locator('#rec-paging [data-next="다음"]').click();
+    await panel.click('#rec-stop');
+    const before = await panel.locator('#draft-src').inputValue();
+    const grade = await panel.locator('#lint').getAttribute('data-grade');
+
+    await panel.click('#polish');
+    const done = panel.locator('#polish-result');
+    await done.waitFor();
+    const after = await panel.locator('#draft-src').inputValue();
+    // 모의 모델은 없는 단계의 설명도 하나 보낸다. 그것은 넣지 않는다.
+    assert.equal(await done.getAttribute('data-rejected'), '1');
+    assert.match(await done.innerText(), /넣지 않음 — 99단계 설명/);
+    assert.match(after, /description: "재공 읽기 업무를 화면에서 대신 한다\."/);
+    assert.match(after, /- name: line\n/);
+    assert.match(after, /`\{"ref":"라인","value":"\{line\}"\}`/);
+    assert.match(after, /- 설명: 업무를 시작할 화면을 연다\./);
+    assert.match(after, /- 조회 결과가 0건이면 abort로/);
+    assert.equal(await panel.locator('#lint').getAttribute('data-grade'), grade, '다듬어도 품질 등급은 같음');
+    // 글만 달라졌다: 설명 줄을 빼고 이름을 되돌리면 단계가 같다.
+    const stepsOf = (s) => s.slice(s.indexOf('## 단계'), s.indexOf('## 예외')).split('\n').filter((l) => !/^\s*- 설명:/.test(l)).join('\n');
+    assert.equal(stepsOf(after).replaceAll('{line}', '{v1}'), stepsOf(before));
+    await panel.screenshot({ path: join(ROOT, 'test-results/panel-author-polish.png'), fullPage: true });
+
+    // 되돌리면 다듬기 전 그대로다.
+    await panel.click('#polish-undo');
+    assert.equal(await panel.locator('#draft-src').inputValue(), before);
+    await panel.click('#polish');
+    await done.waitFor();
+    await panel.click('#draft-save');
+
+    // 다듬은 초안은 새 입력 이름으로 실행되고, 여전히 모델 없이 끝난다.
+    await target.goto(SITE + '/wip.html');
+    await panel.click('#tab-run');
+    await panel.selectOption('#skill', 'wip-polished');
+    await panel.selectOption('[data-input=line]', '7라인');
+    const r = await run(panel);
+    check(r, () => {
+      assert.equal(r.status, 'done');
+      assert.doesNotMatch(r.log, /모델 응답/);
+    });
+    assert.equal(await target.locator('#line').inputValue(), '7라인');
+    return `${r.sec}초`;
+  });
+
+  await scenario('스킬 만들기: 한 행을 해 보이고 엑셀로 표 채우기를 더하면 일괄 입력 스킬이 됨', async (openPages) => {
+    const { target, panel } = await openPages('/adjust.html');
+    await adjustApi('DELETE');
+    await startRecording(panel, 'adjust-recorded', '수량 조정 녹화');
+
+    // 한 행을 손으로 넣어 보이고, 행을 하나 늘린 뒤, 표를 엑셀로 채우기로 한다.
+    await target.bringToFront();
+    const first = target.locator('#adjGrid tbody tr').first();
+    await first.locator('input').nth(0).fill('P7-00001');
+    await first.locator('select').selectOption('PHOTO');
+    await first.locator('input').nth(1).fill('5');
+    await first.locator('input').nth(2).fill('해 보이기');
+    await target.click('#addRow');
+    await panel.bringToFront();
+    await panel.locator('#rec[data-count="5"]').waitFor();
+    await panel.click('#rec-fill');
+    await panel.locator('[data-table="조정 목록"]').click();
+    await panel.locator('#rec-add [data-add="행 추가"]').click();
+    await panel.getByText('"조정 목록" 표에 엑셀 채우기 (Lot ID, 공정, 조정수량, 사유), 모자라면 "행 추가"').waitFor();
+    await target.bringToFront();
+    await target.click('#save');
+    await target.locator('#done').waitFor();
+    await panel.bringToFront();
+    await panel.locator('#rec[data-count="7"]').waitFor();
+    await panel.screenshot({ path: join(ROOT, 'test-results/panel-author-fill.png'), fullPage: true });
+    await panel.click('#rec-stop');
+
+    const source = await panel.locator('#draft-src').inputValue();
+    assert.match(source, /type: file\n\s+dataset: src1/);
+    assert.match(source, /`\{"ref":"조정 목록","dataset":"src1","add_ref":"행 추가"\}`/);
+    assert.match(source, /submit_steps: \[3\]/);
+    assert.doesNotMatch(source, /type으로|select로|P7-00001/, '손으로 넣어 보인 값은 초안에 남지 않음');
+    assert.ok(['A', 'B'].includes(await panel.locator('#lint').getAttribute('data-grade')), source);
+    await panel.click('#draft-save');
+    assert.deepEqual((await adjustApi()).length, 1, '녹화 중 사람이 한 저장 1건');
+    await adjustApi('DELETE');
+
+    // 초안에 엑셀 파일을 주고 실행한다.
+    await target.goto(SITE + '/adjust.html');
+    await panel.click('#tab-run');
+    await panel.selectOption('#skill', 'adjust-recorded');
+    await panel.setInputFiles('[data-input=file1]', await adjustFile('adjust-recorded.xlsx', adjustRows));
+    const dialog = await runUntilApproval(panel);
+    assert.match(dialog, /5행/);
+    assert.deepEqual(await adjustApi(), [], '승인 전에는 저장되면 안 됨');
+    await panel.click('#approve');
+    const r = await result(panel);
+    assert.equal(r.status, 'done', r.text);
+    assert.match(r.text, /5행을 표에 입력하고/);
+    assert.deepEqual(await adjustApi(), [adjustRows.map((row) => row.map(String))]);
+    assert.doesNotMatch(await panel.locator('.log').innerText(), /모델 응답/);
+    await adjustApi('DELETE');
+  });
+
   await scenario('엑셀 다운로드: 서버가 만든 파일을 한 번에 받아 정리', async (openPages) => {
     const { target, panel } = await openPages('/wip.html');
     await panel.selectOption('#skill', 'wip-download');

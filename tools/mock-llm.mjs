@@ -242,9 +242,27 @@ function planAction(user) {
 }
 
 /** 메시지 배열을 받아 모델 응답 문자열을 돌려준다. 테스트에서 직접 불러 쓴다. */
+/** 스킬 다듬기. 입력의 label로 이름을 짓고, 첫 단계와 예외·결과에 문구를 단다. 못 넣을 제안도 하나 섞는다. */
+const INPUT_NAMES = { 라인: 'line', '출발지 IP': 'src_ip', '목적지 IP': 'dst_ip' };
+function polishReply(user) {
+  const draft = section(user, '## 스킬 초안', '## 품질 검사 결과');
+  const name = /^name: "(.*)"$/m.exec(draft)?.[1] ?? '이 업무';
+  const inputs = {};
+  for (const m of draft.matchAll(/- name: (\w+)\n\s+label: "(.*)"/g)) if (INPUT_NAMES[m[2]]) inputs[m[1]] = INPUT_NAMES[m[2]];
+  return {
+    description: `${name} 업무를 화면에서 대신 한다.`,
+    inputs,
+    steps: { 1: '업무를 시작할 화면을 연다.', 99: '없는 단계에 대한 설명.' },
+    exceptions: ['조회 결과가 0건이면 abort로 조건을 다시 확인해 달라고 알린다.'],
+    result: '',
+    review: ['검사 식이 화면 문구에 맞는지 시험 실행으로 확인하세요.'],
+  };
+}
+
 export function mockComplete(messages) {
   const system = messages.find((m) => m.role === 'system')?.content ?? '';
   const user = messages.filter((m) => m.role === 'user').at(0)?.content ?? '';
+  if (system.includes('스킬 문서 편집자')) return JSON.stringify(polishReply(user));
   return JSON.stringify(system.includes('스킬 선택기') ? planReply(user) : agentReply(user));
 }
 
