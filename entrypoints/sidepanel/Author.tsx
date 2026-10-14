@@ -28,6 +28,8 @@ const GRADE_LABEL: Record<LintReport['grade'], string> = {
   C: 'C · 보완 필요',
   F: 'F · 실행 불가',
 };
+/** 가져올 수 있는 SKILL.md의 최대 크기. 스킬은 보통 몇 KB다. */
+const MAX_IMPORT_BYTES = 200_000;
 /** 녹화 중 새로 열린 화면에도 녹화를 거는 주기 */
 const REARM_MS = 500;
 
@@ -230,6 +232,14 @@ export function Author(props: { bundledIds: string[]; drafts: DraftSkill[]; onCh
     setPolished(null);
     setNotice('');
     setState('editing');
+  }
+
+  /** 받은 SKILL.md 파일을 초안 편집 화면으로 연다. 저장하기 전까지는 아무것도 바뀌지 않는다. */
+  async function importFile(file: File | undefined) {
+    if (!file) return;
+    if (file.size > MAX_IMPORT_BYTES) return setNotice('파일이 너무 큽니다. SKILL.md 파일인지 확인해 주세요');
+    edit(await file.text());
+    setNotes(['"' + file.name + '" 파일에서 가져왔습니다. 품질 검사 결과를 확인하고, 저장한 뒤 이 PC에서 시험 실행해 보세요.']);
   }
 
   async function save() {
@@ -444,6 +454,11 @@ export function Author(props: { bundledIds: string[]; drafts: DraftSkill[]; onCh
                 )}
               </div>
             )}
+            {report.skill && props.drafts.some((d) => d.id === report.skill!.id && d.source !== source) && (
+              <p className="hint" id="overwrite-warning">
+                같은 ID의 초안 "{report.skill.id}"이(가) 이미 있습니다. 저장하면 그 초안이 이 내용으로 바뀌고 시험 실행을 다시 해야 합니다.
+              </p>
+            )}
             <div className="row">
               <button className="secondary" onClick={() => setState('idle')}>
                 버리기
@@ -468,6 +483,20 @@ export function Author(props: { bundledIds: string[]; drafts: DraftSkill[]; onCh
       <section className="card">
         <h2>내 초안</h2>
         {props.drafts.length === 0 && <p className="hint">저장한 초안이 없습니다.</p>}
+        {state !== 'recording' && (
+          <label className="hint">
+            다른 사람이 만든 SKILL.md 파일을 가져와 검사하고 시험 실행할 수 있습니다.
+            <input
+              id="import-skill"
+              type="file"
+              accept=".md,text/markdown,text/plain"
+              onChange={(e) => {
+                void importFile(e.target.files?.[0]);
+                e.target.value = '';
+              }}
+            />
+          </label>
+        )}
         {props.drafts.map((d) => {
           const r = lintSkill(d.source);
           const trialOk = d.trial?.status === 'done' || d.trial?.status === 'dryrun';
