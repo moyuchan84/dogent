@@ -374,7 +374,7 @@ export function App() {
 
       {tab === 'history' && <History names={Object.fromEntries([...skills.map((s) => [s.id, s.name]), [FREE_SKILL_ID, '자유 요청']])} />}
 
-      {tab === 'author' && <Author bundledIds={bundled.map((s) => s.id)} drafts={drafts} onChange={reloadDrafts} />}
+      {tab === 'author' && <Author bundledIds={bundled.map((s) => s.id)} drafts={drafts} onChange={reloadDrafts} llm={() => new OpenAiCompatClient(effectiveSettings(settings), undefined, 2048)} />}
 
       {skillErrors.map((e) => (
         <p key={e} className="notice error">

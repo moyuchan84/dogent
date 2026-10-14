@@ -2,15 +2,20 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { browser } from 'wxt/browser';
 import {
   addRecorded,
+  addRowButtons,
   draftSkill,
+  fillableColumns,
   firstHeading,
   lintSkill,
   pickAppeared,
+  polishSkill,
   type AuthorStep,
   type DraftStart,
   type LintReport,
+  type LlmPort,
   type PageDialog,
   type PageSnapshot,
+  type PolishResult,
   type RecordedEvent,
 } from '@/src/core';
 import { ChromeBrowser } from '@/src/ext/browser';
@@ -31,6 +36,7 @@ function describeStep(s: AuthorStep): string {
     const shown = (s.dialogs ?? []).map((d) => (d.kind === 'alert' ? `알림 "${d.message}"` : `"${d.message}"에 ${d.accepted ? '확인' : '취소'}`));
     return `"${s.name || '(이름 없음)'}"${s.row ? ` (${s.row} 행)` : ''} 누름${s.expect ? ` → "${s.expect}" 나타남` : ''}${shown.length ? ` → ${shown.join(', ')}` : ''}`;
   }
+  if (s.kind === 'fill') return '"' + s.name + '" 표에 엑셀 채우기 (' + s.columns.join(', ') + ')' + (s.add ? ', 모자라면 "' + s.add + '"' : '');
   if (s.kind === 'extract') return `"${s.name}" 표 읽기${s.next ? ` ("${s.next}"로 끝 페이지까지)` : ''}`;
   return `"${s.name || '(이름 없음)'}"에 ${s.kind === 'type' ? '입력' : '선택'}: ${s.value}`;
 }
@@ -58,11 +64,15 @@ function nextButtons(snap: PageSnapshot | undefined): string[] {
  * 스킬 만들기. 업무를 한 번 해 보이면 초안이 만들어지고, 품질 검사를 통과하면 초안으로 저장해 시험 실행한다.
  * 만든 사람이 형식을 외울 필요가 없고, 누가 만들어도 같은 기준으로 검사된다.
  */
-export function Author(props: { bundledIds: string[]; drafts: DraftSkill[]; onChange: () => void }) {
+export function Author(props: { bundledIds: string[]; drafts: DraftSkill[]; onChange: () => void; llm: () => LlmPort }) {
   const [meta, setMeta] = useState({ id: '', name: '', description: '', owner: '' });
   const [state, setState] = useState<'idle' | 'recording' | 'editing'>('idle');
   const [steps, setSteps] = useState<AuthorStep[]>([]);
   const [tables, setTables] = useState<string[] | null>(null);
+  // 표 고르기가 읽기용인지 엑셀 채우기용인지
+  const [tableUse, setTableUse] = useState<'extract' | 'fill'>('extract');
+  // 채울 표를 고른 뒤, 행 추가 버튼으로 보이는 것들. 빈 행이 모자랄 때 누를 버튼을 묻는다.
+  const [adding, setAdding] = useState<{ table: string; columns: string[]; buttons: string[] } | null>(null);
   // 표를 고른 뒤, 다음 페이지 버튼으로 보이는 것들. 여러 페이지를 넘기며 읽을지 묻는다.
   // 녹화 중에 뜬 알림·확인 창. 창을 읽어 온 때에 그 창을 띄운 누름이 아직 목록에 없을 수 있으므로,
   // 조작과 따로 모아 두고 보여줄 때마다 뜬 시각으로 다시 맞춘다.
@@ -71,6 +81,9 @@ export function Author(props: { bundledIds: string[]; drafts: DraftSkill[]; onCh
   const [source, setSource] = useState('');
   const [notes, setNotes] = useState<string[]>([]);
   const [notice, setNotice] = useState('');
+  // 모델로 다듬은 결과와, 되돌릴 때 쓸 다듬기 전 원문
+  const [polished, setPolished] = useState<(PolishResult & { before: string }) | null>(null);
+  const [polishing, setPolishing] = useState(false);
   const session = useRef<{ browser: ChromeBrowser; tabId: number; start: DraftStart; last: PageSnapshot; stop: () => void } | null>(null);
 
   useEffect(() => () => session.current?.stop(), []);
@@ -148,21 +161,40 @@ export function Author(props: { bundledIds: string[]; drafts: DraftSkill[]; onCh
     }
   }
 
-  async function findTables() {
+  async function findTables(use: 'extract' | 'fill') {
     const s = session.current;
     if (!s) return;
     const snap = await s.browser.snapshot();
     s.last = snap;
     setPaging(null);
+    setAdding(null);
+    setTableUse(use);
     setTables(snap.items.flatMap((i) => (i.kind === 'el' && i.role === 'table' ? [i.name] : [])));
   }
 
   /** 표를 고르면, 화면에 다음 페이지 버튼이 있을 때 끝까지 넘기며 읽을지 묻는다. */
-  function pickTable(name: string) {
-    const buttons = nextButtons(session.current?.last);
+  async function pickTable(name: string) {
     setTables(null);
+    if (tableUse === 'fill') return pickFillTable(name);
+    const buttons = nextButtons(session.current?.last);
     if (buttons.length === 0) setSteps([...steps, { kind: 'extract', name }]);
     else setPaging({ table: name, buttons });
+  }
+
+  /** 엑셀로 채울 표를 고르면, 값을 넣을 수 있는 컬럼을 읽고 행 추가 버튼을 묻는다. */
+  async function pickFillTable(name: string) {
+    const s = session.current;
+    if (!s) return;
+    try {
+      const table = s.last.items.find((i) => i.kind === 'el' && i.role === 'table' && i.name === name);
+      if (table?.kind !== 'el') throw new Error('표를 다시 찾지 못했습니다');
+      const columns = fillableColumns(s.last, (await s.browser.extractTable(table.ref)).columns);
+      const buttons = addRowButtons(s.last);
+      if (buttons.length === 0) setSteps((prev) => [...prev, { kind: 'fill', name, columns }]);
+      else setAdding({ table: name, columns, buttons });
+    } catch (e) {
+      setNotice((e as Error).message);
+    }
   }
 
   async function stopRecording() {
@@ -173,8 +205,30 @@ export function Author(props: { bundledIds: string[]; drafts: DraftSkill[]; onCh
     s.stop();
     session.current = null;
     const draft = draftSkill(meta, s.start, recorded);
-    setSource(draft.source);
+    edit(draft.source);
     setNotes(draft.notes);
+  }
+
+  /** 글만 모델에 맡긴다. 도구·인자·검사가 달라지는 제안은 core가 버린다. */
+  async function polish() {
+    setPolishing(true);
+    setNotice('');
+    try {
+      const r = await polishSkill(source, props.llm());
+      setPolished({ ...r, before: source });
+      setSource(r.source);
+    } catch (e) {
+      setNotice(`다듬지 못했습니다: ${(e as Error).message}`);
+    } finally {
+      setPolishing(false);
+    }
+  }
+
+  function edit(next: string) {
+    setSource(next);
+    setNotes([]);
+    setPolished(null);
+    setNotice('');
     setState('editing');
   }
 
@@ -246,8 +300,11 @@ export function Author(props: { bundledIds: string[]; drafts: DraftSkill[]; onCh
               ))}
             </ol>
             <div className="row">
-              <button id="rec-table" className="secondary" onClick={findTables}>
+              <button id="rec-table" className="secondary" onClick={() => findTables('extract')}>
                 화면의 표 읽기 추가
+              </button>
+              <button id="rec-fill" className="secondary" title="실행할 때 받은 엑셀 파일의 행을 화면의 표에 채웁니다" onClick={() => findTables('fill')}>
+                엑셀로 표 채우기 추가
               </button>
               <button id="rec-stop" onClick={stopRecording}>
                 녹화 끝
@@ -270,6 +327,25 @@ export function Author(props: { bundledIds: string[]; drafts: DraftSkill[]; onCh
                   ))}
                 </div>
               ))}
+          </div>
+        )}
+
+        {state === 'recording' && adding && (
+          <div className="row wrap" id="rec-add">
+            <span className="hint">엑셀의 행이 "{adding.table}" 표의 빈 행보다 많으면 누를 버튼이 있나요?</span>
+            {['', ...adding.buttons].map((b) => (
+              <button
+                key={b}
+                className="secondary"
+                data-add={b}
+                onClick={() => {
+                  setSteps([...steps, { kind: 'fill', name: adding.table, columns: adding.columns, ...(b ? { add: b } : {}) }]);
+                  setAdding(null);
+                }}
+              >
+                {b ? '"' + b + '" 버튼' : '없음'}
+              </button>
+            ))}
           </div>
         )}
 
@@ -332,9 +408,54 @@ export function Author(props: { bundledIds: string[]; drafts: DraftSkill[]; onCh
               SKILL.md (직접 고칠 수 있습니다. 고치면 바로 다시 검사합니다)
               <textarea id="draft-src" className="code" rows={18} spellCheck={false} value={source} onChange={(e) => setSource(e.target.value)} />
             </label>
+            {polished && (
+              <div id="polish-result" className="polish" data-applied={polished.applied.length} data-rejected={polished.rejected.length}>
+                <b>
+                  {polished.applied.length > 0
+                    ? `모델이 다듬은 곳 ${polished.applied.length}군데. 도구, 인자, 검사 식은 그대로입니다.`
+                    : '모델의 제안 중 넣을 것이 없었습니다.'}
+                </b>
+                <ul>
+                  {polished.applied.map((a) => (
+                    <li key={a}>{a}</li>
+                  ))}
+                  {polished.rejected.map((a) => (
+                    <li key={a} className="minor">
+                      넣지 않음 — {a}
+                    </li>
+                  ))}
+                  {polished.review.map((a) => (
+                    <li key={a} className="minor">
+                      모델의 의견 — {a}
+                    </li>
+                  ))}
+                </ul>
+                {polished.applied.length > 0 && (
+                  <button
+                    className="ghost"
+                    id="polish-undo"
+                    onClick={() => {
+                      setSource(polished.before);
+                      setPolished(null);
+                    }}
+                  >
+                    다듬기 전으로 되돌리기
+                  </button>
+                )}
+              </div>
+            )}
             <div className="row">
               <button className="secondary" onClick={() => setState('idle')}>
                 버리기
+              </button>
+              <button
+                className="secondary"
+                id="polish"
+                onClick={polish}
+                disabled={polishing || !report.skill}
+                title="스킬 설명, 입력 이름, 단계 설명, 예외 문구를 모델이 제안합니다. 동작은 바뀌지 않습니다"
+              >
+                {polishing ? '다듬는 중…' : '모델로 다듬기'}
               </button>
               <button id="draft-save" onClick={save} disabled={report.grade === 'F'}>
                 초안으로 저장
@@ -380,12 +501,7 @@ export function Author(props: { bundledIds: string[]; drafts: DraftSkill[]; onCh
                 <button
                   className="secondary"
                   data-edit={d.id}
-                  onClick={() => {
-                    setSource(d.source);
-                    setNotes([]);
-                    setNotice('');
-                    setState('editing');
-                  }}
+                  onClick={() => edit(d.source)}
                 >
                   고치기
                 </button>

@@ -11,6 +11,7 @@ export * from './loop';
 export * from './paths';
 export * from './planner';
 export * from './policy';
+export * from './polish';
 export * from './prompt';
 export * from './shared';
 export * from './skill';

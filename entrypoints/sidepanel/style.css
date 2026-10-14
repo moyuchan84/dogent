@@ -380,6 +380,21 @@ input[type='file'] {
   background: var(--risk-soft);
   color: var(--risk);
 }
+.polish {
+  margin: 8px 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line, #d0d7de);
+  border-radius: 6px;
+  font-size: 12px;
+}
+.polish ul {
+  margin: 6px 0;
+  padding-left: 18px;
+}
+.polish .minor {
+  opacity: 0.7;
+}
+
 .findings {
   margin: 8px 0;
   padding-left: 18px;

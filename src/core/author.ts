@@ -15,7 +15,12 @@ export type AuthorStep =
   /** variable이면 실행할 때마다 입력받고, 아니면 녹화한 값을 그대로 쓴다. */
   | (Extract<RecordedEvent, { kind: 'type' | 'select' }> & { variable: boolean })
   /** next는 다음 페이지 버튼의 이름. 있으면 마지막 페이지까지 넘기며 읽는다. */
-  | { kind: 'extract'; name: string; next?: string };
+  | { kind: 'extract'; name: string; next?: string }
+  /**
+   * 엑셀 파일의 행을 표에 채운다. columns는 표에서 값을 넣을 수 있는 컬럼(= 엑셀 파일의 첫 행),
+   * add는 빈 행이 모자랄 때 누를 버튼의 이름이다.
+   */
+  | { kind: 'fill'; name: string; columns: string[]; add?: string };
 
 export interface DraftMeta {
   id: string;
@@ -65,6 +70,23 @@ export function pickAppeared(before: PageSnapshot, after: PageSnapshot): string 
   return undefined;
 }
 
+const INPUT_ROLES = new Set(['textbox', 'combobox', 'checkbox', 'radio']);
+
+/** 표의 컬럼 중 값을 넣을 수 있는 것. 칸 안의 입력 칸은 컬럼 이름으로 읽히므로 그 이름으로 가린다. */
+export function fillableColumns(snap: PageSnapshot, columns: string[]): string[] {
+  const names = new Set(snap.items.flatMap((i) => (i.kind === 'el' && INPUT_ROLES.has(i.role) ? [i.name] : [])));
+  const editable = columns.filter((c) => names.has(c));
+  return editable.length > 0 ? editable : columns;
+}
+
+/** 화면에서 행 추가 버튼으로 보이는 요소의 이름 (이름이 하나뿐인 것만) */
+export function addRowButtons(snap: PageSnapshot): string[] {
+  const names = snap.items.flatMap((i) =>
+    i.kind === 'el' && (i.role === 'button' || i.role === 'link') && !i.row && /추가|add|^\+$/i.test(i.name.trim()) ? [i.name] : [],
+  );
+  return names.filter((n) => names.indexOf(n) === names.lastIndexOf(n));
+}
+
 const q = (s: string) => JSON.stringify(s);
 /** 검사 식의 "..." 안에 쓸 수 있는 글자인지 */
 const quotable = (s: string) => s !== '' && !/["`\n]/.test(s);
@@ -82,6 +104,7 @@ export function draftSkill(meta: DraftMeta, start: DraftStart, steps: AuthorStep
   const submitSteps: number[] = [];
   const submitLabels: string[] = [];
   const datasets: string[] = [];
+  const filled: string[] = [];
   let n = 0;
   let vars = 0;
 
@@ -109,7 +132,35 @@ export function draftSkill(meta: DraftMeta, start: DraftStart, steps: AuthorStep
     startCheck.join(' and '),
   );
 
-  for (const step of steps) {
+  // 표를 엑셀로 채우기로 했으면, 해 보이느라 표에 직접 넣은 값과 행 추가 누름은 엑셀 파일과 fill_table이 대신한다.
+  const fills = steps.filter((s): s is Extract<AuthorStep, { kind: 'fill' }> => s.kind === 'fill');
+  const byHand = (s: AuthorStep) =>
+    ((s.kind === 'type' || s.kind === 'select') && fills.some((f) => f.columns.includes(s.name))) ||
+    (s.kind === 'click' && fills.some((f) => f.add === s.name));
+  const dropped = steps.filter(byHand).length;
+  if (dropped > 0) notes.push(`표에 직접 넣은 값과 행 추가 누름 ${dropped}개는 뺐습니다. 실행할 때는 엑셀 파일의 행이 표에 들어갑니다.`);
+
+  for (const step of steps.filter((s) => !byHand(s))) {
+    if (step.kind === 'fill') {
+      const k = filled.length + 1;
+      const dataset = `src${k}`;
+      filled.push(dataset);
+      inputs.push(
+        `  - name: file${k}`,
+        `    label: ${q(`엑셀 파일 (${step.columns.join(', ')})`)}`,
+        '    type: file',
+        `    dataset: ${dataset}`,
+        '    required: true',
+      );
+      push(
+        `fill_table로 엑셀 데이터 \`${dataset}\`을 "${step.name}" 표에 채운다. args는 다음을 그대로 쓴다.`,
+        { ref: step.name, dataset, ...(step.add ? { add_ref: step.add } : {}) },
+        'did("fill_table")',
+      );
+      notes.push(`${n}단계: 엑셀 파일의 첫 행은 표의 컬럼 이름(${step.columns.join(', ')})과 같아야 합니다. 표는 비어 있어야 하고, 넣은 값은 화면에서 다시 읽어 파일과 대조합니다.`);
+      if (!step.add) notes.push(`${n}단계: 행 추가 버튼을 정하지 않아, 엑셀의 행이 화면의 빈 행보다 많으면 멈춥니다. 필요하면 인자에 "add_ref": "버튼 이름"을 더하세요.`);
+      continue;
+    }
     if (step.kind === 'extract') {
       const dataset = `data${datasets.length + 1}`;
       datasets.push(dataset);
@@ -193,7 +244,9 @@ export function draftSkill(meta: DraftMeta, start: DraftStart, steps: AuthorStep
   const summary =
     datasets.length > 0
       ? `${datasets.map((d, i) => `표${i + 1} {rows.${d}}행`).join(', ')}을 저장했습니다. 파일: ${meta.name}.xlsx`
-      : `${meta.name}을(를) 마쳤습니다.`;
+      : filled.length > 0
+        ? `${filled.map((d) => `{rows.${d}}행`).join(', ')}을 표에 입력하고 ${meta.name}을(를) 마쳤습니다.`
+        : `${meta.name}을(를) 마쳤습니다.`;
   push('finish로 결과를 보고한다. args는 다음을 그대로 쓴다.', { summary });
 
   const risk = submitSteps.length > 0 ? 'R3' : 'R1';
@@ -226,6 +279,7 @@ export function draftSkill(meta: DraftMeta, start: DraftStart, steps: AuthorStep
     '',
     '- 화면에 오류 메시지가 나오면 abort로 메시지 원문을 그대로 알린다. 같은 동작을 다시 하지 않는다.',
     '- 입력값을 고쳐 쓰거나 지어내지 않는다. 받은 그대로 넣는다.',
+    ...(filled.length > 0 ? ['- fill_table이 실패하면 abort로 오류 메시지를 그대로 알린다. 값을 고치거나 일부만 넣지 않는다.'] : []),
     '',
     '## 결과',
     '',

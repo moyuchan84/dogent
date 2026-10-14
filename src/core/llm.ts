@@ -23,6 +23,8 @@ export class OpenAiCompatClient implements LlmPort {
   constructor(
     private settings: LlmSettings,
     private fetchImpl: typeof fetch = (...a) => fetch(...a),
+    /** 답의 최대 길이. 동작 하나를 정할 때는 짧아도 되고, 스킬을 다듬을 때는 길게 준다. */
+    private maxTokens = 1024,
   ) {}
 
   async complete(messages: ChatMessage[], signal?: AbortSignal): Promise<string> {
@@ -38,7 +40,7 @@ export class OpenAiCompatClient implements LlmPort {
         model,
         messages,
         temperature: 0,
-        max_tokens: 1024,
+        max_tokens: this.maxTokens,
         ...(jsonMode ? { response_format: { type: 'json_object' } } : {}),
       }),
       signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
