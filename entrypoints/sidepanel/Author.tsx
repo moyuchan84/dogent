@@ -9,6 +9,7 @@ import {
   type AuthorStep,
   type DraftStart,
   type LintReport,
+  type PageDialog,
   type PageSnapshot,
   type RecordedEvent,
 } from '@/src/core';
@@ -26,9 +27,31 @@ const GRADE_LABEL: Record<LintReport['grade'], string> = {
 const REARM_MS = 500;
 
 function describeStep(s: AuthorStep): string {
-  if (s.kind === 'click') return `"${s.name || '(이름 없음)'}" 누름${s.expect ? ` → "${s.expect}" 나타남` : ''}`;
-  if (s.kind === 'extract') return `"${s.name}" 표 읽기`;
+  if (s.kind === 'click') {
+    const shown = (s.dialogs ?? []).map((d) => (d.kind === 'alert' ? `알림 "${d.message}"` : `"${d.message}"에 ${d.accepted ? '확인' : '취소'}`));
+    return `"${s.name || '(이름 없음)'}"${s.row ? ` (${s.row} 행)` : ''} 누름${s.expect ? ` → "${s.expect}" 나타남` : ''}${shown.length ? ` → ${shown.join(', ')}` : ''}`;
+  }
+  if (s.kind === 'extract') return `"${s.name}" 표 읽기${s.next ? ` ("${s.next}"로 끝 페이지까지)` : ''}`;
   return `"${s.name || '(이름 없음)'}"에 ${s.kind === 'type' ? '입력' : '선택'}: ${s.value}`;
+}
+
+/** 알림·확인 창을, 그 창이 뜨기 직전에 누른 조작에 붙인다. 창은 누른 뒤 한참 있다 뜨기도 한다. */
+function withDialogs(steps: AuthorStep[], dialogs: PageDialog[]): AuthorStep[] {
+  const next = [...steps];
+  for (const d of dialogs) {
+    const i = next.findLastIndex((s) => s.kind === 'click' && (s.at ?? 0) <= (d.at ?? Infinity));
+    const step = next[i];
+    if (step?.kind === 'click') next[i] = { ...step, dialogs: [...(step.dialogs ?? []), d] };
+  }
+  return next;
+}
+
+/** 화면에서 다음 페이지 버튼으로 보이는 요소의 이름 (이름이 하나뿐인 것만) */
+function nextButtons(snap: PageSnapshot | undefined): string[] {
+  const names = (snap?.items ?? []).flatMap((i) =>
+    i.kind === 'el' && (i.role === 'button' || i.role === 'link') && !i.row && /다음|next|^[>›»▶]+$/i.test(i.name.trim()) ? [i.name] : [],
+  );
+  return names.filter((n) => names.indexOf(n) === names.lastIndexOf(n));
 }
 
 /**
@@ -40,6 +63,11 @@ export function Author(props: { bundledIds: string[]; drafts: DraftSkill[]; onCh
   const [state, setState] = useState<'idle' | 'recording' | 'editing'>('idle');
   const [steps, setSteps] = useState<AuthorStep[]>([]);
   const [tables, setTables] = useState<string[] | null>(null);
+  // 표를 고른 뒤, 다음 페이지 버튼으로 보이는 것들. 여러 페이지를 넘기며 읽을지 묻는다.
+  // 녹화 중에 뜬 알림·확인 창. 창을 읽어 온 때에 그 창을 띄운 누름이 아직 목록에 없을 수 있으므로,
+  // 조작과 따로 모아 두고 보여줄 때마다 뜬 시각으로 다시 맞춘다.
+  const [seen, setSeen] = useState<PageDialog[]>([]);
+  const [paging, setPaging] = useState<{ table: string; buttons: string[] } | null>(null);
   const [source, setSource] = useState('');
   const [notes, setNotes] = useState<string[]>([]);
   const [notice, setNotice] = useState('');
@@ -71,22 +99,30 @@ export function Author(props: { bundledIds: string[]; drafts: DraftSkill[]; onCh
       let queue = Promise.resolve();
       const onMessage = (msg: unknown, sender: { tab?: { id?: number } }) => {
         const event = (msg as { dogentRecord?: RecordedEvent })?.dogentRecord;
-        if (!event || sender.tab?.id !== tab.id) return;
-        queue = queue.then(async () => {
-          const s = session.current;
-          if (!s) return;
-          let expect: string | undefined;
-          if (event.kind === 'click') {
-            const after = await chrome.settledSnapshot();
-            expect = pickAppeared(s.last, after);
-            s.last = after;
-          }
-          setSteps((prev) => {
-            const next = addRecorded(prev, event);
-            if (expect) next[next.length - 1] = { ...next[next.length - 1], expect } as AuthorStep;
-            return next;
-          });
-        });
+        // 대상 탭과 거기서 열린 창의 조작만 받는다.
+        if (!event || sender.tab?.id === undefined || !chrome.owns(sender.tab.id)) return;
+        queue = queue
+          .then(async () => {
+            const s = session.current;
+            if (!s) return;
+            let expect: string | undefined;
+            if (event.kind === 'click') {
+              // 확인 창이 떠 있으면 사람이 답할 때까지 여기서 기다린다. 새 창이 열렸으면 그 창을 읽는다.
+              // 앞의 누름 뒤에 늦게 뜬 창도 여기서 함께 읽히며, 뜬 시각으로 제 누름에 붙는다.
+              const after = await chrome.settledSnapshot();
+              expect = pickAppeared(s.last, after);
+              s.last = after;
+              const dialogs = await chrome.recordedDialogs();
+              if (dialogs.length) setSeen((prev) => [...prev, ...dialogs]);
+            }
+            setSteps((prev) => {
+              const next = addRecorded(prev, event);
+              if (expect) next[next.length - 1] = { ...next[next.length - 1], expect } as AuthorStep;
+              return next;
+            });
+          })
+          // 한 조작을 읽다 실패해도 그 뒤의 녹화는 이어 간다.
+          .catch(() => {});
       };
       browser.runtime.onMessage.addListener(onMessage);
       await chrome.record(true);
@@ -103,6 +139,7 @@ export function Author(props: { bundledIds: string[]; drafts: DraftSkill[]; onCh
         },
       };
       setSteps([]);
+      setSeen([]);
       setTables(null);
       setNotice('');
       setState('recording');
@@ -115,15 +152,27 @@ export function Author(props: { bundledIds: string[]; drafts: DraftSkill[]; onCh
     const s = session.current;
     if (!s) return;
     const snap = await s.browser.snapshot();
+    s.last = snap;
+    setPaging(null);
     setTables(snap.items.flatMap((i) => (i.kind === 'el' && i.role === 'table' ? [i.name] : [])));
   }
 
-  function stopRecording() {
+  /** 표를 고르면, 화면에 다음 페이지 버튼이 있을 때 끝까지 넘기며 읽을지 묻는다. */
+  function pickTable(name: string) {
+    const buttons = nextButtons(session.current?.last);
+    setTables(null);
+    if (buttons.length === 0) setSteps([...steps, { kind: 'extract', name }]);
+    else setPaging({ table: name, buttons });
+  }
+
+  async function stopRecording() {
     const s = session.current;
     if (!s) return;
+    const late = await s.browser.recordedDialogs().catch(() => []);
+    const recorded = withDialogs(steps, [...seen, ...late]);
     s.stop();
     session.current = null;
-    const draft = draftSkill(meta, s.start, steps);
+    const draft = draftSkill(meta, s.start, recorded);
     setSource(draft.source);
     setNotes(draft.notes);
     setState('editing');
@@ -178,7 +227,7 @@ export function Author(props: { bundledIds: string[]; drafts: DraftSkill[]; onCh
               <li className="minor">시작 화면: {session.current?.start.heading ?? session.current?.start.url}</li>
               {steps.map((s, i) => (
                 <li key={i}>
-                  <span>{describeStep(s)}</span>
+                  <span>{describeStep(withDialogs(steps, seen)[i])}</span>
                   {(s.kind === 'type' || s.kind === 'select') && (
                     <label className="check">
                       <input
@@ -214,16 +263,42 @@ export function Author(props: { bundledIds: string[]; drafts: DraftSkill[]; onCh
                       key={name}
                       className="secondary"
                       data-table={name}
-                      onClick={() => {
-                        setSteps([...steps, { kind: 'extract', name }]);
-                        setTables(null);
-                      }}
+                      onClick={() => pickTable(name)}
                     >
                       "{name}" 표
                     </button>
                   ))}
                 </div>
               ))}
+          </div>
+        )}
+
+        {state === 'recording' && paging && (
+          <div className="row wrap" id="rec-paging">
+            <span className="hint">"{paging.table}" 표가 여러 페이지인가요?</span>
+            <button
+              className="secondary"
+              data-next=""
+              onClick={() => {
+                setSteps([...steps, { kind: 'extract', name: paging.table }]);
+                setPaging(null);
+              }}
+            >
+              지금 보이는 페이지만
+            </button>
+            {paging.buttons.map((b) => (
+              <button
+                key={b}
+                className="secondary"
+                data-next={b}
+                onClick={() => {
+                  setSteps([...steps, { kind: 'extract', name: paging.table, next: b }]);
+                  setPaging(null);
+                }}
+              >
+                "{b}" 버튼으로 끝까지
+              </button>
+            ))}
           </div>
         )}
 

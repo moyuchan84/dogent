@@ -237,7 +237,7 @@ describe('표 안의 요소', () => {
     const events: RecordedEvent[] = [];
     createPageAgent(dom.window as any, (e) => events.push(e)).record(true);
     dom.window.document.getElementById('b')!.click();
-    expect(events).toEqual([{ kind: 'click', role: 'button', name: '선택', dup: true, row: 'P7-00031' }]);
+    expect(events).toEqual([{ kind: 'click', role: 'button', name: '선택', dup: true, row: 'P7-00031', at: expect.any(Number) }]);
     const { source, notes } = draftSkill(
       { id: 'lot-pick', name: 'Lot 고르기', description: '표에서 Lot을 고른다', owner: '생산관리' },
       { url: 'http://localhost:4173/t' },

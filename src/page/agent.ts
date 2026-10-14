@@ -444,7 +444,7 @@ export function createPageAgent(
       const desc = describeInTable(el);
       if (!desc) continue;
       if (CLICK_ROLES.has(desc.role)) {
-        onRecord({ kind: 'click', role: desc.role, name: desc.name, dup: sameName(desc.name) > 1, row: rowKey(el) });
+        onRecord({ kind: 'click', role: desc.role, name: desc.name, dup: sameName(desc.name) > 1, row: rowKey(el), at: Date.now() });
       }
       return;
     }

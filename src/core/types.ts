@@ -53,7 +53,7 @@ export interface PageSnapshot {
  * dup은 같은 이름의 요소가 화면에 여럿 있어 이름만으로 특정할 수 없다는 뜻이다.
  */
 export type RecordedEvent =
-  | { kind: 'click'; role: string; name: string; dup: boolean; row?: string }
+  | { kind: 'click'; role: string; name: string; dup: boolean; row?: string; /** 누른 시각 (ms) */ at?: number }
   | { kind: 'type'; name: string; value: string; dup: boolean; multiline: boolean; numeric: boolean }
   | { kind: 'select'; name: string; value: string; options: string[]; dup: boolean };
 
@@ -62,6 +62,8 @@ export interface PageDialog {
   kind: 'alert' | 'confirm' | 'prompt';
   message: string;
   accepted: boolean;
+  /** 창이 뜬 시각 (ms). 녹화할 때만 적는다. 어느 누름 뒤에 뜬 창인지 가리는 데 쓴다. */
+  at?: number;
 }
 
 /** 확인 창에 답하는 방법. accept여도 메시지가 unless(정규식)에 걸리면 취소한다. */
