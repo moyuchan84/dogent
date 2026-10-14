@@ -22,6 +22,7 @@ import { loadShared, refreshShared, type SharedState } from '@/src/ext/shared';
 import { loadBundledSkills } from '@/src/ext/skills';
 import { appendRun, clearPaths, effectiveSettings, hasBuiltInKey, loadDrafts, loadRuns, loadSettings, markTrial, pathStore, saveSettings, type DraftSkill } from '@/src/ext/storage';
 import { Author } from './Author';
+import { History } from './History';
 import { download, targetTab } from './util';
 
 const STATUS_LABEL: Record<RunResult['status'], string> = {
@@ -54,7 +55,7 @@ export function App() {
     () => [...sharedSkills, ...builtIn.filter((b) => !sharedSkills.some((s) => s.id === b.id))],
     [builtIn, sharedSkills],
   );
-  const [tab, setTab] = useState<'run' | 'author'>('run');
+  const [tab, setTab] = useState<'run' | 'author' | 'history'>('run');
   const [drafts, setDrafts] = useState<DraftSkill[]>([]);
   // 초안은 만든 PC에서만 보인다. 번들된 스킬과 구분해 표시하고, 자연어 해석 대상에는 넣지 않는다.
   const draftSkills = useMemo(
@@ -366,7 +367,12 @@ export function App() {
         <button id="tab-author" className={tab === 'author' ? 'on' : ''} disabled={running} onClick={() => setTab('author')}>
           스킬 만들기
         </button>
+        <button id="tab-history" className={tab === 'history' ? 'on' : ''} disabled={running} onClick={() => setTab('history')}>
+          기록
+        </button>
       </nav>
+
+      {tab === 'history' && <History names={Object.fromEntries([...skills.map((s) => [s.id, s.name]), [FREE_SKILL_ID, '자유 요청']])} />}
 
       {tab === 'author' && <Author bundledIds={bundled.map((s) => s.id)} drafts={drafts} onChange={reloadDrafts} />}
 

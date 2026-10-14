@@ -197,6 +197,11 @@ export interface DatasetInfo {
 export interface RunResult {
   status: RunStatus;
   message: string;
+  /**
+   * 스킬 탓이 아닌 중단의 이유. user: 사용자가 승인하지 않음, policy: 입력값이 정책에 걸림,
+   * login: 로그인이 풀려 있음. 스킬의 성공률을 셀 때 이런 실행은 뺀다.
+   */
+  cause?: 'user' | 'policy' | 'login';
   lastStep: number;
   actions: number;
   files: string[];

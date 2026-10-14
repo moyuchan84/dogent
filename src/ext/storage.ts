@@ -127,6 +127,10 @@ export async function loadRuns(): Promise<RunRecord[]> {
   return ((await browser.storage.local.get(RUNS_KEY))[RUNS_KEY] as RunRecord[] | undefined) ?? [];
 }
 
+export async function clearRuns(): Promise<void> {
+  await browser.storage.local.remove(RUNS_KEY);
+}
+
 export async function appendRun(record: RunRecord): Promise<void> {
   const runs = await loadRuns();
   await browser.storage.local.set({ [RUNS_KEY]: [...runs, record].slice(-MAX_RUNS) });
