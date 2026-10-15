@@ -285,6 +285,69 @@ try {
     assert.deepEqual(await fwApi(), []);
   });
 
+  await scenario('묶어 실행: 엑셀 행마다 방화벽 신청, 행마다 승인하고 결과 엑셀을 받음', async (openPages) => {
+    const { panel } = await openPages('/fw.html');
+    await fwApi('DELETE');
+    await panel.selectOption('#skill', 'firewall-request');
+    // 엑셀에 없는 기간과 사유는 화면에 적은 값을 모든 행에 쓴다.
+    await panel.fill('[data-input=period_days]', '30');
+    await panel.fill('[data-input=reason]', fwInputs.reason);
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('신청');
+    ws.addRow(['출발지 IP', '목적지 IP', '포트', '비고']);
+    ws.addRow(['10.10.1.15', '10.20.3.7', 1521, '승인할 것']);
+    ws.addRow(['10.0.0.0/8', '10.20.3.7', 1521, '정책에 걸림']);
+    ws.addRow(['10.10.1.16', '10.20.3.8', 443, '승인하지 않을 것']);
+    const file = join(profile, '방화벽묶음.xlsx');
+    await wb.xlsx.writeFile(file);
+
+    await panel.locator('.batch summary').click();
+    await panel.setInputFiles('#batch-file', file);
+    const view = panel.locator('#batch');
+    await view.waitFor();
+    assert.match(await view.innerText(), /연결한 컬럼: 출발지 IP → src_ip, 목적지 IP → dst_ip, 포트 → port/);
+    assert.match(await view.innerText(), /모든 행에 같은 값: period_days, reason · 쓰지 않는 컬럼: 비고/);
+    assert.equal(await panel.locator('tr[data-line="3"]').getAttribute('data-state'), 'invalid');
+    assert.equal(await panel.locator('#batch-run').innerText(), '2건 실행');
+
+    await panel.click('#batch-run');
+    await panel.locator('#approval').waitFor({ timeout: RUN_TIMEOUT });
+    assert.match(await panel.locator('#approval').innerText(), /10\.10\.1\.15/);
+    assert.match(await panel.locator('#batch-progress').innerText(), /엑셀 2행/);
+    await panel.click('#approve');
+    // 두 번째 행은 처음 화면에서 다시 시작한다.
+    await panel.locator('#approval', { hasText: '10.10.1.16' }).waitFor({ timeout: RUN_TIMEOUT });
+    await panel.click('#decline');
+    await panel.locator('#batch-summary').waitFor({ timeout: RUN_TIMEOUT });
+    assert.match(await panel.locator('#batch-summary').innerText(), /성공 1건, 실패 0건, 실행 안 함 2건/);
+    assert.equal(await panel.locator('tr[data-line="2"]').getAttribute('data-state'), 'done');
+    assert.equal(await panel.locator('tr[data-line="4"]').getAttribute('data-state'), 'skipped');
+    assert.deepEqual(
+      (await fwApi()).map((r) => [r.src, r.dst, r.port, r.days]),
+      [['10.10.1.15', '10.20.3.7', '1521', '30']],
+      '승인한 행만 상신',
+    );
+    await panel.screenshot({ path: join(ROOT, 'test-results/panel-batch.png'), fullPage: true });
+
+    const [download] = await Promise.all([panel.waitForEvent('download'), panel.click('#batch-report')]);
+    assert.equal(download.suggestedFilename(), '방화벽묶음_결과.xlsx');
+    const reportPath = join(profile, 'batch-report.xlsx');
+    await download.saveAs(reportPath);
+    const book = await sheets(reportPath);
+    assert.deepEqual(
+      book['결과'].map((r) => [r[0], r[1], r[7], r[9] ?? '']),
+      [
+        ['행', '출발지 IP', '결과', 'request_id'],
+        [2, '10.10.1.15', '완료', 'FW-000001'],
+        [3, '10.0.0.0/8', '입력 오류', ''],
+        [4, '10.10.1.16', '사용자가 멈춤·승인 안 함', ''],
+      ],
+    );
+    await panel.click('#batch-clear');
+    assert.equal(await panel.locator('#run').count(), 1);
+    await fwApi('DELETE');
+  });
+
   await scenario('방화벽 신청: 넓은 대역은 실행 전에 거부', async (openPages) => {
     const { target, panel } = await openPages('/fw.html');
     await fillFirewall(panel, { src_ip: '10.10.0.0/16' });
@@ -334,6 +397,24 @@ try {
     const r = await result(panel);
     assert.equal(r.status, 'done', r.text);
     assert.match(r.text, /5건을 저장했습니다/);
+    assert.deepEqual(await adjustApi(), [adjustRows.map((row) => row.map(String))]);
+  });
+
+  await scenario('엑셀 → 웹 입력: 입력 칸 없는 그리드에는 붙여 넣어 채우고 승인 후 저장', async (openPages) => {
+    const { target, panel } = await openPages('/adjust-grid.html');
+    await adjustApi('DELETE');
+    await panel.selectOption('#skill', 'wip-adjust');
+    await panel.setInputFiles('[data-input=source]', await adjustFile('adjust-grid.xlsx', adjustRows));
+    const dialog = await runUntilApproval(panel);
+    assert.match(dialog, /5행/);
+    const grid = await target.$$eval('#adjGrid [role=row]:not(.head)', (rows) =>
+      rows.map((r) => [...r.querySelectorAll('[role=gridcell]')].slice(1).map((c) => c.textContent)),
+    );
+    assert.deepEqual(grid, adjustRows.map((row) => row.map(String)), '그리드가 붙여넣기에 맞춰 5행으로 늘어나야 함');
+    assert.match(await panel.locator('ol.log').innerText(), /붙여넣음/);
+    await panel.click('#approve');
+    const r = await result(panel);
+    assert.equal(r.status, 'done', r.text);
     assert.deepEqual(await adjustApi(), [adjustRows.map((row) => row.map(String))]);
   });
 

@@ -374,6 +374,62 @@ export function createPageAgent(
     fire(control, 'change');
   }
 
+  /** 붙여넣기 이벤트. 그리드는 clipboardData에서 글자를 읽는다. */
+  function pasteEvent(text: string): Event {
+    try {
+      const data = new win.DataTransfer();
+      data.setData('text/plain', text);
+      const ev = new win.ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: data });
+      if (ev.clipboardData?.getData('text/plain') === text) return ev;
+    } catch {
+      // DataTransfer를 만들 수 없는 환경(jsdom 등)은 아래로
+    }
+    const ev = new win.Event('paste', { bubbles: true, cancelable: true });
+    Object.defineProperty(ev, 'clipboardData', {
+      value: { types: ['text/plain'], getData: (t: string) => (t === 'text/plain' || t === 'text' ? text : '') },
+    });
+    return ev;
+  }
+
+  /**
+   * 입력 칸 없이 붙여넣기로만 값을 받는 그리드에 데이터를 넣는다.
+   * 사람이 하듯 첫 빈 행의 첫 칸을 누르고, 엑셀에서 복사한 것과 같은 탭 구분 글자를 붙여 넣는다.
+   * 그리드가 값을 거르거나 고쳐 넣을 수 있으므로, 맞게 들어갔는지는 부른 쪽이 화면을 다시 읽어 대조한다.
+   */
+  function pasteTable(parts: ReturnType<typeof tableParts>, columns: string[], colIdx: number[], rows: string[][]): string {
+    const from = Math.min(...colIdx);
+    const to = Math.max(...colIdx);
+    const span = (r: Element) => parts.cellsOf(r).slice(from, to + 1);
+    const used = parts.rows.filter((r) => span(r).some((c) => norm(c.textContent) !== ''));
+    if (used.length > 0) throw new Error(`표에 이미 입력된 값이 있습니다 (${used.length}행). 비어 있는 표에만 입력합니다`);
+    const lines = rows.map((row, r) =>
+      Array.from({ length: to - from + 1 }, (_, i) => {
+        const c = colIdx.indexOf(from + i);
+        const value = c < 0 ? '' : (row[c] ?? '');
+        if (/[\t\r\n]/.test(value)) throw new Error(`${r + 1}행 "${columns[c]}": 탭이나 줄바꿈이 든 값은 붙여 넣을 수 없습니다`);
+        return value;
+      }).join('\t'),
+    );
+    const cell = span(parts.rows[0])[0] as HTMLElement | undefined;
+    if (!cell) throw new Error('붙여 넣을 첫 칸을 찾을 수 없습니다');
+    cell.scrollIntoView?.({ block: 'center' });
+    for (const type of ['mousedown', 'mouseup']) cell.dispatchEvent(new win.MouseEvent(type, { bubbles: true, cancelable: true }));
+    cell.click();
+    // 그리드는 고른 칸이나 숨긴 입력란에 초점을 옮겨 두고 거기서 붙여넣기를 받는다.
+    const focused = doc.activeElement;
+    const target = focused && focused !== doc.body && (parts.rows[0].closest('[role=grid],table')?.contains(focused) || /^(INPUT|TEXTAREA)$/.test(focused.tagName)) ? focused : cell;
+    const text = lines.join('\r\n');
+    const handled = !target.dispatchEvent(pasteEvent(text));
+    if (!handled) {
+      if (target.tagName !== 'TEXTAREA' && target.tagName !== 'INPUT') throw new Error('표가 붙여넣기를 받지 않았습니다');
+      // 숨긴 입력란에 붙여 넣은 글자를 읽어 가는 그리드. 브라우저가 해 주는 기본 붙여넣기를 대신한다.
+      const proto = target.tagName === 'INPUT' ? win.HTMLInputElement.prototype : win.HTMLTextAreaElement.prototype;
+      Object.getOwnPropertyDescriptor(proto, 'value')!.set!.call(target, text);
+      fire(target, 'input');
+    }
+    return `${rows.length}행 × ${columns.length}열 붙여넣음 (붙여넣기로 받는 표)`;
+  }
+
   // ---- 화면 표시 ----
   // 사용자가 에이전트의 동작을 눈으로 따라갈 수 있게, 조작할 요소에 테두리와 포인터를 그린다.
   // 닫힌 shadow root 안에 두어 페이지의 글자·스타일과 섞이지 않고, 스냅샷과 hasText에도 잡히지 않는다.
@@ -572,6 +628,12 @@ export function createPageAgent(
           return i;
         });
         const editable = () => parts.rows.filter((r) => parts.cellsOf(r).some((c) => controlOf(c)));
+        if (editable().length === 0 && parts.rows.length === 0 && addRef !== undefined) {
+          (resolve(addRef) as HTMLElement).click();
+          parts = tableParts(table);
+        }
+        // 칸에 입력 요소가 하나도 없는 표는 붙여넣기로만 값을 받는 그리드로 본다.
+        if (editable().length === 0 && parts.rows.length > 0) return pasteTable(parts, columns, colIdx, rows);
         const used = editable().filter((r) => parts.cellsOf(r).some((c) => (controlOf(c)?.value ?? '') !== ''));
         if (used.length > 0) {
           throw new Error(`표에 이미 입력된 값이 있습니다 (${used.length}행). 비어 있는 표에만 입력합니다`);

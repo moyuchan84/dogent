@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>재공 수량 조정(그리드) - 모의 MES</title>
+<style>
+  body { font: 14px "Malgun Gothic", sans-serif; margin: 24px; color: #1c2733; }
+  h1 { font-size: 20px; }
+  .grid { display: inline-block; border: 1px solid #d5dbe3; outline: none; }
+  .grid [role=row] { display: flex; }
+  .grid [role=columnheader], .grid [role=gridcell] { width: 140px; padding: 4px 6px; border: 1px solid #d5dbe3; min-height: 20px; box-sizing: border-box; }
+  .grid [role=columnheader] { background: #e8edf3; font-weight: 600; }
+  .grid .no { width: 44px; color: #55606e; text-align: right; }
+  .grid [role=gridcell][aria-selected=true] { outline: 2px solid #1a56c4; outline-offset: -2px; }
+  .actions { margin: 12px 0; display: flex; gap: 8px; }
+  button { font: inherit; padding: 6px 12px; }
+  #msg { color: #b3261e; min-height: 20px; }
+  #done { padding: 16px; background: #e3f4ec; border-radius: 6px; }
+</style>
+</head>
+<body>
+<h1>재공 수량 조정</h1>
+<p>사내 그리드 제품을 가정한 모의 화면입니다. 칸에 직접 입력할 수 없고, 칸을 고른 뒤 엑셀에서 복사한 내용을 붙여 넣어야 합니다.</p>
+
+<div id="formwrap">
+  <div id="adjGrid" class="grid" role="grid" aria-label="조정 목록" tabindex="0">
+    <div role="row" class="head">
+      <div role="columnheader" class="no">No</div>
+      <div role="columnheader">Lot ID</div>
+      <div role="columnheader">공정</div>
+      <div role="columnheader">조정수량</div>
+      <div role="columnheader">사유</div>
+    </div>
+  </div>
+  <div class="actions">
+    <button id="addRow">행 추가</button>
+    <button id="save">저장</button>
+  </div>
+  <div id="msg"></div>
+</div>
+<div id="done" hidden></div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const STEPS = ['PHOTO', 'ETCH', 'DIFF', 'CMP', 'IMP'];
+  const grid = $('adjGrid');
+  const WIDTH = 4;
+  const rows = () => [...grid.querySelectorAll('[role=row]:not(.head)')];
+  const cells = (row) => [...row.querySelectorAll('[role=gridcell]')];
+  let selected = null;
+
+  function addRow() {
+    const row = document.createElement('div');
+    row.setAttribute('role', 'row');
+    const no = document.createElement('div');
+    no.setAttribute('role', 'gridcell');
+    no.className = 'no';
+    no.textContent = rows().length + 1;
+    row.appendChild(no);
+    for (let i = 0; i < WIDTH; i++) {
+      const cell = document.createElement('div');
+      cell.setAttribute('role', 'gridcell');
+      cell.tabIndex = -1;
+      row.appendChild(cell);
+    }
+    grid.appendChild(row);
+  }
+  for (let i = 0; i < 3; i++) addRow();
+  $('addRow').addEventListener('click', addRow);
+
+  // 실제 그리드처럼 누르면 칸이 선택되고, 붙여넣기는 선택한 칸부터 오른쪽·아래로 채운다.
+  grid.addEventListener('mousedown', (e) => {
+    const cell = e.target.closest('[role=gridcell]');
+    if (!cell || cell.classList.contains('no')) return;
+    if (selected) selected.removeAttribute('aria-selected');
+    selected = cell;
+    cell.setAttribute('aria-selected', 'true');
+    cell.focus();
+  });
+
+  grid.addEventListener('paste', (e) => {
+    e.preventDefault();
+    if (!selected) { $('msg').textContent = '붙여 넣을 칸을 먼저 고르세요.'; return; }
+    const text = (e.clipboardData && e.clipboardData.getData('text/plain')) || '';
+    const lines = text.replace(/\r/g, '').split('\n');
+    if (lines[lines.length - 1] === '') lines.pop();
+    const startRow = rows().indexOf(selected.parentElement);
+    const startCol = cells(selected.parentElement).indexOf(selected);
+    const rejected = [];
+    lines.forEach((line, r) => {
+      while (rows().length <= startRow + r) addRow();
+      const target = cells(rows()[startRow + r]);
+      line.split('\t').forEach((value, c) => {
+        const cell = target[startCol + c];
+        if (!cell) return;
+        // 그리드가 스스로 거르는 값: 공정은 목록에 있는 것만, 수량은 숫자만.
+        const col = startCol + c;
+        if ((col === 2 && value && !STEPS.includes(value)) || (col === 3 && value && !/^-?\d+$/.test(value))) {
+          rejected.push(value);
+          cell.textContent = '';
+          return;
+        }
+        cell.textContent = value;
+      });
+    });
+    $('msg').textContent = rejected.length ? '허용되지 않는 값은 비웠습니다: ' + rejected.join(', ') : '';
+  });
+
+  $('save').addEventListener('click', async () => {
+    const data = rows()
+      .map((row) => cells(row).slice(1).map((c) => c.textContent))
+      .filter((r) => r.some((v) => v !== ''));
+    if (data.length === 0) { $('msg').textContent = '입력된 행이 없습니다.'; return; }
+    if (data.some((r) => r.some((v) => v === ''))) { $('msg').textContent = '비어 있는 칸이 있습니다.'; return; }
+    $('save').disabled = true;
+    const wrap = $('formwrap');
+    wrap.setAttribute('aria-busy', 'true');
+    const [res] = await Promise.all([
+      fetch('/api/adjust', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }).then((r) => r.json()),
+      new Promise((r) => setTimeout(r, 400)),
+    ]);
+    wrap.removeAttribute('aria-busy');
+    wrap.hidden = true;
+    $('done').hidden = false;
+    $('done').textContent = '저장되었습니다. ' + res.count + '건';
+  });
+</script>
+</body>
+</html>

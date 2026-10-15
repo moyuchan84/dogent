@@ -490,3 +490,29 @@ textarea.code {
   padding: 0 0 8px;
   font-size: 12px;
 }
+
+.batch {
+  margin: 8px 0;
+}
+.batch summary {
+  cursor: pointer;
+  font-size: 13px;
+}
+.batch-view {
+  margin: 8px 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 12px;
+}
+.batch-rows td {
+  vertical-align: top;
+}
+.batch-rows tr[data-state='invalid'] td,
+.batch-rows tr[data-state='aborted'] td,
+.batch-rows tr[data-state='error'] td {
+  color: var(--risk);
+}
+.batch-rows tr[data-state='running'] td {
+  background: var(--warn-soft);
+}
