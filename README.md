@@ -6,7 +6,7 @@
 
 ## 빠르게 돌려 보기
 
-Gemma 없이 모의 사이트와 모의 모델로 전체 흐름을 확인할 수 있습니다.
+Gemma 없이 모의 사이트와 모의 모델로 전체 흐름을 확인할 수 있습니다. 화면 캡처와 함께 단계별로 따라 하려면 [docs/08-hands-on-guide.html](docs/08-hands-on-guide.html)을 브라우저로 여세요.
 
 ```bash
 pnpm install
