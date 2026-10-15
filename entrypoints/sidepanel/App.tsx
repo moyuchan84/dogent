@@ -10,7 +10,14 @@ import {
   readTable,
   resolveInputs,
   runSkill,
+  batchReport,
+  buildWorkbook,
+  planBatch,
+  stopsBatch,
   type ApprovalRequest,
+  type BatchOutcome,
+  type BatchPlan,
+  type SkillInputs,
   type Dataset,
   type LlmSettings,
   type RunEvent,
@@ -22,6 +29,7 @@ import { loadShared, refreshShared, type SharedState } from '@/src/ext/shared';
 import { loadBundledSkills } from '@/src/ext/skills';
 import { appendRun, clearPaths, effectiveSettings, hasBuiltInKey, loadDrafts, loadRuns, loadSettings, markTrial, pathStore, saveSettings, type DraftSkill } from '@/src/ext/storage';
 import { Author } from './Author';
+import { BatchView } from './Batch';
 import { History } from './History';
 import { download, targetTab } from './util';
 
@@ -90,6 +98,8 @@ export function App() {
   const [allowWrite, setAllowWrite] = useState(false);
   // 파일 입력에서 고른 파일 (입력 이름 → 파일)
   const [picked, setPicked] = useState<Record<string, File | undefined>>({});
+  // 묶어 실행하기: 고른 엑셀, 행마다의 입력값, 지금까지의 결과, 지금 도는 행
+  const [batch, setBatch] = useState<{ file: string; plan: BatchPlan; outcomes: BatchOutcome[]; at: number } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const logEnd = useRef<HTMLDivElement>(null);
 
@@ -153,6 +163,57 @@ export function App() {
       setNotice(errors.join(' / '));
       return;
     }
+    setBatch(null);
+    setRunning(true);
+    await execute(skill, values);
+    setRunning(false);
+  }
+
+  /** 엑셀을 고르면 행마다 입력값을 만들어 보여 준다. 실행은 사용자가 따로 누른다. */
+  async function pickBatch(file: File | undefined) {
+    setBatch(null);
+    setNotice('');
+    if (!file || !skill || isFree) return;
+    try {
+      const plan = planBatch(skill, await readTable(await file.arrayBuffer(), file.name), form);
+      setBatch({ file: file.name, plan, outcomes: [], at: -1 });
+    } catch (e) {
+      setNotice(`${file.name}: ${(e as Error).message}`);
+    }
+  }
+
+  /** 행마다 처음 화면에서 다시 시작해 한 건씩 돌린다. 승인·중지·기록은 한 건씩 돌릴 때와 같다. */
+  async function runBatch() {
+    if (!settings || !skill || !batch) return;
+    setRunning(true);
+    const startUrl = (await targetTab().catch(() => null))?.url;
+    const outcomes: BatchOutcome[] = batch.plan.rows.map((row) => ({ row }));
+    let stop = false;
+    for (let i = 0; i < outcomes.length; i++) {
+      const o = outcomes[i];
+      if (o.row.errors.length || stop) continue;
+      setBatch((b) => b && { ...b, outcomes: [...outcomes], at: i });
+      if (i > 0 && startUrl) {
+        const tab = await targetTab().catch(() => null);
+        if (tab) await new ChromeBrowser(tab.id).navigate(startUrl).catch(() => {});
+      }
+      const res = await execute(skill, o.row.values);
+      outcomes[i] = { ...o, result: res };
+      stop = stopsBatch(res);
+    }
+    setBatch((b) => b && { ...b, outcomes, at: outcomes.length });
+    setRunning(false);
+  }
+
+  async function downloadBatchReport() {
+    if (!skill || !batch) return;
+    const data = await buildWorkbook([{ name: '결과', dataset: batchReport(skill, batch.outcomes) }]);
+    const base = batch.file.replace(/\.(xlsx|csv)$/i, '');
+    download(`${base}_결과.xlsx`, data, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  }
+
+  async function execute(skill: Skill, values: SkillInputs): Promise<RunResult> {
+    if (!settings) throw new Error('설정을 읽지 못했습니다');
     // 파일 입력은 여기서 읽어 데이터셋으로 넣어 둔다. 파일 내용은 모델에 보내지 않는다.
     const datasets = new DatasetStore();
     for (const spec of skill.inputs) {
@@ -162,15 +223,15 @@ export function App() {
         const table = await readTable(await file.arrayBuffer(), file.name);
         datasets.set(spec.dataset, table.columns, table.rows);
       } catch (e) {
-        setNotice(`${spec.label ?? spec.name}: ${(e as Error).message}`);
-        return;
+        const message = `${spec.label ?? spec.name}: ${(e as Error).message}`;
+        setNotice(message);
+        return { status: 'error', message, lastStep: 0, actions: 0, files: [], datasets: [], outputs: {}, elapsedMs: 0 };
       }
     }
     setNotice('');
     setEvents([]);
     setResult(null);
     setPreviews([]);
-    setRunning(true);
 
     const abort = new AbortController();
     abortRef.current = abort;
@@ -238,7 +299,6 @@ export function App() {
     setApproval(null);
     setResult(res);
     setPreviews(datasets.list());
-    setRunning(false);
     // 초안이 끝까지 돌면 시험 실행 통과로 기록한다. 배포 요청의 조건 중 하나다.
     if (isDraft(skill.id) && (res.status === 'done' || res.status === 'dryrun')) {
       await markTrial(skill.id, res.status);
@@ -253,6 +313,7 @@ export function App() {
       events: collected,
       result: res,
     });
+    return res;
   }
 
   async function exportLog() {
@@ -410,6 +471,7 @@ export function App() {
               setSkillId(e.target.value);
               setForm({});
               setPicked({});
+              setBatch(null);
             }}
           >
             <option value={FREE_SKILL_ID}>자유 요청 (스킬 없이 현재 화면 조작)</option>
@@ -505,10 +567,34 @@ export function App() {
             시험 실행 (입력까지만 하고 저장·상신 직전에 멈춤)
           </label>
         )}
+        {!isFree && skill && !skill.inputs.some((i) => i.type === 'file') && skill.inputs.length > 0 && (
+          <details className="batch" open={batch !== null}>
+            <summary>엑셀로 여러 건 한 번에 실행</summary>
+            <p className="hint">
+              첫 행에 입력 이름이나 라벨({skill.inputs.map((i) => i.label ?? i.name).join(', ')})을 적은 엑셀을 고르면 행마다 한 번씩 실행합니다. 엑셀에
+              없는 입력은 위에 적은 값을 모든 행에 씁니다.{skill.risk === 'R3' ? ' 저장·상신은 행마다 승인을 받습니다.' : ''}
+            </p>
+            <input
+              id="batch-file"
+              type="file"
+              accept=".xlsx,.csv"
+              disabled={running}
+              onChange={(e) => {
+                void pickBatch(e.target.files?.[0]);
+                e.target.value = '';
+              }}
+            />
+          </details>
+        )}
+        {batch && <BatchView batch={batch} running={running} onReport={downloadBatchReport} onClear={() => setBatch(null)} />}
         <div className="row">
           {running ? (
             <button id="stop" className="danger" onClick={() => abortRef.current?.abort()}>
               중지
+            </button>
+          ) : batch && batch.at < 0 ? (
+            <button id="batch-run" onClick={runBatch} disabled={batch.plan.rows.every((r) => r.errors.length > 0)}>
+              {batch.plan.rows.filter((r) => r.errors.length === 0).length}건 실행
             </button>
           ) : (
             <button id="run" onClick={run} disabled={!skill}>
