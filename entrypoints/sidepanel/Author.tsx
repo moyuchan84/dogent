@@ -9,7 +9,10 @@ import {
   lintSkill,
   pickAppeared,
   polishSkill,
+  renameParam,
+  PARAM_NAME,
   type AuthorStep,
+  type RunAsSkill,
   type DraftStart,
   type LintReport,
   type LlmPort,
@@ -78,9 +81,22 @@ function nextButtons(snap: PageSnapshot | undefined): string[] {
  * 스킬 만들기. 업무를 한 번 해 보이면 초안이 만들어지고, 품질 검사를 통과하면 초안으로 저장해 시험 실행한다.
  * 만든 사람이 형식을 외울 필요가 없고, 누가 만들어도 같은 기준으로 검사된다.
  */
-export function Author(props: { bundledIds: string[]; drafts: DraftSkill[]; onChange: () => void; llm: () => LlmPort }) {
+export function Author(props: {
+  bundledIds: string[];
+  drafts: DraftSkill[];
+  onChange: () => void;
+  llm: () => LlmPort;
+  /** 실행 탭에서 "이 실행을 스킬로 저장"을 누르면 그 실행에서 옮긴 단계가 온다. */
+  seed?: RunAsSkill | null;
+  onSeedTaken?: () => void;
+}) {
   const [meta, setMeta] = useState({ id: '', name: '', description: '', owner: '' });
-  const [state, setState] = useState<'idle' | 'recording' | 'editing'>('idle');
+  // review: 실행에서 옮긴 단계를 녹화 목록처럼 고치는 중 (화면 녹화는 하지 않음)
+  const [state, setState] = useState<'idle' | 'recording' | 'review' | 'editing'>('idle');
+  /** review의 시작 화면 */
+  const reviewStart = useRef<DraftStart | null>(null);
+  /** 고치기 시작할 때의 매개변수 이름. 다 고치면 말로 적은 단계의 자리표시자를 따라 바꾼다. */
+  const nameAtFocus = useRef('');
   const [steps, setSteps] = useState<AuthorStep[]>([]);
   const [tables, setTables] = useState<string[] | null>(null);
   // 표 고르기가 읽기용인지 엑셀 채우기용인지
@@ -111,6 +127,24 @@ export function Author(props: { bundledIds: string[]; drafts: DraftSkill[]; onCh
   const session = useRef<{ browser: ChromeBrowser; tabId: number; start: DraftStart; last: PageSnapshot; stop: () => void } | null>(null);
 
   useEffect(() => () => session.current?.stop(), []);
+
+  // 실행에서 옮긴 단계를 받으면 녹화를 마친 것처럼 목록을 보여 주고 고치게 한다.
+  useEffect(() => {
+    const seed = props.seed;
+    if (!seed) return;
+    session.current?.stop();
+    session.current = null;
+    reviewStart.current = seed.start;
+    setMeta((m) => ({ ...seed.meta, id: m.id, owner: m.owner }));
+    setSteps(seed.steps);
+    setSeen([]);
+    setTables(null);
+    setAdder(null);
+    setNotes(seed.notes);
+    setNotice('');
+    setState('review');
+    props.onSeedTaken?.();
+  }, [props.seed]);
 
   const report = useMemo(() => {
     if (state !== 'editing') return null;
@@ -223,12 +257,35 @@ export function Author(props: { bundledIds: string[]; drafts: DraftSkill[]; onCh
 
   /** 녹화한 조작 하나를 고친다 (입력받기, 이름, 설명, 목적). */
   function update(i: number, patch: Partial<AuthorStep> & Record<string, unknown>) {
-    setSteps(steps.map((x, j) => (j === i ? ({ ...x, ...patch } as AuthorStep) : x)));
+    let next = steps.map((x, j) => (j === i ? ({ ...x, ...patch } as AuthorStep) : x));
+    const was = steps[i];
+    if (patch.variable === false && (was.kind === 'type' || was.kind === 'select') && was.param?.name) {
+      next = renameParam(next, was.param.name, { value: was.value });
+    }
+    setSteps(next);
+  }
+
+  /** 매개변수 이름을 다 고쳤으면 말로 적은 단계·정리 기준의 {이름}을 따라 바꾼다. */
+  function renamed(to: string) {
+    const from = nameAtFocus.current;
+    if (from && from !== to && PARAM_NAME.test(from)) setSteps((prev) => renameParam(prev, from, to));
+  }
+
+  /** 실행에서 옮긴 단계로 초안을 만든다. */
+  function draftFromReview() {
+    if (!/^[a-z][a-z0-9-]*$/.test(meta.id)) return setNotice('스킬 ID는 영문 소문자로 시작하고 소문자·숫자·하이픈만 씁니다 (예: wip-check)');
+    if (!meta.name.trim() || !meta.description.trim() || !meta.owner.trim()) return setNotice('이름, 설명, 담당 부서를 모두 적어 주세요');
+    if (!reviewStart.current) return;
+    const draft = draftSkill(meta, reviewStart.current, steps);
+    edit(draft.source);
+    setNotes(draft.notes);
   }
 
   function addGoal() {
     if (!goalText.trim()) return;
-    setSteps([...steps, { kind: 'goal', text: goalText.trim() }]);
+    const goal: AuthorStep = { kind: 'goal', text: goalText.trim() };
+    const closing = state === 'review' && steps.at(-1)?.kind === 'goal';
+    setSteps(closing ? [...steps.slice(0, -1), goal, steps.at(-1)!] : [...steps, goal]);
     setGoalText('');
     setAdder(null);
   }
@@ -312,7 +369,12 @@ export function Author(props: { bundledIds: string[]; drafts: DraftSkill[]; onCh
         <p className="hint">업무를 한 번 해 보이면 절차서 초안이 만들어집니다. 품질 검사를 통과하면 초안으로 저장해 시험 실행합니다.</p>
         {notice && <p className="notice">{notice}</p>}
 
-        {state === 'idle' && (
+        {state === 'review' && (
+          <p className="notice ok" id="review-intro">
+            방금 실행한 동작을 단계로 옮겼습니다. 스킬 정보를 채우고, 실행할 때마다 받을 값의 이름·설명을 확인한 뒤 초안을 만드세요.
+          </p>
+        )}
+        {(state === 'idle' || state === 'review') && (
           <>
             <label>
               스킬 ID
@@ -330,20 +392,33 @@ export function Author(props: { bundledIds: string[]; drafts: DraftSkill[]; onCh
               담당 부서
               <input id="a-owner" value={meta.owner} placeholder="화면이 바뀌면 고칠 책임이 있는 부서" onChange={(e) => setMeta({ ...meta, owner: e.target.value })} />
             </label>
-            <div className="row">
-              <button id="rec-start" onClick={startRecording}>
-                녹화 시작
-              </button>
-            </div>
-            <p className="hint">업무의 첫 화면을 연 상태에서 시작하세요. 비밀번호 칸은 녹화하지 않습니다.</p>
+            {state === 'idle' && (
+              <>
+                <div className="row">
+                  <button id="rec-start" onClick={startRecording}>
+                    녹화 시작
+                  </button>
+                </div>
+                <p className="hint">업무의 첫 화면을 연 상태에서 시작하세요. 비밀번호 칸은 녹화하지 않습니다. 실행 탭에서 말로 시켜 잘 된 일은 결과 아래 "이 실행을 스킬로 저장"으로도 만들 수 있습니다.</p>
+              </>
+            )}
           </>
         )}
 
-        {state === 'recording' && (
-          <div id="rec" data-count={steps.length}>
-            <p className="notice rec">녹화 중 — 업무 화면에서 평소대로 한 번 해 보이세요.</p>
+        {(state === 'recording' || state === 'review') && (
+          <div id="rec" data-count={steps.length} data-state={state}>
+            {state === 'recording' && <p className="notice rec">녹화 중 — 업무 화면에서 평소대로 한 번 해 보이세요.</p>}
+            {state === 'review' && notes.length > 0 && (
+              <ul className="hint" id="review-notes">
+                {notes.map((n) => (
+                  <li key={n}>{n}</li>
+                ))}
+              </ul>
+            )}
             <ol className="rec-list">
-              <li className="minor">시작 화면: {session.current?.start.heading ?? session.current?.start.url}</li>
+              <li className="minor">
+                시작 화면: {(session.current?.start ?? reviewStart.current)?.heading ?? (session.current?.start ?? reviewStart.current)?.url}
+              </li>
               {steps.map((s, i) => (
                 <li key={i} data-step={i}>
                   <span>{describeStep(withDialogs(steps, seen)[i])}</span>
@@ -359,6 +434,8 @@ export function Author(props: { bundledIds: string[]; drafts: DraftSkill[]; onCh
                         data-param-name={i}
                         value={s.param?.name ?? ''}
                         placeholder="이름 (영문, 예: keyword)"
+                        onFocus={(e) => (nameAtFocus.current = e.target.value)}
+                        onBlur={(e) => renamed(e.target.value.trim())}
                         onChange={(e) => update(i, { param: { ...s.param, name: e.target.value.trim() } })}
                       />
                       <input
@@ -395,21 +472,38 @@ export function Author(props: { bundledIds: string[]; drafts: DraftSkill[]; onCh
               ))}
             </ol>
             <div className="row wrap">
-              <button id="rec-table" className="secondary" onClick={() => (setAdder(null), findTables('extract'))}>
-                화면의 표 읽기 추가
-              </button>
-              <button id="rec-fill" className="secondary" title="실행할 때 받은 엑셀 파일의 행을 화면의 표에 채웁니다" onClick={() => (setAdder(null), findTables('fill'))}>
-                엑셀로 표 채우기 추가
-              </button>
+              {state === 'recording' && (
+                <>
+                  <button id="rec-table" className="secondary" onClick={() => (setAdder(null), findTables('extract'))}>
+                    화면의 표 읽기 추가
+                  </button>
+                  <button id="rec-fill" className="secondary" title="실행할 때 받은 엑셀 파일의 행을 화면의 표에 채웁니다" onClick={() => (setAdder(null), findTables('fill'))}>
+                    엑셀로 표 채우기 추가
+                  </button>
+                </>
+              )}
               <button id="rec-goal" className="secondary" title="클릭 대신 할 일을 문장으로 넣습니다. 실행할 때 모델이 화면을 보고 수행합니다" onClick={() => (setTables(null), setAdder(adder === 'goal' ? null : 'goal'))}>
                 말로 단계 추가
               </button>
-              <button id="rec-sum" className="secondary" title="지금 화면의 글이나 표를 정리해 결과 보고에 넣습니다" onClick={() => void openSummarize()}>
-                화면 정리 추가
-              </button>
-              <button id="rec-stop" onClick={stopRecording}>
-                녹화 끝
-              </button>
+              {state === 'recording' ? (
+                <>
+                  <button id="rec-sum" className="secondary" title="지금 화면의 글이나 표를 정리해 결과 보고에 넣습니다" onClick={() => void openSummarize()}>
+                    화면 정리 추가
+                  </button>
+                  <button id="rec-stop" onClick={stopRecording}>
+                    녹화 끝
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button className="ghost" onClick={() => setState('idle')}>
+                    취소
+                  </button>
+                  <button id="review-draft" onClick={draftFromReview}>
+                    초안 만들기
+                  </button>
+                </>
+              )}
             </div>
             {adder === 'goal' && (
               <div className="adder" id="goal-form">

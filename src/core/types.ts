@@ -191,6 +191,21 @@ export interface HistoryEntry {
    * 모델 호출 없이 그대로 실행한 것이다.
    */
   by: 'model' | 'skill' | 'cache';
+  /**
+   * ref·next_ref·add_ref가 가리킨 요소. 번호는 화면이 바뀌면 달라지므로,
+   * 실행을 스킬로 저장할 때 이 이름으로 단계를 적는다.
+   */
+  targets?: Record<string, ActionTarget>;
+}
+
+/** 동작이 가리킨 요소. dup은 같은 역할·이름의 요소가 화면에 둘 이상이었다는 뜻이다. */
+export interface ActionTarget {
+  role: string;
+  name: string;
+  dup: boolean;
+  row?: string;
+  /** 고르기 칸의 보기 */
+  options?: string[];
 }
 
 /** 저장해 둔 동작 하나. 요소는 번호가 아니라 이름으로, 입력값은 {이름} 자리표시자로 적는다. */

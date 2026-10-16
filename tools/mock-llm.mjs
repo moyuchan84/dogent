@@ -79,6 +79,11 @@ function followStep(user) {
       args: { summary: id ? `신청 번호 ${id}, 결재 대기 중입니다` : '모든 단계를 마쳤습니다' },
     };
   }
+  // 자유 요청을 스킬로 저장하면 마지막에 요청에 답하는 목표 단계가 붙는다.
+  if (stepText.includes('다음 요청에 답한다')) {
+    const total = /총 (\d+)건/.exec(page)?.[1];
+    return { thought: '보고', tool: 'finish', args: { summary: total ? `조회 결과는 총 ${total}건입니다.` : '요청한 일을 마쳤습니다.' } };
+  }
   return { thought: '할 일 없음', tool: 'next_step', args: {} };
 }
 

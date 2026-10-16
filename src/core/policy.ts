@@ -53,7 +53,7 @@ export function findElement(snap: PageSnapshot, ref: number): ElementItem | unde
 }
 
 /** 스냅샷의 options=[a, b, …] 표기에서 옵션 목록을 꺼낸다. 목록이 잘렸거나 없으면 null. */
-function optionsOf(el: ElementItem): string[] | null {
+export function optionsOf(el: ElementItem): string[] | null {
   const m = /^options=\[(.*)\]$/.exec(el.detail ?? '');
   if (!m || m[1].endsWith('…')) return null;
   return m[1].split(', ');
