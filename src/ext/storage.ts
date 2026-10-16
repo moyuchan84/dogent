@@ -9,27 +9,57 @@ const RUNS_KEY = 'runs';
 const MAX_RUNS = 50;
 
 /**
- * 배포할 때 빌드에 넣는 모델 접속 정보. 저장소가 아니라 빌드하는 PC의 .env.local에 적는다 (.env.example 참고).
- * 공용 키를 쓰는 환경에서는 사용자가 설정을 입력하지 않아도 바로 쓸 수 있다.
+ * 빌드에 넣는 모델 접속 정보. 저장소가 아니라 빌드하는 PC의 환경 파일에 적는다.
+ * 집(Ollama)은 .env.home.local, 회사(사내 Gemma)는 .env.company.local (.env.home.example, .env.company.example 참고).
+ * 이렇게 넣어 두면 설정 화면을 건드리지 않아도 바로 쓸 수 있다.
  */
+const env = import.meta.env as Record<string, string | undefined>;
 const BUILT_IN = {
-  baseUrl: (import.meta.env.WXT_LLM_BASE_URL as string | undefined) ?? '',
-  apiKey: (import.meta.env.WXT_LLM_API_KEY as string | undefined) ?? '',
-  model: (import.meta.env.WXT_LLM_MODEL as string | undefined) ?? '',
-  skillsUrl: (import.meta.env.WXT_SKILLS_URL as string | undefined) ?? '',
+  baseUrl: env.WXT_LLM_BASE_URL ?? '',
+  apiKey: env.WXT_LLM_API_KEY ?? '',
+  model: env.WXT_LLM_MODEL ?? '',
+  skillsUrl: env.WXT_SKILLS_URL ?? '',
+  jsonMode: env.WXT_LLM_JSON_MODE ? env.WXT_LLM_JSON_MODE.trim().toLowerCase() === 'true' : undefined,
+  timeoutScale: Number(env.WXT_LLM_TIMEOUT_SCALE) || undefined,
+  // 사내 게이트웨이처럼 Authorization이 아닌 헤더로 키와 사용자를 받는 API용. wxt.config.ts가 빌드할 때 형식을 검사한다.
+  headers: parseHeaders(env.WXT_LLM_HEADERS),
+  userId: env.WXT_LLM_USER_ID ?? '',
+  userType: env.WXT_LLM_USER_TYPE ?? '',
 };
+
+function parseHeaders(raw: string | undefined): Record<string, string> | undefined {
+  if (!raw?.trim()) return undefined;
+  return JSON.parse(raw) as Record<string, string>;
+}
 
 /** 빌드에 공용 API 키가 들어 있는지. 들어 있으면 설정 화면에서 키를 묻지 않아도 된다. */
 export const hasBuiltInKey = BUILT_IN.apiKey !== '';
 
+/** 빌드에 들어 있는 요청 헤더 틀. 설정 화면이 헤더 이름과 채워야 할 칸을 보여 줄 때 쓴다. */
+export const builtInHeaders = BUILT_IN.headers;
+
+/** 이 빌드의 기본 설정: 개발 기본값 위에 환경 파일의 값을 얹는다. 공용 키와 헤더 틀은 넣지 않는다. */
+function buildDefaults(): LlmSettings {
+  const d: LlmSettings = { ...dogentConfig.llmDefaults };
+  if (BUILT_IN.baseUrl) d.baseUrl = BUILT_IN.baseUrl;
+  if (BUILT_IN.model) d.model = BUILT_IN.model;
+  if (BUILT_IN.jsonMode !== undefined) d.jsonMode = BUILT_IN.jsonMode;
+  if (BUILT_IN.timeoutScale) d.timeoutScale = BUILT_IN.timeoutScale;
+  if (BUILT_IN.userId) d.userId = BUILT_IN.userId;
+  if (BUILT_IN.userType) d.userType = BUILT_IN.userType;
+  return d;
+}
+
+/**
+ * 저장소에는 사용자가 기본값과 다르게 바꾼 값만 남는다. 그래서 다시 빌드하면 바꾸지 않은 칸은 새 빌드의 값을 따른다.
+ * 예전 버전은 설정 전체를 저장했으므로, 개발 기본값과 같은 값은 사용자가 고른 것이 아니라고 보고 버린다.
+ */
 export async function loadSettings(): Promise<LlmSettings> {
-  const stored = (await browser.storage.local.get(SETTINGS_KEY))[SETTINGS_KEY] as Partial<LlmSettings> | undefined;
-  const merged = {
-    ...dogentConfig.llmDefaults,
-    ...(BUILT_IN.baseUrl ? { baseUrl: BUILT_IN.baseUrl } : {}),
-    ...(BUILT_IN.model ? { model: BUILT_IN.model } : {}),
-    ...stored,
-  };
+  const stored = { ...((await browser.storage.local.get(SETTINGS_KEY))[SETTINGS_KEY] as Partial<LlmSettings> | undefined) };
+  const dev = dogentConfig.llmDefaults as Record<string, unknown>;
+  for (const key of Object.keys(stored) as (keyof LlmSettings)[]) if (key in dev && stored[key] === dev[key]) delete stored[key];
+  delete stored.headers;
+  const merged = { ...buildDefaults(), ...stored };
   // 저장소 주소는 비워 저장했더라도 배포에 든 주소가 있으면 그것을 쓴다.
   return { ...merged, skillsUrl: merged.skillsUrl || BUILT_IN.skillsUrl };
 }
@@ -39,11 +69,22 @@ export async function loadSettings(): Promise<LlmSettings> {
  * 공용 키는 설정 화면에 보이지 않고 브라우저 저장소에도 복사되지 않는다.
  */
 export function effectiveSettings(settings: LlmSettings): LlmSettings {
-  return settings.apiKey ? settings : { ...settings, apiKey: BUILT_IN.apiKey };
+  const withKey = settings.apiKey ? settings : { ...settings, apiKey: BUILT_IN.apiKey };
+  return BUILT_IN.headers ? { ...withKey, headers: BUILT_IN.headers } : withKey;
 }
 
 export async function saveSettings(settings: LlmSettings): Promise<void> {
-  await browser.storage.local.set({ [SETTINGS_KEY]: settings });
+  const defaults = buildDefaults() as unknown as Record<string, unknown>;
+  const changed = Object.fromEntries(
+    Object.entries(settings).filter(([key, value]) => key !== 'headers' && value !== (defaults[key] ?? (key === 'apiKey' || key === 'userId' || key === 'userType' ? '' : undefined))),
+  );
+  await browser.storage.local.set({ [SETTINGS_KEY]: changed });
+}
+
+/** 설정 화면에서 바꾼 값을 모두 지우고 이 빌드의 기본값으로 돌아간다. */
+export async function resetSettings(): Promise<LlmSettings> {
+  await browser.storage.local.remove(SETTINGS_KEY);
+  return loadSettings();
 }
 
 const PATHS_KEY = 'skillPaths';

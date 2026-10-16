@@ -262,11 +262,16 @@ function polishReply(user) {
 export function mockComplete(messages) {
   const system = messages.find((m) => m.role === 'system')?.content ?? '';
   const user = messages.filter((m) => m.role === 'user').at(0)?.content ?? '';
+  if (!system && user.includes('연결 확인')) return 'ok';
   if (system.includes('스킬 문서 편집자')) return JSON.stringify(polishReply(user));
   return JSON.stringify(system.includes('스킬 선택기') ? planReply(user) : agentReply(user));
 }
 
-export function createMockLlm() {
+/**
+ * requireHeaders를 주면 사내 게이트웨이처럼 그 헤더가 모두 있어야 답한다. 없으면 401.
+ * 실행할 때는 MOCK_LLM_REQUIRE_HEADERS=x-dep-ticket,User-Id 처럼 준다.
+ */
+export function createMockLlm({ requireHeaders = [], log = () => {} } = {}) {
   return createServer((req, res) => {
     const cors = {
       'Access-Control-Allow-Origin': '*',
@@ -279,6 +284,13 @@ export function createMockLlm() {
     }
     if (req.method !== 'POST' || !req.url?.endsWith('/chat/completions')) {
       res.writeHead(404, cors).end();
+      return;
+    }
+    const missing = requireHeaders.filter((h) => !req.headers[h.toLowerCase()]);
+    if (requireHeaders.length) log(`요청 헤더 ${requireHeaders.map((h) => `${h}=${req.headers[h.toLowerCase()] ? '있음' : '없음'}`).join(', ')}`);
+    if (missing.length) {
+      res.writeHead(401, { ...cors, 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end(`missing headers: ${missing.join(', ')}`);
       return;
     }
     let body = '';
@@ -299,5 +311,8 @@ export function createMockLlm() {
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === normalize(process.argv[1])) {
   const port = Number(process.env.PORT ?? 4174);
-  createMockLlm().listen(port, () => console.log(`모의 모델 API: http://localhost:${port}/v1`));
+  const requireHeaders = (process.env.MOCK_LLM_REQUIRE_HEADERS ?? '').split(',').map((h) => h.trim()).filter(Boolean);
+  createMockLlm({ requireHeaders, log: console.log }).listen(port, () =>
+    console.log(`모의 모델 API: http://localhost:${port}/v1${requireHeaders.length ? ` (필수 헤더: ${requireHeaders.join(', ')})` : ''}`),
+  );
 }

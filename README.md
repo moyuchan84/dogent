@@ -40,11 +40,18 @@ pnpm mock:site             # 터미널 1
 pnpm ollama:proxy          # 터미널 2 (pnpm mock:llm 대신)
 ```
 
-그다음 사이드 패널 → 설정에서 다음을 바꾸고 저장합니다. API 주소는 기본값 `http://localhost:4174/v1` 그대로 둡니다.
+모델 이름과 설정은 집용 빌드 설정 파일에 적어 두면 패널을 건드리지 않아도 됩니다.
+
+```bash
+copy .env.home.example .env.home.local   # 모델 이름 등을 고친다
+pnpm build:home                          # → .output/chrome-mv3-home 을 로드
+```
 
 - 모델 이름: Ollama 모델명 (예: `gemma3:12b`)
 - JSON 출력 모드: 켬 (Ollama의 JSON 강제 출력을 써서 형식 오류가 줄어듭니다)
 - 제한 시간 배율: GPU 없이 CPU로 도는 PC라면 3 이상. 기본은 응답 1회 60초, 스킬 전체 300초라서 느린 환경에서는 그 전에 끊깁니다
+
+`pnpm build`(기본 빌드)로 만든 확장을 쓸 때는 사이드 패널 → 설정에서 같은 값을 바꾸고 저장하면 됩니다.
 
 중계 서버 터미널에 요청마다 입력·출력 토큰 수와 소요 시간이 찍힙니다. 한 번 실행에 모델을 11회 이상 부르고 회당 입력이 수천 토큰이므로, CPU만으로는 8B급 모델도 한 번 실행에 10분 이상 걸릴 수 있습니다. 그런 PC에서는 `gemma3:4b` 같은 작은 모델로 흐름을 먼저 확인하는 편이 낫습니다.
 
@@ -66,11 +73,31 @@ OLLAMA_MODEL=gemma3:12b RUNS=20 pnpm e2e:ollama
 
 ## 사내 Gemma에 연결하기
 
-1. `.env.example`을 `.env.local`로 복사해 Gemma API 주소, 공용 API 키, 모델 이름을 적는다. 이 파일은 Git에 올라가지 않는다
-2. `dogent.config.ts`의 `sitePermissions`에 대상 시스템 주소를 넣는다
-3. `skills/wip-check/SKILL.md`의 `domains`와 1단계의 화면 주소를 실제 시스템으로 바꾼다
-4. `pnpm build` 후 확장을 다시 로드한다 (나눠 줄 때는 `pnpm zip`)
+집과 회사는 빌드 설정 파일 하나만 다릅니다. 코드와 명령은 같습니다.
+
+| | 집 (로컬 Ollama) | 회사 (사내 Gemma) |
+|---|---|---|
+| 설정 파일 | `.env.home.local` (← `.env.home.example`) | `.env.company.local` (← `.env.company.example`) |
+| 빌드 | `pnpm build:home` | `pnpm build:company` (나눠 줄 때 `pnpm zip:company`) |
+| 로드할 폴더 | `.output/chrome-mv3-home` | `.output/chrome-mv3-company` |
+
+회사에서는 다음 순서로 합니다.
+
+1. `.env.company.example`을 `.env.company.local`로 복사하고, API 제공 측에서 받은 `api_base_url`, `credential_key`, `model`과 사용자 유형, 업무 시스템 주소(`WXT_SITE_PERMISSIONS`)를 채운다
+2. `pnpm build:company`. 터미널에 찍히는 "빌드 설정: company" 요약에서 주소·모델·헤더 이름·사이트를 확인한다
+3. `chrome://extensions`에서 `.output/chrome-mv3-company`를 로드한다
+4. 사이드 패널 → 설정 → **사용자 ID**(사내 SSO ID)를 넣고 **연결 시험** → "연결됨"이 나오면 저장
 5. 업무 화면을 열고 패널 위쪽의 **화면 점검**을 누른다. 허용 목록, 읽지 못한 iframe, 그림으로 그린 그리드, 웹 컴포넌트, 머리글 없는 표처럼 막히는 곳을 녹화 전에 알려 준다
+
+사내 게이트웨이가 키와 사용자를 헤더로 받으면 `WXT_LLM_HEADERS`에 헤더 틀을 적습니다. 예시 파일에는 `x-dep-ticket`(키), `send-system-name`, `user-id`, `user-type`, `prompt-msg-id`·`completion-msg-id`(요청마다 새 UUID), `accept`, `content-type`이 들어 있습니다. 틀이 있으면 `Authorization: Bearer`는 보내지 않습니다. 틀의 형식이 틀리면 빌드가 멈추고 어디가 틀렸는지 알려 줍니다. 사용자 ID처럼 비어 있는 값이 있으면 요청하지 않고 설정에서 채우라고 알립니다.
+
+회사 빌드를 집에서 미리 돌려 보려면 `.env.company.local`의 주소를 `http://localhost:4174/v1`로 두고, 모의 모델을 헤더 검사 모드로 띄웁니다. 헤더가 빠지면 401로 거절하고, 받은 헤더를 터미널에 찍습니다.
+
+```powershell
+$env:MOCK_LLM_REQUIRE_HEADERS='x-dep-ticket,user-id,user-type,prompt-msg-id,completion-msg-id'; pnpm mock:llm
+```
+
+설정 화면에서 바꾼 값만 브라우저에 저장되고, 바꾸지 않은 칸은 새로 빌드한 값을 따릅니다. 꼬였으면 설정의 **빌드 기본값으로 되돌리기**를 누릅니다.
 
 이렇게 빌드한 확장은 설치만 하면 설정 없이 모델에 연결됩니다. API 주소의 호스트는 접근 허용 목록에 자동으로 들어가고, 공용 키는 설정 화면에 보이지 않으며 브라우저 저장소에도 복사되지 않습니다. 개인 키를 쓰려면 패널 → 설정의 API 키 칸에 넣으면 그 키가 우선합니다.
 
