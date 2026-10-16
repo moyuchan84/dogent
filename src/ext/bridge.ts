@@ -154,6 +154,29 @@ interface Transport {
   close(): void;
 }
 
+/** 브라우저 이름과 판 (예: Microsoft Edge 141). 클라이언트가 브라우저를 고를 때 보여 준다. */
+function browserName(): string {
+  const data = (navigator as Navigator & { userAgentData?: { brands: { brand: string; version: string }[] } }).userAgentData;
+  const brands = data?.brands ?? [];
+  const named = brands.find((b) => !/not.?a.?brand|chromium/i.test(b.brand)) ?? brands.find((b) => /chromium/i.test(b.brand));
+  if (named) return `${named.brand} ${named.version}`;
+  const ua = navigator.userAgent;
+  const edge = /Edg\/(\d+)/.exec(ua);
+  if (edge) return `Microsoft Edge ${edge[1]}`;
+  const chrome = /Chrome\/(\d+)/.exec(ua);
+  return chrome ? `Google Chrome ${chrome[1]}` : '브라우저';
+}
+
+const INSTALL_KEY = 'bridgeInstallKey';
+/** 이 설치(브라우저 프로필)의 구분 값. 같은 브라우저가 다시 붙으면 브리지가 이전 연결을 대신하게 한다. */
+async function installKey(): Promise<string> {
+  const stored = (await browser.storage.local.get(INSTALL_KEY))[INSTALL_KEY] as string | undefined;
+  if (stored) return stored;
+  const key = crypto.randomUUID();
+  await browser.storage.local.set({ [INSTALL_KEY]: key });
+  return key;
+}
+
 let transport: Transport | null = null;
 let authed = false;
 let expected = '';
@@ -179,9 +202,12 @@ function drop() {
   t?.close();
 }
 
-async function onMessage(msg: BridgeMessage, settings: BridgeSettings) {
-  const t = transport;
-  if (!t) return;
+/** t는 메시지가 온 연결이다. 지금 쓰는 연결이 아니면(먼저 열었다가 대신된 연결) 닫고 무시한다. */
+async function onMessage(msg: BridgeMessage, settings: BridgeSettings, t: Transport) {
+  if (t !== transport) {
+    t.close();
+    return;
+  }
   switch (msg.type) {
     case 'status':
       if (msg.state === 'waiting-hub') await setStatus('connecting', 'Dogent 클라이언트(브리지)가 실행 중이 아닙니다. MCP 클라이언트에서 브리지를 띄우세요');
@@ -210,17 +236,20 @@ async function onMessage(msg: BridgeMessage, settings: BridgeSettings) {
       authed = true;
       refused = '';
       await setStatus('connected', settings.mode === 'ws' ? `WebSocket 127.0.0.1:${settings.port}` : 'Native Messaging');
+      // 크롬과 엣지가 함께 붙어도 클라이언트가 고를 수 있게 브라우저 이름을 알린다.
+      t.send({ type: 'hello', browser: browserName(), key: await installKey() });
       if (keepalive) clearInterval(keepalive);
       // 연결이 살아 있는 동안 서비스 워커가 잠들지 않게 주기적으로 신호를 보낸다.
       keepalive = setInterval(() => transport?.send({ type: 'ping' }), 20_000);
       return;
     case 'call': {
       if (!authed) return;
+      // 답은 호출이 온 연결로 보낸다.
       try {
         const text = await runTool(msg.tool, msg.args ?? {});
-        transport?.send({ type: 'result', id: msg.id, ok: true, text });
+        t.send({ type: 'result', id: msg.id, ok: true, text });
       } catch (e) {
-        transport?.send({ type: 'result', id: msg.id, ok: false, error: (e as Error).message });
+        t.send({ type: 'result', id: msg.id, ok: false, error: (e as Error).message });
       }
       return;
     }
@@ -229,15 +258,25 @@ async function onMessage(msg: BridgeMessage, settings: BridgeSettings) {
   }
 }
 
-/** 설정에 맞게 연결을 맺거나 끊는다. 이미 연결되어 있으면 그대로 둔다. */
-export async function ensureConnected(): Promise<void> {
+let connecting: Promise<void> | null = null;
+
+/**
+ * 설정에 맞게 연결을 맺거나 끊는다. 이미 연결되어 있으면 그대로 둔다.
+ * 알람, 다시 붙기, 설정 변경이 한꺼번에 불러도 연결은 하나만 연다.
+ */
+export function ensureConnected(): Promise<void> {
+  connecting ??= connect().finally(() => (connecting = null));
+  return connecting;
+}
+
+async function connect(): Promise<void> {
   const settings = await loadBridgeSettings();
   if (settings.mode === 'off') {
     drop();
     return void setStatus('off');
   }
   if (transport) return;
-  await setStatus('connecting', settings.mode === 'ws' ? `ws://127.0.0.1:${settings.port} 에 붙는 중` : 'Native Messaging 호스트를 띄우는 중');
+  const status = settings.mode === 'ws' ? `ws://127.0.0.1:${settings.port} 에 붙는 중` : 'Native Messaging 호스트를 띄우는 중';
   if (settings.mode === 'ws') {
     let ws: WebSocket;
     try {
@@ -247,10 +286,12 @@ export async function ensureConnected(): Promise<void> {
       return scheduleRetry(10_000);
     }
     const t: Transport = { send: (m) => ws.readyState === WebSocket.OPEN && ws.send(JSON.stringify(m)), close: () => ws.close() };
+    // 기다리는 일(상태 저장)보다 먼저 연결을 정해 둔다.
     transport = t;
+    await setStatus('connecting', status);
     ws.onmessage = (e) => {
       try {
-        void onMessage(JSON.parse(String(e.data)), settings);
+        void onMessage(JSON.parse(String(e.data)), settings, t);
       } catch {
         /* 형식이 틀린 메시지는 버린다 */
       }
@@ -278,7 +319,8 @@ export async function ensureConnected(): Promise<void> {
   }
   const t: Transport = { send: (m) => port.postMessage(m), close: () => port.disconnect() };
   transport = t;
-  port.onMessage.addListener((m) => void onMessage(m as BridgeMessage, settings));
+  await setStatus('connecting', status);
+  port.onMessage.addListener((m) => void onMessage(m as BridgeMessage, settings, t));
   port.onDisconnect.addListener(() => {
     if (transport !== t) return;
     const reason = browser.runtime.lastError?.message ?? '';

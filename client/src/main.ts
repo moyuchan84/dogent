@@ -25,6 +25,8 @@ import { loadSkills, type SkillEntry } from './skills';
 import { appendRun, filePathStore, folderFiles } from './store';
 import { Terminal, describeApproval, describeEvent, describeResult } from './terminal';
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 /** 로그인을 기다리는 최대 시간 (사이드 패널과 같다) */
 const LOGIN_WAIT_MS = 5 * 60_000;
 
@@ -37,6 +39,7 @@ const HELP = `Dogent 클라이언트 ${__DOGENT_BUILD__.version} (${__DOGENT_BUI
   dogent check <SKILL.md>         스킬 품질 검사
   dogent sync                     팀 스킬 저장소를 git pull로 받는다
   dogent tabs                     브라우저 탭 목록
+  dogent browsers                 Dogent 확장이 연결된 브라우저 (크롬, 엣지 …). 대화 중에는 browser edge 로 바꿈
   dogent excel <파일>             Excel로 열어 시트와 앞부분을 보여 준다 (문서 보안 문서 확인)
   dogent excel docs               사용자의 Excel에 열린 문서 (문서 공유망에서 연 문서 등)
   dogent excel resave <원본> <새 경로>   Excel로 다시 저장 (문서 보안이 다시 암호화하는지 확인)
@@ -47,6 +50,7 @@ const HELP = `Dogent 클라이언트 ${__DOGENT_BUILD__.version} (${__DOGENT_BUI
   --allow-write  자유 요청에서 저장·상신 버튼을 허용한다 (누르기 전에 확장의 승인 창으로 묻는다)
   --dry-run      저장·상신 직전에 멈춘다 (시험 실행)
   --wait <초>    확장이 연결되기를 기다리는 시간 (기본 60)
+  --browser <이름>  브라우저가 여럿일 때 쓸 브라우저 (edge, chrome 또는 번호). 늘 쓰려면 dogent config browser edge
 
 브라우저 쪽: Dogent 확장의 사이드 패널 → 설정 → 클라이언트 연결에서 WebSocket(또는 Native Messaging)을 켜고 토큰을 넣으세요.`;
 
@@ -55,6 +59,8 @@ interface Flags {
   allowWrite: boolean;
   dryRun: boolean;
   waitSec: number;
+  /** 이번에 쓸 브라우저 (이름 일부나 번호) */
+  browser?: string;
 }
 
 function parseArgs(argv: string[]): { args: string[]; flags: Flags } {
@@ -66,6 +72,7 @@ function parseArgs(argv: string[]): { args: string[]; flags: Flags } {
     else if (a === '--allow-write') flags.allowWrite = true;
     else if (a === '--dry-run') flags.dryRun = true;
     else if (a === '--wait') flags.waitSec = Number(argv[++i]) || 60;
+    else if (a === '--browser') flags.browser = argv[++i];
     else args.push(a);
   }
   return { args, flags };
@@ -74,6 +81,8 @@ function parseArgs(argv: string[]): { args: string[]; flags: Flags } {
 class Client {
   private bridge: Bridge | null = null;
   private office: Office | null = null;
+  /** 이번 실행에서 쓸 브라우저를 정했는지 */
+  private chosen = false;
   private skills: SkillEntry[] = [];
   private abort: AbortController | null = null;
 
@@ -165,18 +174,52 @@ class Client {
 
   /** 확장과 이어지기를 기다린다. */
   async connect(): Promise<Bridge> {
-    if (this.bridge?.connected()) return this.bridge;
+    if (this.bridge?.connected() && this.chosen) return this.bridge;
     this.bridge ??= await openBridge({ port: this.cfg.bridgePort });
+    const bridge = this.bridge;
     // 확장은 보통 1초 안에 붙는다. 그보다 오래 걸릴 때만 무엇을 할지 알려 준다.
-    if (!(await this.bridge.waitForExtension(2000))) {
+    if (!(await bridge.waitForExtension(2000))) {
       this.term.print('브라우저의 Dogent 확장이 연결되기를 기다립니다…');
       this.term.print('  사이드 패널 → 설정 → 클라이언트 연결을 켜고 토큰을 넣으세요 (토큰: dogent token).');
-      if (!(await this.bridge.waitForExtension(this.flags.waitSec * 1000))) {
+      if (!(await bridge.waitForExtension(this.flags.waitSec * 1000))) {
         throw new Error(`${this.flags.waitSec}초 안에 확장이 연결되지 않았습니다. 확장의 클라이언트 연결 설정과 토큰을 확인하세요`);
       }
     }
-    this.term.print(`확장 연결됨 (${this.bridge.connected()})`);
-    return this.bridge;
+    const want = this.flags.browser ?? this.cfg.browser;
+    if (!this.chosen) {
+      if (want) {
+        // 원하는 브라우저가 붙기를 잠시 기다렸다가 고른다. 없으면 연결된 브라우저 목록과 함께 알린다.
+        const end = Date.now() + Math.min(this.flags.waitSec, 20) * 1000;
+        while (!bridge.browsers().some((b) => b.browser.toLowerCase().includes(want.toLowerCase())) && Date.now() < end) await sleep(200);
+        bridge.select(want);
+      } else {
+        // 지금 붙어 있는 브라우저를 쓴다. 실행 중에 다른 브라우저가 붙어도 바뀌지 않게 정해 둔다.
+        const first = bridge.browsers().find((b) => b.selected);
+        if (first) bridge.select(String(first.id));
+      }
+      this.chosen = true;
+    }
+    const all = bridge.browsers();
+    const now = all.find((b) => b.selected);
+    const hint = all.length > 1 && !want ? `\n  연결된 브라우저 ${all.length}개 (${all.map((b) => b.browser).join(', ')}). 바꾸려면 --browser edge, 계속 쓰려면 dogent config browser edge` : '';
+    this.term.print(`확장 연결됨 (${bridge.connected()}) · ${now?.browser ?? '브라우저'}${hint}`);
+    return bridge;
+  }
+
+  /** 연결된 브라우저 목록 */
+  async listBrowsers(): Promise<void> {
+    const bridge = await this.connect();
+    // 클라이언트가 없을 때 확장은 5초마다 다시 붙어 보므로, 모든 브라우저가 붙을 만큼 기다렸다가 보여 준다.
+    await sleep(6000);
+    this.term.print(`연결된 브라우저 ${bridge.browsers().length}개`);
+    for (const b of bridge.browsers()) this.term.print(`  [${b.id}]${b.selected ? ' (사용 중)' : ''} ${b.browser} — ${b.via}`);
+  }
+
+  /** 쓸 브라우저를 바꾼다 (번호나 이름 일부) */
+  async useBrowser(which: string): Promise<void> {
+    const bridge = await this.connect();
+    const b = bridge.select(which);
+    this.term.print(`[${b.id}] ${b.browser}을(를) 씁니다`);
   }
 
   listSkills(): void {
@@ -338,7 +381,7 @@ class Client {
 
   /** 대화: 요청을 한 줄씩 받는다. */
   async repl(): Promise<void> {
-    this.term.print(`Dogent 클라이언트 (${__DOGENT_BUILD__.mode}). 할 일을 말해 주세요. skills, tabs, help, exit`);
+    this.term.print(`Dogent 클라이언트 (${__DOGENT_BUILD__.mode}). 할 일을 말해 주세요. skills, tabs, browsers, browser <이름>, help, exit`);
     for (;;) {
       const line = await this.term.ask('\n무엇을 할까요? > ');
       if (line === null) return;
@@ -349,6 +392,8 @@ class Client {
         if (text === 'help') this.term.print(HELP);
         else if (text === 'skills') this.listSkills();
         else if (text === 'tabs') await this.tabs();
+        else if (text === 'browsers') await this.listBrowsers();
+        else if (/^browser\s+/.test(text)) await this.useBrowser(text.replace(/^browser\s+/, ''));
         else await this.request(text);
       } catch (e) {
         this.term.print(`오류: ${(e as Error).message}`);
@@ -408,6 +453,10 @@ async function main(): Promise<number> {
       return 0;
     }
     if (cmd === 'excel') return (await client.excel(rest)) ? 0 : 1;
+    if (cmd === 'browsers') {
+      await client.listBrowsers();
+      return 0;
+    }
     if (cmd === 'tabs') {
       await client.tabs();
       return 0;

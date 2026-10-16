@@ -195,6 +195,45 @@ try {
     assert.deepEqual(saved, [rows.map((row) => row.map(String))]);
   });
 
+  await scenario('브라우저가 둘이면 목록을 보여 주고, --browser로 고른 브라우저를 조작', async () => {
+    // 두 번째 브라우저(따로 띄운 Chromium, 확장 설치도 따로)를 같은 클라이언트에 붙인다.
+    const second = await chromium.launchPersistentContext(await mkdtemp(join(tmpdir(), 'dogent-client-2-')), {
+      channel: 'chromium',
+      headless: !HEADED,
+      args: [`--disable-extensions-except=${EXT}`, `--load-extension=${EXT}`],
+    });
+    try {
+      const w2 = second.serviceWorkers()[0] ?? (await second.waitForEvent('serviceworker'));
+      const p2 = await second.newPage();
+      await p2.goto(`chrome-extension://${new URL(w2.url()).host}/sidepanel.html`);
+      await p2.evaluate((v) => chrome.storage.local.set({ bridgeSettings: v }), { mode: 'ws', port: PORT, token: TOKEN });
+      const t2 = await second.newPage();
+      await t2.goto(SITE + '/fw.html');
+      await open('/wip.html');
+
+      const list = await client(['browsers']);
+      assert.equal(list.code, 0, list.text);
+      const ids = [...list.text.matchAll(/\[(\d+)\]/g)].map((m) => m[1]);
+      assert.equal(ids.length, 2, list.text);
+      assert.match(list.text, /연결된 브라우저 2개/);
+      // 번호로 고르면 그 브라우저의 탭을 본다. 한쪽은 재공 화면, 다른 쪽은 방화벽 신청 화면이다.
+      const seen = [];
+      for (const id of ['1', '2']) {
+        const r = await client(['tabs', '--browser', id]);
+        assert.equal(r.code, 0, r.text);
+        seen.push(/fw\.html/.test(r.text) ? 'fw' : /wip\.html/.test(r.text) ? 'wip' : '?');
+      }
+      assert.deepEqual(seen.sort(), ['fw', 'wip']);
+      // 없는 브라우저를 고르면 연결된 목록을 알려 준다.
+      const bad = await client(['tabs', '--browser', 'firefox', '--wait', '2']);
+      assert.notEqual(bad.code, 0);
+      assert.match(bad.text, /"firefox"에 맞는 브라우저가 없습니다/);
+      return list.text.trim().split(/\r?\n/).slice(-2).join(' / ');
+    } finally {
+      await second.close();
+    }
+  });
+
   await scenario('조작할 사이트 밖의 탭에서는 자유 요청이 막힘', async () => {
     await target.goto('http://127.0.0.1:4173/wip.html');
     await target.bringToFront();

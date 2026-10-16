@@ -20,6 +20,8 @@ export interface UserConfig {
   outputDir?: string;
   /** 확장과 잇는 WebSocket 포트 */
   bridgePort?: number;
+  /** 확장이 든 브라우저가 여럿일 때 쓸 브라우저 이름 일부 (예: edge, chrome) */
+  browser?: string;
   /** 오피스 도구(dogent-office.exe) 경로. 없으면 클라이언트 옆이나 저장소의 office/dist에서 찾는다 */
   officeExe?: string;
   /** 결과 엑셀을 Excel로 다시 저장한다. 문서 보안(NASCA) 규정상 Excel로 저장해야 할 때 켠다 */
@@ -35,6 +37,7 @@ export interface ClientConfig {
   bridgePort?: number;
   officeExe?: string;
   saveThroughExcel: boolean;
+  browser?: string;
   /** 사용자 설정 파일 경로 */
   file: string;
 }
@@ -64,6 +67,7 @@ export function loadConfig(): ClientConfig {
     outputDir: user.outputDir ?? join(homedir(), 'Downloads'),
     bridgePort: user.bridgePort,
     officeExe: user.officeExe,
+    browser: user.browser,
     saveThroughExcel: user.saveThroughExcel === true,
     file,
   };
@@ -96,6 +100,7 @@ export function describeConfig(c: ClientConfig): string {
     `헤더 틀        ${c.llm.headers ? Object.keys(c.llm.headers).join(', ') : '(없음, Authorization)'}`,
     `시스템 이름    ${c.llm.systemName ?? ''}`,
     `사용자 ID      ${c.llm.userId ?? ''}`,
+    `브라우저       ${c.browser ?? '(여럿이면 가장 나중에 연결된 것)'}`,
     `개인 스킬      ${c.personalSkills}`,
     `팀 스킬        ${c.teamSkills ?? '(설정 안 함: dogent config teamSkills <폴더>)'}`,
     `결과 저장      ${c.outputDir}${c.saveThroughExcel ? ' (Excel로 저장)' : ''}`,

@@ -14,6 +14,8 @@ export type BridgeMessage =
   | { type: 'result'; id: number; ok: true; text: string }
   | { type: 'result'; id: number; ok: false; error: string }
   | { type: 'status'; state: string; detail?: string }
+  /** 확인을 마친 뒤 확장이 알리는 브라우저 이름과, 같은 브라우저인지 가리는 값(설치마다 다름) */
+  | { type: 'hello'; browser: string; key: string }
   | { type: 'ping' }
   | { type: 'pong' };
 
