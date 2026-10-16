@@ -27,5 +27,7 @@ export const dogentConfig = {
     pathCache: true,
     // 공유 스킬 저장소. 배포할 때는 .env.local의 WXT_SKILLS_URL에 적는다.
     skillsUrl: '',
+    // 사내 게이트웨이의 Send-System-Name. 환경 파일의 WXT_LLM_SYSTEM_NAME이나 설정 화면에서 바꾼다.
+    systemName: 'RFGo',
   },
 };

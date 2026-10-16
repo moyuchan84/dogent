@@ -16,18 +16,27 @@ export interface LlmSettings {
   skillsUrl: string;
   /**
    * 요청 헤더의 틀. 주면 Authorization 대신 이 헤더들을 보낸다. 값의 자리표시자는 부를 때마다 채운다.
-   * {key} API 키, {userId} 사용자 ID, {userType} 사용자 유형, {uuid} 요청마다 새로 만든 UUID.
-   * 배포 빌드(.env.local의 WXT_LLM_HEADERS)에서만 들어오고 브라우저 저장소에는 남기지 않는다.
+   * {key} API 키, {userId} 사용자 ID, {userType} 사용자 유형, {systemName} 시스템 이름, {uuid} 요청마다 새로 만든 UUID.
+   * 배포 빌드(.env.company.local 등의 WXT_LLM_HEADERS)에서만 들어오고 브라우저 저장소에는 남기지 않는다.
    */
   headers?: Record<string, string>;
   /** 헤더 틀의 {userId}. 사내 게이트웨이가 요청한 사람을 구분할 때 쓰는 ID (예: SSO ID) */
   userId?: string;
   /** 헤더 틀의 {userType} */
   userType?: string;
+  /**
+   * 사내 게이트웨이에 등록한 시스템 이름. 비어 있지 않으면 헤더 틀이 있든 없든 Send-System-Name 헤더로 늘 보낸다.
+   * 틀에 Send-System-Name이 따로 적혀 있으면 그 값이 우선한다.
+   */
+  systemName?: string;
 }
 
-const PLACEHOLDER = /\{(key|userId|userType|uuid)\}/g;
-const PLACEHOLDER_LABEL = { key: 'API 키', userId: '사용자 ID', userType: '사용자 유형' } as const;
+/** 사내 게이트웨이가 요청마다 반드시 받아야 하는 헤더 */
+export const SYSTEM_NAME_HEADER = 'Send-System-Name';
+
+const PLACEHOLDER = /\{(key|userId|userType|systemName|uuid)\}/g;
+const PLACEHOLDER_LABEL = { key: 'API 키', userId: '사용자 ID', userType: '사용자 유형', systemName: '시스템 이름' } as const;
+type Filled = keyof typeof PLACEHOLDER_LABEL;
 
 /** 헤더 틀이 쓰는 자리표시자. 설정 화면에서 어떤 칸을 보여 줄지 정한다. */
 export function headerPlaceholders(headers: Record<string, string> | undefined): Set<string> {
@@ -38,30 +47,34 @@ export function headerPlaceholders(headers: Record<string, string> | undefined):
 
 /**
  * 모델 API에 보낼 헤더. 헤더 틀이 없으면 OpenAI 방식(Authorization: Bearer 키)이다.
+ * 시스템 이름이 있으면 어느 방식이든 Send-System-Name을 붙인다.
  * 틀에 쓴 값이 비어 있으면 요청하지 않고 무엇을 채워야 하는지 알린다.
  */
 export function buildHeaders(settings: LlmSettings, uuid: () => string = () => crypto.randomUUID()): Record<string, string> {
-  const base: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (!settings.headers) return settings.apiKey ? { ...base, Authorization: `Bearer ${settings.apiKey}` } : base;
   const missing = new Set<string>();
   const out: Record<string, string> = {};
-  for (const [name, template] of Object.entries(settings.headers)) {
-    const value = template.replace(PLACEHOLDER, (_, k: 'key' | 'userId' | 'userType' | 'uuid') => {
+  for (const [name, template] of Object.entries(settings.headers ?? {})) {
+    out[name] = template.replace(PLACEHOLDER, (_, k: Filled | 'uuid') => {
       if (k === 'uuid') return uuid();
-      const v = k === 'key' ? settings.apiKey : k === 'userId' ? settings.userId : settings.userType;
+      const v = settings[k === 'key' ? 'apiKey' : k];
       if (!v) missing.add(PLACEHOLDER_LABEL[k]);
       return v ?? '';
     });
-    // 헤더에는 한글 같은 글자를 넣을 수 없다 (fetch가 거절한다).
-    if (/[^\x20-\x7e]/.test(value)) throw new Error(`모델 API 헤더 ${name}의 값에 영문·숫자·기호가 아닌 글자가 있습니다`);
-    out[name] = value;
   }
   if (missing.size > 0) {
     throw new Error(`모델 API 헤더에 필요한 값이 비어 있습니다: ${[...missing].join(', ')}. 패널 → 설정에서 입력하세요`);
   }
-  // 틀에 Content-Type이 있으면 그것을 쓴다 (대소문자만 다른 헤더를 둘 보내지 않는다).
-  const named = new Set(Object.keys(out).map((n) => n.toLowerCase()));
-  for (const [n, v] of Object.entries(base)) if (!named.has(n.toLowerCase())) out[n] = v;
+  // 틀에 이미 있는 헤더는 그것을 쓴다 (대소문자만 다른 헤더를 둘 보내지 않는다).
+  const add = (name: string, value: string | undefined) => {
+    if (value && !Object.keys(out).some((n) => n.toLowerCase() === name.toLowerCase())) out[name] = value;
+  };
+  if (!settings.headers && settings.apiKey) add('Authorization', `Bearer ${settings.apiKey}`);
+  add(SYSTEM_NAME_HEADER, settings.systemName?.trim());
+  add('Content-Type', 'application/json');
+  // 헤더에는 한글 같은 글자를 넣을 수 없다 (fetch가 거절한다).
+  for (const [name, value] of Object.entries(out)) {
+    if (/[^\x20-\x7e]/.test(value)) throw new Error(`모델 API 헤더 ${name}의 값에 영문·숫자·기호가 아닌 글자가 있습니다`);
+  }
   return out;
 }
 

@@ -50,8 +50,8 @@ function checkHeaders(raw: string | undefined): void {
   for (const [name, value] of Object.entries(parsed)) {
     if (typeof value !== 'string') fail(`${name}의 값이 글자가 아닙니다`);
     if (!/^[A-Za-z0-9-]+$/.test(name)) fail(`헤더 이름 "${name}"에 영문·숫자·- 말고 다른 글자가 있습니다`);
-    const unknown = [...(value as string).matchAll(/\{(\w+)\}/g)].map((m) => m[1]).filter((k) => !['key', 'userId', 'userType', 'uuid'].includes(k));
-    if (unknown.length) fail(`${name}의 {${unknown[0]}}는 모르는 자리표시자입니다. {key} {userId} {userType} {uuid}만 씁니다`);
+    const unknown = [...(value as string).matchAll(/\{(\w+)\}/g)].map((m) => m[1]).filter((k) => !['key', 'userId', 'userType', 'systemName', 'uuid'].includes(k));
+    if (unknown.length) fail(`${name}의 {${unknown[0]}}는 모르는 자리표시자입니다. {key} {userId} {userType} {systemName} {uuid}만 씁니다`);
   }
 }
 
@@ -62,7 +62,11 @@ function printProfile(mode: string, sites: string[]): void {
   if (printed) return;
   printed = true;
   const env = import.meta.env as Record<string, string | undefined>;
-  const headers = env.WXT_LLM_HEADERS ? Object.keys(JSON.parse(env.WXT_LLM_HEADERS)) : [];
+  const template: Record<string, string> = env.WXT_LLM_HEADERS ? JSON.parse(env.WXT_LLM_HEADERS) : {};
+  const headers = Object.keys(template);
+  // 틀에 Send-System-Name이 적혀 있으면 그 값, 아니면 시스템 이름 설정이 붙는다.
+  const fixed = Object.entries(template).find(([n]) => n.toLowerCase() === 'send-system-name')?.[1];
+  const systemName = fixed && !fixed.includes('{systemName}') ? `${fixed} (헤더 틀에 적힌 값)` : env.WXT_LLM_SYSTEM_NAME || `${dogentConfig.llmDefaults.systemName} (기본값)`;
   const out = mode === 'production' ? '.output/chrome-mv3' : `.output/chrome-mv3-${mode}`;
   const lines = [
     `빌드 설정: ${mode}`,
@@ -70,6 +74,7 @@ function printProfile(mode: string, sites: string[]): void {
     `  모델 이름  ${env.WXT_LLM_MODEL || `${dogentConfig.llmDefaults.model} (기본값)`}`,
     `  API 키     ${env.WXT_LLM_API_KEY ? '있음 (빌드에 포함)' : '없음'}`,
     `  요청 헤더  ${headers.length ? headers.join(', ') : 'Authorization: Bearer (OpenAI 방식)'}`,
+    `  시스템 이름 Send-System-Name: ${systemName}`,
     `  사이트     ${sites.join(', ')}`,
     `  확장 폴더  ${out}  ← chrome://extensions 에서 이 폴더를 로드`,
   ];

@@ -552,8 +552,9 @@ WXT_LLM_API_KEY=(credential_key)     <span class="c"># 헤더 틀의 {key}</span
 WXT_LLM_MODEL=(model)
 WXT_LLM_USER_TYPE=(user_type)        <span class="c"># 헤더 틀의 {userType}</span>
 WXT_SITE_PERMISSIONS=https://(업무 시스템 호스트)/*</code></pre>
-          <p>요청 헤더 틀은 예시 파일에 이미 들어 있습니다. <code>send-system-name</code> 값만 등록한 시스템 이름으로 바꿉니다.</p>
-<pre><code>WXT_LLM_HEADERS='{"x-dep-ticket":"{key}","send-system-name":"Dogent",
+          <p>요청 헤더 틀은 예시 파일에 이미 들어 있어 고칠 것이 없습니다. 필수 헤더인 <code>Send-System-Name</code>은 <code>WXT_LLM_SYSTEM_NAME</code>(기본 <code>RFGo</code>)으로 채워지고, 틀이 없거나 틀에서 빠져도 늘 붙습니다.</p>
+<pre><code>WXT_LLM_SYSTEM_NAME=RFGo
+WXT_LLM_HEADERS='{"x-dep-ticket":"{key}","Send-System-Name":"{systemName}",
   "user-id":"{userId}","user-type":"{userType}",
   "prompt-msg-id":"{uuid}","completion-msg-id":"{uuid}",
   "accept":"application/json","content-type":"application/json"}'
@@ -563,6 +564,7 @@ WXT_SITE_PERMISSIONS=https://(업무 시스템 호스트)/*</code></pre>
             <tr><td><code>{key}</code></td><td>WXT_LLM_API_KEY (credential_key)</td></tr>
             <tr><td><code>{userId}</code></td><td>사용자 ID(사내 SSO ID). 사람마다 달라서 패널 설정에서 각자 입력</td></tr>
             <tr><td><code>{userType}</code></td><td>WXT_LLM_USER_TYPE</td></tr>
+            <tr><td><code>{systemName}</code></td><td>WXT_LLM_SYSTEM_NAME (기본 RFGo). 설정 화면의 "시스템 이름"에서도 바꿀 수 있음</td></tr>
             <tr><td><code>{uuid}</code></td><td>요청마다 새로 만든 UUID (메시지 ID)</td></tr>
           </table></div>
           <p>헤더 틀이 있으면 <code>Authorization: Bearer</code>는 보내지 않습니다. 틀의 형식이 틀리면 빌드가 멈추고 어디가 틀렸는지 알려 줍니다.</p>
@@ -583,8 +585,9 @@ WXT_SITE_PERMISSIONS=https://(업무 시스템 호스트)/*</code></pre>
   모델 API   https://(api_base_url)
   모델 이름  (model)
   API 키     있음 (빌드에 포함)
-  요청 헤더  x-dep-ticket, send-system-name, user-id, user-type,
+  요청 헤더  x-dep-ticket, Send-System-Name, user-id, user-type,
              prompt-msg-id, completion-msg-id, accept, content-type
+  시스템 이름 Send-System-Name: RFGo
   사이트     http://localhost:4173/*, https://(업무 시스템)/*
   확장 폴더  .output/chrome-mv3-company  ← 이 폴더를 로드</code></pre>
           <p><code>chrome://extensions</code>에서 <b>.output/chrome-mv3-company</b>를 로드합니다. 기본 빌드(<code>.output/chrome-mv3</code>)와 폴더가 다릅니다.</p>
@@ -597,7 +600,7 @@ WXT_SITE_PERMISSIONS=https://(업무 시스템 호스트)/*</code></pre>
           <div class="tbl"><table>
             <tr><th>연결 시험 결과</th><th>할 일</th></tr>
             <tr><td>필요한 값이 비어 있습니다: 사용자 ID</td><td>사용자 ID 칸 채우기</td></tr>
-            <tr><td>모델 API 오류 401 / 403</td><td>credential_key, 사용자 ID·유형, send-system-name 값 확인</td></tr>
+            <tr><td>모델 API 오류 401 / 403</td><td>credential_key, 사용자 ID·유형, 시스템 이름(Send-System-Name) 확인. 빌드 요약에 "헤더 틀에 적힌 값"으로 다른 이름이 보이면 환경 파일의 헤더 틀을 예시대로 <code>{systemName}</code>으로 바꿈</td></tr>
             <tr><td>모델 API 오류 404</td><td>WXT_LLM_BASE_URL을 <code>/chat/completions</code> 앞까지만 적었는지</td></tr>
             <tr><td>모델 API에 닿지 못했습니다</td><td>주소, 다시 빌드했는지, 사내망·프록시·인증서</td></tr>
             <tr><td>choices[0].message.content가 없습니다</td><td>응답 형식이 OpenAI 호환이 아님 → <code>src/core/llm.ts</code> 수정 필요 (응답 모양을 개발 담당에게)</td></tr>
@@ -608,7 +611,7 @@ WXT_SITE_PERMISSIONS=https://(업무 시스템 호스트)/*</code></pre>
           <div class="note warn" style="margin:0"><b>집에서 회사 빌드를 리허설하려면</b><br>
             <code>.env.company.local</code>의 주소를 <code>http://localhost:4174/v1</code>로 두고 빌드한 뒤, 모의 모델을 헤더 검사 모드로 띄웁니다. 헤더가 빠지면 401로 거절하고 받은 헤더를 터미널에 찍습니다.</div>
 <pre><code><span class="c"># PowerShell</span>
-$env:MOCK_LLM_REQUIRE_HEADERS='x-dep-ticket,user-id,user-type,prompt-msg-id,completion-msg-id'
+$env:MOCK_LLM_REQUIRE_HEADERS='x-dep-ticket,send-system-name,user-id,user-type,prompt-msg-id,completion-msg-id'
 pnpm mock:llm</code></pre>
         </div>
       </div>

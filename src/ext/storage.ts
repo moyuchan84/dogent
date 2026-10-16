@@ -25,6 +25,7 @@ const BUILT_IN = {
   headers: parseHeaders(env.WXT_LLM_HEADERS),
   userId: env.WXT_LLM_USER_ID ?? '',
   userType: env.WXT_LLM_USER_TYPE ?? '',
+  systemName: env.WXT_LLM_SYSTEM_NAME ?? '',
 };
 
 function parseHeaders(raw: string | undefined): Record<string, string> | undefined {
@@ -47,6 +48,7 @@ function buildDefaults(): LlmSettings {
   if (BUILT_IN.timeoutScale) d.timeoutScale = BUILT_IN.timeoutScale;
   if (BUILT_IN.userId) d.userId = BUILT_IN.userId;
   if (BUILT_IN.userType) d.userType = BUILT_IN.userType;
+  if (BUILT_IN.systemName) d.systemName = BUILT_IN.systemName;
   return d;
 }
 
