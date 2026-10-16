@@ -652,3 +652,88 @@ textarea.code {
   display: grid;
   gap: 6px;
 }
+
+/* 배치: 위쪽 막대(로고, 화면 점검, 설정, 탭)는 늘 보인다.
+   설정과 화면 점검은 실행 화면 위에 끼우지 않고 그 자리를 대신해 열린다. */
+[hidden] {
+  display: none !important;
+}
+.topbar {
+  display: block;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  margin: -12px -12px 0;
+  padding: 10px 12px 0;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+}
+.topbar-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.topbar-row h1 {
+  margin-right: auto;
+}
+.topbar .tabs {
+  border-bottom: 0;
+  margin-top: 6px;
+}
+.header-actions button.on {
+  color: var(--accent);
+  background: var(--surface);
+  border-color: var(--line);
+  font-weight: 600;
+}
+.chip.running {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border: 0;
+  background: var(--warn-soft);
+  color: var(--ink);
+}
+.sheet-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 0 8px;
+}
+.sheet-head .back {
+  padding-left: 0;
+}
+.main,
+.sheet {
+  display: grid;
+  gap: 12px;
+}
+.sheet .card > .sites > h3:first-child,
+.sheet .card > .connect > h3:first-child {
+  font-size: 14px;
+  margin: 0 0 10px;
+}
+.savebar {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  align-items: center;
+  margin: 0 -12px -12px;
+  padding: 10px 12px;
+  background: var(--bg);
+  border-top: 1px solid var(--line);
+}
+.savebar #reset-settings {
+  margin-right: auto;
+}
+.card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.card-head h2 {
+  margin-bottom: 10px;
+}
