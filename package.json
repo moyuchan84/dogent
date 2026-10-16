@@ -32,7 +32,9 @@
     "client:build:company": "node client/build.mjs --mode company",
     "client": "node client/dist/dogent.mjs",
     "e2e:client": "node tests/e2e/client.e2e.mjs",
-    "guide:bundle": "node tools/guide-bundle.mjs"
+    "guide:bundle": "node tools/guide-bundle.mjs",
+    "office:build": "node office/build.mjs",
+    "e2e:office": "node tests/e2e/office.e2e.mjs"
   },
   "dependencies": {
     "exceljs": "^4.4.0",

@@ -162,6 +162,39 @@ try {
     assert.match((await client(['skills'])).text, /\[개인\] wip-count-cli — 라인 재공 건수/);
   });
 
+  await scenario('직접 못 읽는 엑셀(xls)은 오피스 도구가 Excel로 열어 화면 표에 채움', async () => {
+    if (!existsSync(join(ROOT, 'office/dist/dogent-office.exe'))) return '건너뜀: pnpm office:build 필요';
+    // 문서 보안 파일 대신, exceljs가 읽지 못하는 구형 xls로 같은 상황을 만든다.
+    const rows = [
+      ['P7-00012', 'PHOTO', -25, '검사 불량 폐기'],
+      ['P7-00031', 'ETCH', 100, '재작업 투입'],
+    ];
+    const ExcelJS = (await import('exceljs')).default;
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('조정');
+    ws.addRow(['Lot ID', '공정', '조정수량', '사유']);
+    for (const r of rows) ws.addRow(r);
+    const xlsx = join(home, 'adjust.xlsx');
+    const xls = join(home, 'adjust.xls');
+    await wb.xlsx.writeFile(xlsx);
+    const resave = await client(['excel', 'resave', xlsx, xls]);
+    assert.equal(resave.code, 0, resave.text);
+
+    await fetch(`${SITE}/api/adjust`, { method: 'DELETE' });
+    await open('/adjust.html');
+    const popup = context.waitForEvent('page', { predicate: (p) => p.url().includes('approve.html'), timeout: 60_000 });
+    const run = client(['run', 'wip-adjust', `source=${xls}`]);
+    const page = await popup;
+    await page.locator('#approval').waitFor();
+    assert.match(await page.locator('#approval').innerText(), /P7-00031/);
+    await page.click('#approve');
+    const r = await run;
+    assert.equal(r.code, 0, r.text);
+    assert.match(r.text, /adjust\.xls: 파일을 직접 읽지 못해.*Excel로 엽니다/);
+    const saved = await fetch(`${SITE}/api/adjust`).then((x) => x.json());
+    assert.deepEqual(saved, [rows.map((row) => row.map(String))]);
+  });
+
   await scenario('조작할 사이트 밖의 탭에서는 자유 요청이 막힘', async () => {
     await target.goto('http://127.0.0.1:4173/wip.html');
     await target.bringToFront();

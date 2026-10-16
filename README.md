@@ -152,6 +152,7 @@ pnpm build && pnpm e2e   # 빌드된 확장을 실제 Chromium에 올려 실행 
 | `entrypoints/`, `src/ext/`, `src/page/` | 크롬 확장 (사이드 패널, 브라우저 도구, 승인 창) | 브라우저 |
 | `client/` | Dogent 클라이언트 (터미널). [client/README.md](client/README.md) | PC (Node) |
 | `bridge/` | 클라이언트·Claude Code ↔ 확장을 잇는 MCP 브리지 | PC (Node) |
+| `office/` | 오피스 도구 `dogent-office.exe` (Excel COM, 문서 보안 문서). [office/README.md](office/README.md) | PC (Windows, Excel) |
 | `src/core/` | 엔진: 스킬, 실행 루프, 검사, 정책, 엑셀 | 양쪽이 함께 씀 |
 | `skills/`, `templates/` | 기본 스킬, 팀 스킬 저장소 틀 | |
 | `mock-site/`, `tools/`, `tests/` | 모의 사이트·모의 모델, 시험 | 개발 |

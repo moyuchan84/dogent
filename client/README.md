@@ -68,6 +68,19 @@ pnpm client sync                              # 팀 스킬 저장소 git pull
 
 실행 중 Ctrl+C는 멈춤, 한 번 더 누르면 끝냅니다. 결과 엑셀은 기본으로 내려받기 폴더에 저장합니다 (`config outputDir`로 바꿈).
 
+## 엑셀 (오피스 도구)
+
+`pnpm office:build`로 `office/dist/dogent-office.exe`를 만들어 두면 클라이언트가 찾아 씁니다. 자세한 것은 [office/README.md](../office/README.md).
+
+```bash
+pnpm client excel D:자료재공.xlsx       # Excel로 열어 시트와 앞부분 보기
+pnpm client excel docs                    # 사용자의 Excel에 열린 문서 (문서 공유망에서 연 문서 등)
+pnpm client excel resave <원본> <새 경로>  # Excel로 다시 저장 (문서 보안 재암호화 확인용)
+```
+
+- 스킬의 엑셀 파일 입력은 먼저 직접 읽고, 안 되면(문서 보안 파일 등) Excel로 엽니다.
+- `config saveThroughExcel true`면 결과 엑셀을 Excel을 거쳐 저장합니다.
+
 ## 스킬 폴더
 
 | 출처 | 위치 |
