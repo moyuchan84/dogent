@@ -101,7 +101,8 @@ class Client {
   async connect(): Promise<Bridge> {
     if (this.bridge?.connected()) return this.bridge;
     this.bridge ??= await openBridge({ port: this.cfg.bridgePort });
-    if (!this.bridge.connected()) {
+    // 확장은 보통 1초 안에 붙는다. 그보다 오래 걸릴 때만 무엇을 할지 알려 준다.
+    if (!(await this.bridge.waitForExtension(2000))) {
       this.term.print('브라우저의 Dogent 확장이 연결되기를 기다립니다…');
       this.term.print('  사이드 패널 → 설정 → 클라이언트 연결을 켜고 토큰을 넣으세요 (토큰: dogent token).');
       if (!(await this.bridge.waitForExtension(this.flags.waitSec * 1000))) {

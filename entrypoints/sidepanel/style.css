@@ -737,3 +737,11 @@ textarea.code {
 .card-head h2 {
   margin-bottom: 10px;
 }
+/* 클라이언트 연결 상태: 버튼 옆에서 늘어나지 않게 */
+#bridge-status {
+  align-self: center;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 10px;
+  white-space: nowrap;
+}
