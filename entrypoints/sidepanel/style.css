@@ -516,3 +516,52 @@ textarea.code {
 .batch-rows tr[data-state='running'] td {
   background: var(--warn-soft);
 }
+
+/* 화면 점검 */
+.lint.verdict-check {
+  background: var(--warn-soft);
+}
+.lint.verdict-blocked {
+  background: var(--risk-soft);
+  color: var(--risk);
+}
+.inspect-list {
+  list-style: none;
+  margin: 10px 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+  font-size: 12.5px;
+}
+.inspect-list li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+.inspect-list p {
+  margin: 2px 0 0;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.inspect-list p.fix {
+  color: var(--ink);
+}
+.inspect-list .chip {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 7px;
+  margin-top: 1px;
+}
+.chip.level-fail {
+  background: var(--risk-soft);
+  color: var(--risk);
+}
+.chip.level-warn {
+  background: var(--warn-soft);
+  color: var(--ink);
+}
+.chip.level-info {
+  background: transparent;
+  border: 1px solid var(--line);
+}

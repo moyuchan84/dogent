@@ -48,6 +48,41 @@ export interface PageSnapshot {
   dialogs?: PageDialog[];
 }
 
+/** 화면 점검에서 본 표 하나. 칸의 값은 담지 않는다. */
+export interface TableInspection {
+  name: string;
+  /** <table>인지 role=grid 같은 그리드인지 */
+  kind: 'table' | 'grid';
+  rows: number;
+  columns: string[];
+  /** 본문 행 중 칸에 입력 요소가 있는 행의 수. 0이면 조회용 표이거나 붙여넣기 전용 그리드다. */
+  inputRows: number;
+}
+
+/** 한 프레임에서 페이지 에이전트가 돌려주는 화면 점검 결과. 화면의 값과 본문 글자는 담지 않는다. */
+export interface FrameInspection {
+  url: string;
+  title: string;
+  hasPassword: boolean;
+  /** 스냅샷에 들어간 조작 가능한 요소의 수 */
+  elements: number;
+  /** 요소가 너무 많아 스냅샷에서 일부가 빠졌는지 */
+  truncated: boolean;
+  /** 이름을 찾지 못한 요소의 역할별 수 */
+  unnamed: Record<string, number>;
+  tables: TableInspection[];
+  /** 화면에 크게 그려진 canvas (그림으로 그리는 그리드일 수 있다) */
+  canvases: { width: number; height: number }[];
+  /** 안에 조작할 요소가 있는 웹 컴포넌트(shadow DOM). 스냅샷이 그 안을 읽지 못한다. */
+  shadowHosts: { tag: string; controls: number }[];
+  /** 이 프레임이 담은 iframe·frame의 주소 */
+  frames: string[];
+  /** 내려받기로 보이는 버튼·링크의 이름 */
+  downloads: string[];
+  /** 다음 페이지로 보이는 버튼·링크의 이름 */
+  pagers: string[];
+}
+
 /**
  * 사람이 화면에서 한 조작 하나. 스킬 초안을 만들 때 녹화한다.
  * dup은 같은 이름의 요소가 화면에 여럿 있어 이름만으로 특정할 수 없다는 뜻이다.

@@ -1,4 +1,5 @@
-import type { ActResult, FrameSnapshot, RecordedEvent, SnapshotItem, TableData } from '../core/types';
+import { looksLikeDownload } from '../core/policy';
+import type { ActResult, FrameInspection, FrameSnapshot, RecordedEvent, SnapshotItem, TableData } from '../core/types';
 
 /**
  * 페이지 안에서 도는 부분. 화면을 요소 목록으로 읽고, ref로 지정된 요소를 조작한다.
@@ -6,6 +7,8 @@ import type { ActResult, FrameSnapshot, RecordedEvent, SnapshotItem, TableData }
  */
 export interface PageAgent {
   snapshot(): FrameSnapshot;
+  /** 이 화면을 에이전트가 얼마나 읽을 수 있는지 점검한다. 화면의 값과 본문 글자는 담지 않는다. */
+  inspect(): FrameInspection;
   click(ref: number): ActResult;
   type(ref: number, text: string): ActResult;
   select(ref: number, value: string): ActResult;
@@ -298,6 +301,65 @@ export function createPageAgent(
     return { url: win.location.href, title: doc.title, hasPassword, truncated, items };
   }
 
+  function inspect(): FrameInspection {
+    const snap = snapshot();
+    const els = snap.items.filter((i): i is Extract<SnapshotItem, { kind: 'el' }> => i.kind === 'el');
+    const unnamed: Record<string, number> = {};
+    for (const el of els) if (el.role !== 'table' && !el.name) unnamed[el.role] = (unnamed[el.role] ?? 0) + 1;
+    const named = (test: (name: string) => boolean) =>
+      [...new Set(els.filter((e) => (e.role === 'button' || e.role === 'link') && e.name && test(e.name)).map((e) => e.name))];
+
+    const tables = [...refs.values()]
+      .filter((el) => (el.tagName === 'TABLE' || TABLE_ROLES.has(el.getAttribute('role') ?? '')) && !layoutTable(el))
+      .map((el) => {
+        const { header, rows, cellsOf } = tableParts(el);
+        const name = norm(el.querySelector('caption')?.textContent) || labelOf(el) || norm(el.getAttribute('id')) || '표';
+        return {
+          name: clip(name, 40),
+          kind: el.tagName === 'TABLE' && !el.getAttribute('role') ? ('table' as const) : ('grid' as const),
+          rows: rows.length,
+          columns: header.map((h) => clip(h, 30)),
+          inputRows: rows.filter((r) => cellsOf(r).some((c) => controlOf(c))).length,
+        };
+      });
+
+    // 표를 그림으로 그리는 그리드는 canvas 하나로 보인다. 작은 아이콘·차트 조각은 뺀다.
+    const canvases = [...doc.querySelectorAll('canvas')]
+      .filter((c) => visible(c))
+      .map((c) => {
+        const box = c.getBoundingClientRect();
+        return { width: Math.round(box.width || c.width), height: Math.round(box.height || c.height) };
+      })
+      .filter((c) => c.width >= 300 && c.height >= 150);
+
+    const shadowHosts: FrameInspection['shadowHosts'] = [];
+    for (const el of doc.querySelectorAll('*')) {
+      const root = el.shadowRoot;
+      if (!root || !visible(el)) continue;
+      const controls = root.querySelectorAll('input,select,textarea,button,a[href],[role],[onclick]').length;
+      if (controls > 0) shadowHosts.push({ tag: el.tagName.toLowerCase(), controls });
+    }
+
+    const frames = [...doc.querySelectorAll('iframe,frame')]
+      .map((f) => (f as HTMLIFrameElement).src)
+      .filter((src) => /^https?:/.test(src));
+
+    return {
+      url: snap.url,
+      title: snap.title,
+      hasPassword: snap.hasPassword,
+      elements: els.length,
+      truncated: snap.truncated,
+      unnamed,
+      tables,
+      canvases,
+      shadowHosts,
+      frames,
+      downloads: named(looksLikeDownload),
+      pagers: named((n) => /^(다음|next|›|>|»|>>)$|다음\s*(페이지|목록)|next\s*page/i.test(n.trim())),
+    };
+  }
+
   function resolve(ref: number): Element {
     const el = refs.get(ref);
     if (!el || !el.isConnected) throw new Error(`ref ${ref} 요소가 화면에서 사라졌습니다`);
@@ -535,6 +597,7 @@ export function createPageAgent(
 
   return {
     snapshot,
+    inspect,
 
     record(on) {
       recording = on;
