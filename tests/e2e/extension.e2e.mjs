@@ -507,6 +507,19 @@ try {
     }
   });
 
+  await scenario('연결 시험: 권한이 없는 모델 주소는 원인과 허용 버튼을 보여 줌', async (openPages) => {
+    const { panel } = await openPages('/wip.html');
+    await panel.click('#open-settings');
+    // 127.0.0.1:4173은 확장 권한이 없고 CORS도 답하지 않는다. 엣지에서 사이트 액세스가 막힌 경우와 같은 증상이다.
+    const api = panel.locator('label', { hasText: 'API 주소' }).locator('input');
+    await api.fill('http://127.0.0.1:4173/v1');
+    await panel.click('#test-llm');
+    const out = panel.locator('#llm-test', { hasText: '원인' });
+    await out.waitFor({ timeout: RUN_TIMEOUT });
+    assert.match(await out.innerText(), /모델 API에 닿지 못했습니다[\s\S]*http:\/\/127\.0\.0\.1:4173\/\*에 접근할 권한이 없습니다/);
+    await panel.locator('#grant-llm').waitFor();
+  });
+
   await scenario('스킬 만들기: 한 번 해 보이면 초안이 나오고, 시험 실행을 통과하면 배포 요청 가능', async (openPages) => {
     const { target, panel } = await openPages('/fw.html');
     await fwApi('DELETE');

@@ -86,7 +86,7 @@ OLLAMA_MODEL=gemma3:12b RUNS=20 pnpm e2e:ollama
 1. `.env.company.example`을 `.env.company.local`로 복사하고, API 제공 측에서 받은 `api_base_url`, `credential_key`, `model`과 사용자 유형을 채운다
 2. `pnpm build:company`. 터미널에 찍히는 "빌드 설정: company" 요약에서 주소·모델·헤더 이름·사이트를 확인한다
 3. `chrome://extensions`에서 `.output/chrome-mv3-company`를 로드한다
-4. 사이드 패널 → 설정 → **사용자 ID**(사내 SSO ID)를 넣고 **연결 시험** → "연결됨"이 나오면 저장
+4. 사이드 패널 → 설정 → **사용자 ID**(사내 SSO ID)를 넣고 **연결 시험** → "연결됨"이 나오면 저장. "닿지 못했습니다"가 나오면 메시지 아래의 원인을 본다. 브라우저(특히 엣지)가 확장의 그 주소 접근을 막고 있으면 **이 주소 접근 허용** 버튼이 뜬다
 5. 업무 화면을 열고 패널 위쪽의 **화면 점검**을 누른다. 조작할 사이트 목록에 없으면 **이 사이트 허용**을 눌러 크롬 권한을 주면 된다 (패널 → 설정 → 조작할 사이트에서도 더하고 뺄 수 있다). 허용 목록, 읽지 못한 iframe, 그림으로 그린 그리드, 웹 컴포넌트, 머리글 없는 표처럼 막히는 곳을 녹화 전에 알려 준다
 
 사내 게이트웨이가 키와 사용자를 헤더로 받으면 `WXT_LLM_HEADERS`에 헤더 틀을 적습니다. 예시 파일에는 `x-dep-ticket`(키), `Send-System-Name`, `user-id`, `user-type`, `prompt-msg-id`·`completion-msg-id`(요청마다 새 UUID), `accept`, `content-type`이 들어 있습니다. 틀이 있으면 `Authorization: Bearer`는 보내지 않습니다. `Send-System-Name`은 사내 게이트웨이의 필수 헤더라서, 틀이 없거나 틀에서 빠져 있어도 시스템 이름(기본 `RFGo`, `WXT_LLM_SYSTEM_NAME`이나 설정 화면에서 변경)으로 늘 붙입니다. 틀의 형식이 틀리면 빌드가 멈추고 어디가 틀렸는지 알려 줍니다. 사용자 ID처럼 비어 있는 값이 있으면 요청하지 않고 설정에서 채우라고 알립니다.

@@ -602,7 +602,7 @@ WXT_LLM_HEADERS='{"x-dep-ticket":"{key}","Send-System-Name":"{systemName}",
             <tr><td>필요한 값이 비어 있습니다: 사용자 ID</td><td>사용자 ID 칸 채우기</td></tr>
             <tr><td>모델 API 오류 401 / 403</td><td>credential_key, 사용자 ID·유형, 시스템 이름(Send-System-Name) 확인. 빌드 요약에 "헤더 틀에 적힌 값"으로 다른 이름이 보이면 환경 파일의 헤더 틀을 예시대로 <code>{systemName}</code>으로 바꿈</td></tr>
             <tr><td>모델 API 오류 404</td><td>WXT_LLM_BASE_URL을 <code>/chat/completions</code> 앞까지만 적었는지</td></tr>
-            <tr><td>모델 API에 닿지 못했습니다</td><td>주소, 다시 빌드했는지, 사내망·프록시·인증서</td></tr>
+            <tr><td>모델 API에 닿지 못했습니다</td><td>메시지 아래 "원인"을 봅니다. <b>권한이 없다</b>고 나오면 <b>이 주소 접근 허용</b>을 누릅니다. 크롬에서는 되고 엣지에서만 안 될 때 흔한 경우로, 엣지가 확장의 사이트 액세스를 줄였거나 회사 정책(<code>edge://policy</code>의 ExtensionSettings → runtime_blocked_hosts)이 막은 것입니다. <b>권한은 있다</b>고 나오면 프록시·인증서·보안 프로그램 쪽이므로 확장의 개발자 도구 Network 탭에서 오류 코드를 확인합니다</td></tr>
             <tr><td>choices[0].message.content가 없습니다</td><td>응답 형식이 OpenAI 호환이 아님 → <code>src/core/llm.ts</code> 수정 필요 (응답 모양을 개발 담당에게)</td></tr>
           </table></div>
           <p>설정 화면에서 바꾼 값만 브라우저에 저장되고, 바꾸지 않은 칸은 빌드 값을 따릅니다. 꼬였으면 <b>빌드 기본값으로 되돌리기</b>를 누릅니다.</p>

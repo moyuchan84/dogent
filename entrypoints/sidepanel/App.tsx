@@ -34,6 +34,7 @@ import { BatchView } from './Batch';
 import { History } from './History';
 import { Inspect } from './Inspect';
 import { Sites } from './Sites';
+import { hostAccess } from '@/src/ext/sites';
 import { download, targetTab } from './util';
 
 const STATUS_LABEL: Record<RunResult['status'], string> = {
@@ -87,6 +88,8 @@ export function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [showInspect, setShowInspect] = useState(false);
   const [llmTest, setLlmTest] = useState('');
+  // 연결 시험에서 권한이 막혀 있던 모델 API 주소. 버튼으로 다시 요청한다.
+  const [llmGrant, setLlmGrant] = useState<string | null>(null);
   const placeholders = useMemo(() => headerPlaceholders(builtInHeaders), []);
 
   /** 지금 설정 화면의 값으로 모델을 한 번 불러 본다. 저장하지 않아도 된다. */
@@ -100,8 +103,35 @@ export function App() {
       ]);
       setLlmTest(`연결됨 (${((Date.now() - started) / 1000).toFixed(1)}초) · 모델 답: ${reply.trim().slice(0, 60)}`);
     } catch (e) {
-      setLlmTest((e as Error).message);
+      const message = (e as Error).message;
+      setLlmGrant(null);
+      if (!message.startsWith('모델 API에 닿지 못했습니다')) return setLlmTest(message);
+      // 크롬에서는 되는데 엣지에서만 안 되는 경우: 브라우저가 확장의 이 주소 접근 권한을 막고 있으면
+      // 확장의 요청도 CORS 검사를 받아 사내 게이트웨이에 닿지 못한다.
+      const access = await hostAccess(settings.baseUrl);
+      if (access && !access.granted) {
+        setLlmGrant(access.pattern);
+        return setLlmTest(
+          `${message}\n\n원인: 이 브라우저에서 Dogent가 ${access.pattern}에 접근할 권한이 없습니다. 아래 "이 주소 접근 허용"을 누르세요. 허용 창이 뜨지 않으면 확장 관리 화면(edge://extensions 또는 chrome://extensions) → Dogent → 세부 정보 → 사이트 액세스를 확인하거나, 회사 정책(edge://policy의 ExtensionSettings → runtime_blocked_hosts)을 확인하세요.`,
+        );
+      }
+      setLlmTest(
+        `${message}\n\n권한은 있습니다. 네트워크 쪽(프록시, 인증서, 보안 프로그램)이 원인일 수 있습니다. 확장 관리 화면 → Dogent → "뷰 검사"로 개발자 도구를 열고, 연결 시험을 다시 눌러 Network 탭의 오류 코드를 확인하세요.`,
+      );
     }
+  }
+
+  /** 막혀 있던 모델 API 주소 권한을 다시 요청한다. 버튼을 누른 처리 안에서 불러야 허용 창이 뜬다. */
+  async function grantLlm() {
+    if (!llmGrant) return;
+    const ok = await browser.permissions.request({ origins: [llmGrant] }).catch((e: Error) => {
+      setLlmTest(`권한을 요청하지 못했습니다: ${e.message}. 회사 정책으로 막혀 있으면 IT에 문의해야 합니다`);
+      return null;
+    });
+    if (ok === null) return;
+    if (!ok) return setLlmTest('허용하지 않았습니다. 브라우저가 묻는 창에서 "허용"을 눌러야 합니다');
+    setLlmGrant(null);
+    await testLlm();
   }
   const [skillId, setSkillId] = useState(FREE_SKILL_ID);
   const [form, setForm] = useState<Record<string, string>>({});
@@ -483,6 +513,13 @@ export function App() {
               연결 시험
             </button>
           </div>
+          {llmGrant && (
+            <div className="row">
+              <button id="grant-llm" onClick={() => void grantLlm()}>
+                이 주소 접근 허용
+              </button>
+            </div>
+          )}
           {llmTest && (
             <div id="llm-test" className={`notice ${llmTest.startsWith('연결됨') ? 'ok' : llmTest.startsWith('시험하는') ? '' : 'error'}`}>
               {llmTest}
