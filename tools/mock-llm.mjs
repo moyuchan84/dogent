@@ -16,6 +16,16 @@ function section(text, from, to) {
 
 function planReply(user) {
   const request = section(user, '## 사용자 요청');
+  // "DR5 검색해서 정리해줘", "'NV2-1T'로 검색해 정체 위주로 정리"
+  const search = /['"“]?([A-Za-z0-9가-힣-]+)['"”]?\s*(?:으로|로)?\s*검색/.exec(request);
+  if (search && user.includes('wip-search')) {
+    const inputs = { keyword: search[1] };
+    const line = /(\d+)\s*라인/.exec(request);
+    if (line) inputs.line = `${line[1]}라인`;
+    const focus = /([^,.]+?)\s*(?:위주|중심|기준)/.exec(request.slice(search.index + search[0].length));
+    if (focus) inputs.focus = focus[1].replace(/^(해서|하고|후)\s*/, '').trim();
+    return { skill_id: 'wip-search', inputs, reason: '검색해서 정리하는 요청' };
+  }
   if (request.includes('방화벽')) {
     const inputs = {};
     const ips = request.match(/\d+\.\d+\.\d+\.\d+(?:\/\d+)?/g) ?? [];
@@ -259,10 +269,26 @@ function polishReply(user) {
   };
 }
 
+/**
+ * summarize: 실제 요약 대신 자료의 모양을 그대로 적는다. 배관(자료가 오가는지)만 확인하는 용도다.
+ * 표 자료면 행 수와 행마다 첫 두 칸을, 글이면 줄 수와 첫 줄을 적는다.
+ */
+function summarizeReply(user) {
+  const instruction = section(user, '## 지시', '## 자료').trim();
+  const data = section(user, '<data>', '</data>').trim();
+  const lines = data.split('\n');
+  if (lines[0]?.includes('\t')) {
+    const rows = lines.slice(1).map((l) => l.split('\t'));
+    return [`기준: ${instruction}`, `- ${rows.length}행`, ...rows.map((r) => `- ${r[0]}: ${r[1] ?? ''}`)].join('\n');
+  }
+  return [`기준: ${instruction}`, `- 글 ${lines.length}줄`, `- 첫 줄: ${lines[0] ?? ''}`].join('\n');
+}
+
 export function mockComplete(messages) {
   const system = messages.find((m) => m.role === 'system')?.content ?? '';
   const user = messages.filter((m) => m.role === 'user').at(0)?.content ?? '';
   if (!system && user.includes('연결 확인')) return 'ok';
+  if (system.includes('자료를 정리하는 담당')) return summarizeReply(user);
   if (system.includes('스킬 문서 편집자')) return JSON.stringify(polishReply(user));
   return JSON.stringify(system.includes('스킬 선택기') ? planReply(user) : agentReply(user));
 }

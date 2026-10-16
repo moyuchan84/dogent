@@ -5,7 +5,7 @@ import { buildWorkbook, readDownloadedTable } from './excel';
 import { extractPages } from './pages';
 import { PathMemo } from './paths';
 import { SUBMIT_PATTERN, checkAction, findElement, hostAllowed } from './policy';
-import { buildTurnMessages } from './prompt';
+import { buildSummarizeMessages, buildTurnMessages } from './prompt';
 import { checkInputRules, extractSteps, fillTemplate, fillValue, type Skill, type SkillInputs } from './skill';
 import { renderSnapshot } from './snapshot';
 import { transform } from './transform';
@@ -57,6 +57,13 @@ export interface RunDeps {
 
 const MAX_FORMAT_RETRIES = 2;
 const MAX_STRIKES = 3;
+/** read_text 결과를 모델에 보여 줄 때의 최대 글자 수 */
+const READ_TEXT_MAX = 4000;
+/** summarize에 보내는 화면 글과 데이터셋 행의 최대 */
+const SUMMARIZE_PAGE_MAX = 12000;
+const SUMMARIZE_ROWS_MAX = 200;
+
+const clipText = (text: string, max: number) => (text.length > max ? `${text.slice(0, max)}\n(이하 ${text.length - max}자 생략)` : text);
 /** 로그인을 기다리는 동안 화면을 다시 읽는 간격 */
 const LOGIN_POLL_MS = 1500;
 
@@ -115,9 +122,12 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps, memo: PathM
   // 단계가 끝날 때 화면에서 읽어 둔 값. 뒤 단계의 {out.이름} 자리에 들어가고 실행 결과에도 남는다.
   const captures = extractSteps(skill.body).map(stepCaptures);
   const outputs: Record<string, string> = {};
-  const withOutputs = (text: string) =>
+  // inJson이면 JSON 인자의 문자열 안에 넣는 것이라 줄바꿈·따옴표를 이스케이프한다 (정리한 글은 여러 줄이다).
+  const withOutputs = (text: string, inJson = false) =>
     text
-      .replace(/\{out\.([a-z_][a-z0-9_]*)\}/g, (whole, name: string) => outputs[name] ?? whole)
+      .replace(/\{out\.([a-z_][a-z0-9_]*)\}/g, (whole, name: string) =>
+        name in outputs ? (inJson ? JSON.stringify(outputs[name]).slice(1, -1) : outputs[name]) : whole,
+      )
       // {rows.이름}: 데이터셋의 현재 행 수. 모델이 세지 않아도 보고에 정확한 숫자가 들어간다.
       .replace(/\{rows\.([A-Za-z_][A-Za-z0-9_]*)\}/g, (whole, name: string) => {
         const ds = datasets.list().find((d) => d.name === name);
@@ -358,12 +368,39 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps, memo: PathM
         savedFiles.push(filename);
         return { ok: true, result: `${filename} 저장 (시트 ${sheets.length}개)` };
       }
+      case 'read_text': {
+        if (!browser.readText) return { ok: false, result: '이 환경에서는 화면 글을 읽을 수 없습니다' };
+        const text = await browser.readText(action.args.ref);
+        return { ok: true, result: clipText(text, READ_TEXT_MAX) || '(보이는 글이 없습니다)' };
+      }
+      case 'summarize': {
+        const { instruction, source, name } = action.args;
+        let material: string;
+        let what: string;
+        if (source === 'page') {
+          if (!browser.readText) return { ok: false, result: '이 환경에서는 화면 글을 읽을 수 없습니다' };
+          material = clipText(await browser.readText(), SUMMARIZE_PAGE_MAX);
+          what = `화면의 글 (${snap.title})`;
+        } else {
+          const ds = datasets.get(source);
+          // 데이터셋은 앞부분 행만 보낸다. 많으면 스킬이 transform으로 먼저 줄여 두어야 한다.
+          const rows = ds.rows.slice(0, SUMMARIZE_ROWS_MAX);
+          material = [ds.columns.join('\t'), ...rows.map((r) => r.map(cellText).join('\t'))].join('\n');
+          what = `데이터셋 "${ds.name}" (${ds.rows.length}행${ds.rows.length > rows.length ? `, 앞의 ${rows.length}행만` : ''})`;
+        }
+        if (!material.trim()) return { ok: false, result: `정리할 자료가 비어 있습니다: ${what}` };
+        const text = (await llm.complete(buildSummarizeMessages(instruction, what, material), signal)).trim();
+        if (!text) return { ok: false, result: '모델이 정리한 내용을 돌려주지 않았습니다' };
+        outputs[name] = text;
+        return { ok: true, result: `${what}을(를) 정리해 {out.${name}}에 남김: ${clipText(text, 300)}` };
+      }
       case 'ask_user': {
         const answer = await ui.ask(action.args.question);
         return { ok: true, result: `사용자 답변: ${answer}` };
       }
       case 'finish':
-        return { ok: true, result: action.args.summary, end: 'done' };
+        // 모델이 쓴 보고에도 {rows.이름}, {out.이름}을 채운다. 숫자와 정리한 글을 모델이 옮겨 적지 않아도 된다.
+        return { ok: true, result: withOutputs(action.args.summary), end: 'done' };
       case 'abort':
         return { ok: true, result: action.args.reason, end: 'aborted' };
     }
@@ -374,15 +411,14 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps, memo: PathM
   const directTried = new Set<number>();
   function directAction(snap: PageSnapshot): Action | null {
     if (!deps.direct || directTried.has(current)) return null;
-    const text = withOutputs(promptSteps[current - 1]);
-    const parts = directParts(text);
+    const parts = directParts(promptSteps[current - 1]);
     if (!parts) return null;
     directTried.add(current);
     try {
       const reply = JSON.stringify({
         thought: '스킬에 적힌 대로 실행',
         tool: parts.tool,
-        args: JSON.parse(parts.literal),
+        args: JSON.parse(withOutputs(parts.literal, true)),
       });
       const parsed = parseAction(reply, snap);
       return parsed.ok ? parsed.action : null;

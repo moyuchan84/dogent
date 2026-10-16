@@ -106,7 +106,7 @@ ${steps}
     expect(rules(r3.replace('[상신]', '[저장]'))).toEqual(['E04@1']);
   });
 
-  it('모델 판단에 기대는 부분은 경고로 알리고 등급을 내린다', () => {
+  it('검사 없는 중간 단계와 약한 검사는 경고로, 목표 단계는 안내로 알린다', () => {
     const r = lintSkill(
       base(
         [
@@ -118,12 +118,10 @@ ${steps}
       ),
     );
     expect(r.findings.map((f) => `${f.rule}@${f.step ?? 0}`)).toEqual([
-      'W02@1',
+      'I01@1',
       'W01@1',
       'W03@2',
-      'W02@3',
-      'W01@3',
-      'W05@3',
+      'I01@3',
       'W04@0',
     ]);
     expect(r.grade).toBe('C');
