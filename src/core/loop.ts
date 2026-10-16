@@ -2,6 +2,7 @@ import { directParts, parseAction, type Action } from './actions';
 import { capture, evalCheck, stepCaptures, stepCheck, stripCheckLines, type Clause } from './check';
 import { DatasetStore } from './dataset';
 import { buildWorkbook, readDownloadedTable } from './excel';
+import { extractPages } from './pages';
 import { PathMemo } from './paths';
 import { SUBMIT_PATTERN, checkAction, findElement, hostAllowed } from './policy';
 import { buildTurnMessages } from './prompt';
@@ -46,11 +47,26 @@ export interface RunDeps {
    * 다음 실행에서 모델 없이 다시 한다. 통하지 않으면 그 단계는 모델에게 넘긴다.
    */
   paths?: PathStore;
+  /**
+   * 로그인 화면을 만났을 때 사람이 로그인하기를 기다리는 시간. 주면 실행을 멈추고 기다리다가,
+   * 비밀번호 칸이 사라지면 그 단계부터 이어 간다. 0이거나 없으면 바로 끝낸다.
+   * 에이전트는 비밀번호 칸에 입력하지 않는다 (docs/09 D9).
+   */
+  loginWaitMs?: number;
 }
 
 const MAX_FORMAT_RETRIES = 2;
 const MAX_STRIKES = 3;
-const MAX_PAGES = 500;
+/** 로그인을 기다리는 동안 화면을 다시 읽는 간격 */
+const LOGIN_POLL_MS = 1500;
+
+/** ms만큼 기다린다. 중지하면 바로 끝난다. */
+function pause(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((done) => {
+    const t = setTimeout(done, ms);
+    signal?.addEventListener('abort', () => (clearTimeout(t), done()), { once: true });
+  });
+}
 /** 승인 요청에 현재 값으로 보여줄 입력 요소 */
 const FIELD_ROLES = new Set(['textbox', 'combobox', 'checkbox', 'radio']);
 
@@ -78,6 +94,8 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps, memo: PathM
   const datasets = deps.datasets ?? new DatasetStore();
   const emit = deps.onEvent ?? (() => {});
   const started = Date.now();
+  // 로그인을 기다린 시간. 스킬의 제한 시간에서 뺀다.
+  let waited = 0;
   const history: HistoryEntry[] = [];
   const savedFiles: string[] = [];
   const body = fillTemplate(skill, inputs);
@@ -285,32 +303,20 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps, memo: PathM
           : { ok: false, result: `${action.args.timeout_sec}초 안에 나타나지 않음` };
       }
       case 'extract_table': {
-        const table = await browser.extractTable(action.args.ref);
-        const ds = datasets.put(action.args.dataset, table, action.args.append);
-        if (action.args.next_ref === undefined) {
-          return {
-            ok: true,
-            result: `${table.rows.length}행 추출, "${ds.name}" 누적 ${ds.rows.length}행`,
-          };
-        }
-        // 페이지 넘김은 판단이 필요 없는 반복이라 모델을 거치지 않고 여기서 끝까지 돈다.
-        // ref는 화면이 바뀌면 새로 매겨지므로 표와 버튼을 역할·이름으로 다시 찾는다.
-        const tableEl = findElement(snap, action.args.ref)!;
-        const nextEl = findElement(snap, action.args.next_ref)!;
-        const again = (s: PageSnapshot, like: ElementItem) =>
-          s.items.find((i): i is ElementItem => i.kind === 'el' && i.role === like.role && i.name === like.name);
-        let pages = 1;
-        for (let s = snap; pages < MAX_PAGES; pages++) {
-          const next = again(s, nextEl);
-          if (!next || next.disabled) break;
-          const clicked = await browser.click(next.ref);
-          if (!clicked.ok) throw new Error(`"${nextEl.name}" 클릭 실패: ${clicked.message}`);
-          s = await browser.snapshot();
-          const t = again(s, tableEl);
-          if (!t) throw new Error(`${pages + 1}페이지에서 표 "${tableEl.name}"을(를) 찾지 못했습니다`);
-          datasets.put(action.args.dataset, await browser.extractTable(t.ref), true);
-        }
-        return { ok: true, result: `${pages}페이지 추출, "${ds.name}" 누적 ${ds.rows.length}행` };
+        const { dataset, append } = action.args;
+        let firstRows = 0;
+        const pages = await extractPages(browser, snap, action.args.ref, action.args.next_ref, (table, first) => {
+          if (first) firstRows = table.rows.length;
+          datasets.put(dataset, table, first ? append : true);
+        });
+        const ds = datasets.get(dataset);
+        return {
+          ok: true,
+          result:
+            action.args.next_ref === undefined
+              ? `${firstRows}행 추출, "${ds.name}" 누적 ${ds.rows.length}행`
+              : `${pages}페이지 추출, "${ds.name}" 누적 ${ds.rows.length}행`,
+        };
       }
       case 'download_table': {
         if (!browser.download) return { ok: false, result: '이 환경에서는 파일 내려받기를 쓸 수 없습니다. extract_table로 표를 추출하세요' };
@@ -390,14 +396,30 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps, memo: PathM
   try {
     for (let n = 1; n <= skill.limits.max_steps; n++) {
       if (signal?.aborted) return end('stopped', '사용자가 중지했습니다');
-      if (Date.now() - started > skill.limits.timeout_sec * 1000) {
+      if (Date.now() - started - waited > skill.limits.timeout_sec * 1000) {
         return end('aborted', `제한 시간 ${skill.limits.timeout_sec}초를 넘었습니다`);
       }
 
-      const snap = await browser.snapshot();
+      let snap = await browser.snapshot();
       emit({ type: 'observe', n, url: snap.url, title: snap.title });
       if (snap.hasPassword) {
-        return end('aborted', '로그인 화면이 감지되었습니다. 직접 로그인한 뒤 다시 실행해 주세요', 'login');
+        const waitMs = deps.loginWaitMs ?? 0;
+        if (waitMs <= 0) return end('aborted', '로그인 화면이 감지되었습니다. 직접 로그인한 뒤 다시 실행해 주세요', 'login');
+        // 사람이 이 탭에서 로그인하기를 기다린다. 그동안은 조작 중 표시를 끄고 화면을 사람에게 넘긴다.
+        emit({ type: 'login_wait', url: snap.url, timeoutSec: Math.round(waitMs / 1000) });
+        const since = Date.now();
+        await browser.setActive?.(false).catch(() => {});
+        while (snap.hasPassword) {
+          if (signal?.aborted) return end('stopped', '사용자가 중지했습니다');
+          if (Date.now() - since >= waitMs) {
+            return end('aborted', `로그인이 필요합니다. ${Math.round(waitMs / 60000) || 1}분 안에 로그인하지 않아 멈췄습니다`, 'login');
+          }
+          await pause(Math.min(LOGIN_POLL_MS, waitMs), signal);
+          snap = await browser.snapshot();
+        }
+        waited += Date.now() - since;
+        await browser.setActive?.(true).catch(() => {});
+        emit({ type: 'login_done', url: snap.url });
       }
       if (snap.dialogs?.length) {
         stepDialogs.push(...snap.dialogs.map((d) => d.message));

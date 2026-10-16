@@ -1032,15 +1032,26 @@ limits:
     }
   });
 
-  await scenario('로그인 화면이면 중단', async (openPages) => {
-    const { panel } = await openPages('/login.html');
+  await scenario('로그인 화면이면 기다렸다가, 사람이 로그인하면 이어서 끝까지', async (openPages) => {
+    const { target, panel } = await openPages('/login.html');
     await panel.selectOption('#skill', 'wip-check');
     await panel.fill('[data-input=line]', '7라인');
-    const r = await run(panel);
-    check(r, () => {
-      assert.equal(r.status, 'aborted');
-      assert.match(r.text, /로그인/);
-    });
+    const downloads = [];
+    panel.on('download', (d) => downloads.push(d));
+    await panel.click('#run');
+    // 패널이 로그인을 기다린다고 알리고, 에이전트는 비밀번호 칸을 건드리지 않는다.
+    await panel.locator('#login-wait').waitFor({ timeout: RUN_TIMEOUT });
+    assert.match(await panel.locator('#login-wait').innerText(), /직접 로그인해 주세요/);
+    assert.equal(await target.locator('#pw').inputValue(), '');
+    // 사람이 로그인한다.
+    await target.fill('#user', 'hong');
+    await target.fill('#pw', 'secret');
+    await target.click('button');
+    const r = await result(panel);
+    assert.equal(r.status, 'done', r.text);
+    assert.match(await panel.locator('ol.log').innerText(), /로그인됨, 이어서 진행/);
+    assert.equal(await panel.locator('#login-wait').count(), 0);
+    return downloads[0]?.suggestedFilename();
   });
 
   await scenario('없는 라인이면 중단하고 파일을 만들지 않음', async (openPages) => {
@@ -1067,8 +1078,15 @@ limits:
       return (await run(panel)).status;
     };
     assert.equal(await once('/wip.html', '8라인'), 'done');
-    // 로그인이 풀려 멈춘 실행은 스킬의 실패로 세지 않는다.
-    assert.equal(await once('/login.html', '8라인'), 'aborted', '로그인 화면');
+    // 로그인이 풀려 기다리다 그만둔 실행은 스킬의 실패로 세지 않는다.
+    await target.goto(SITE + '/login.html');
+    await panel.reload();
+    await panel.selectOption('#skill', 'wip-check');
+    await panel.fill('[data-input=line]', '8라인');
+    await panel.click('#run');
+    await panel.locator('#login-wait').waitFor({ timeout: RUN_TIMEOUT });
+    await panel.click('#stop');
+    assert.equal(await panel.locator('#result').getAttribute('data-status'), 'stopped', '로그인 화면');
     assert.equal(await once('/wip.html', '9라인'), 'aborted', '없는 라인 1');
     assert.equal(await once('/wip.html', '9라인'), 'aborted', '없는 라인 2');
 

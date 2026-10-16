@@ -50,6 +50,12 @@ export function covers(scope: string, pattern: string): boolean {
   return s.host === p.host || hostOnly(s.host) === p.host;
 }
 
+/** 주소가 사이트 규칙 목록 안인지. 외부 클라이언트가 이동·내려받기를 요청할 때 확인한다. */
+export function siteAllowed(url: string, patterns: string[]): boolean {
+  const origin = originPattern(url);
+  return origin !== null && patterns.some((p) => covers(p, origin));
+}
+
 /** 주소의 출처를 사이트 규칙으로. 화면 점검에서 읽지 못한 화면을 바로 허용할 때 쓴다. */
 export function originPattern(url: string): string | null {
   try {

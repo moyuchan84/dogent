@@ -704,7 +704,7 @@ pnpm ollama:proxy   <span class="c"># 터미널 2</span></code></pre>
             <tr><td>"허용되지 않은 사이트" / 아무 동작도 안 함</td><td><b>화면 점검</b>을 눌러 막힘 항목을 봄. 대개 <code>sitePermissions</code>에 그 주소(또는 iframe 주소)가 없음. 넣고 다시 빌드, 확장 새로고침</td></tr>
             <tr><td>해석을 눌러도 응답이 없거나 시간 초과</td><td>설정의 <b>연결 시험</b>으로 원인 확인. 느리면 제한 시간 배율(또는 WXT_LLM_TIMEOUT_SCALE)을 올림</td></tr>
             <tr><td>모델 응답 형식 오류가 반복</td><td>JSON 출력 모드를 켜 봄 (API가 지원할 때)</td></tr>
-            <tr><td>로그인 화면 감지로 중단</td><td>세션이 끊김. 다시 로그인 후 실행</td></tr>
+            <tr><td>"로그인이 필요합니다"가 뜸</td><td>세션이 끊긴 것. 업무 화면 탭에서 직접 로그인하면 그 자리에서 이어서 진행함 (5분 안에). Dogent는 비밀번호를 입력하지 않음</td></tr>
             <tr><td>표에 값이 안 들어감</td><td>입력 칸 없는 그리드일 수 있음. 붙여넣기로 자동 전환되며, 그리드가 값을 거르면 입력 후 대조에서 멈춤. 기록 내보내기로 확인</td></tr>
             <tr><td>코드를 고쳤는데 반영이 안 됨</td><td>쓰는 빌드(<code>build:home</code> / <code>build:company</code>)로 다시 빌드했는지, 로드한 폴더가 그 빌드의 폴더인지 확인. <code>chrome://extensions</code>에서 새로고침, 패널을 닫았다 다시 열기</td></tr>
           </table></div>

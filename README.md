@@ -71,6 +71,36 @@ OLLAMA_MODEL=gemma3:12b RUNS=20 pnpm e2e:ollama
 
 `TIMEOUT_SCALE=3`으로 제한 시간을 늘리고, `ONLY=iframe`처럼 이름 일부를 주면 그 시나리오만 돌립니다.
 
+## 외부 클라이언트(MCP)로 조작하기
+
+Claude Code 같은 MCP 클라이언트가 Dogent 확장을 거쳐 브라우저를 조작할 수 있습니다. 구조와 결정은 [docs/09-client-architecture.md](docs/09-client-architecture.md)에 있습니다. 조작할 사이트 목록, 저장·상신 승인 창, 로그인 대기는 어떤 클라이언트가 붙어도 확장이 그대로 지킵니다.
+
+```
+MCP 클라이언트 ─stdio─ 브리지(bridge/hub.mjs) ─┬─ WebSocket(127.0.0.1:39217) ─┐
+                                              └─ 파이프 ─ native host ─ Native Messaging ─┴─ Dogent 확장
+```
+
+1. 확장을 빌드해 다시 로드합니다 (`pnpm build`, `build:home`, `build:company` 중 쓰는 것).
+2. 토큰을 확인합니다. 처음 실행할 때 `~/.dogent/bridge-token`에 만들어집니다.
+   ```bash
+   pnpm bridge:token
+   ```
+3. 사이드 패널 → 설정 → **클라이언트 연결**에서 방식을 고르고 토큰을 넣어 저장합니다.
+   - **WebSocket**: 설치할 것이 없습니다. 브리지가 `127.0.0.1:39217`에서 기다리고 확장이 붙습니다.
+   - **Native Messaging**: 처음 한 번 `pnpm bridge:install --id <확장 ID>`로 이 PC에 호스트를 등록합니다(현재 사용자 레지스트리, 관리자 권한 불필요). 확장 ID는 설정 화면에 나옵니다. 크롬과 엣지에 함께 등록됩니다.
+4. MCP 클라이언트에 브리지를 등록합니다. Claude Code라면:
+   ```bash
+   claude mcp add dogent -- node D:/code/samsung/dogent/bridge/hub.mjs
+   ```
+5. 클라이언트에 말로 시킵니다. 예: "dogent로 http://localhost:4173/wip.html 에서 7라인 재공을 조회해서 정체 Lot이 몇 건인지 알려줘". 연결 상태는 설정의 **클라이언트 연결**에 표시됩니다.
+
+도구: `tabs_list`, `tab_open`, `tab_select`, `snapshot`, `navigate`, `click`, `type`, `select`, `wait_for`, `extract_table`, `download_table`, `fill_table`, `read_text`, `inspect`, `wait_for_login` (설명은 `bridge/tools.mjs`).
+
+- 저장·상신 계열 버튼을 누르려 하면 확장이 **승인 창**을 띄웁니다. 승인해야 누르고, 창을 닫으면 누르지 않습니다.
+- 로그인 화면이면 `snapshot`이 `[login_required]`를 알립니다. 비밀번호 칸은 화면 읽기에 나오지 않아 입력할 수 없습니다. 사람이 로그인하면 `wait_for_login`이 끝납니다.
+- 토큰이 다르면 서로 연결하지 않습니다. 브리지인 척하는 다른 프로그램도 토큰을 모르면 확장에 명령할 수 없습니다.
+- 등록을 지우려면 `pnpm bridge:install --remove`.
+
 ## 사내 Gemma에 연결하기
 
 집과 회사는 빌드 설정 파일 하나만 다릅니다. 코드와 명령은 같습니다.
@@ -146,7 +176,8 @@ tools/         모의 모델 서버
 - 단계 진행을 루프가 관리: 스킬의 `검사:` 조건이 충족되면 자동으로 다음 단계로, 충족 전에는 건너뛸 수 없음. `finish`는 마지막 단계에서만 가능
 - 작은 모델 보정: 요소 이름으로 적힌 ref를 번호로 변환, 이미 열린 화면으로의 재이동 차단, 같은 페이지 중복 추출 거부
 - 모델 응답 스키마 검증과 재요청, 최대 동작 수·제한 시간·연속 실패·반복 동작 중단
-- 허용 도메인 제한(manifest 권한 + 스킬 `domains`), 로그인 화면 감지 시 중단
+- 허용 도메인 제한(manifest 권한 + 스킬 `domains`)
+- 로그인 화면: 비밀번호 칸이 보이면 멈추고 "이 탭에서 로그인해 주세요"를 알림. 사람이 로그인하면 그 자리에서 이어 감(최대 5분 대기, 기다린 시간은 실행 제한 시간에 넣지 않음). 에이전트는 비밀번호를 입력하지 않음
 - 저장·상신(R3) 통제: 선언한 단계와 버튼만 허용, 제출 전 입력값 대조, 사용자 승인, 시험 실행, 단계당 1회 제출
 - 스킬 바로 실행: 도구와 인자가 적힌 단계는 모델 호출 없이 실행. 번들된 스킬 5개는 전 단계가 이 형식이라 모델 없이 끝까지 돌고, 동작이 실패한 단계만 모델이 맡음
 - 자유 요청: 스킬 없이 현재 화면에 대해 말로 시키는 모드 (패널의 기본 선택). 열린 사이트 밖으로 나가지 않고, 저장·상신은 허용을 켜고 승인해야 누름
@@ -174,7 +205,7 @@ tools/         모의 모델 서버
 
 - 구형 엑셀(xls)·폼 전송으로 만들어지는 내려받기 파일 읽기
 - 스크린샷 보조 입력, `chrome.debugger` 기반 입력
-- 데스크탑 클라이언트, Hub (스킬 사용 권한·정책 배포·기록 수집)
+- Dogent 클라이언트(2단계), 오피스 도구(3단계), 데스크탑 화면(4단계), Hub (스킬 사용 권한·정책 배포·기록 수집)
 
 ## 스킬 추가
 

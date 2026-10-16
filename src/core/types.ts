@@ -144,6 +144,8 @@ export interface BrowserPort {
   download?(ref: number, timeoutMs: number, allowed: (url: string) => boolean): Promise<DownloadedFile>;
   /** 에이전트가 화면을 조작 중임을 사용자에게 표시하거나 지운다. */
   setActive?(on: boolean): Promise<void>;
+  /** 화면(ref를 주면 그 요소)에 보이는 글. 입력 칸의 값과 비밀번호는 담지 않는다. */
+  readText?(ref?: number): Promise<string>;
 }
 
 export interface ChatMessage {
@@ -221,6 +223,10 @@ export type RunEvent =
   | { type: 'action'; entry: HistoryEntry }
   | { type: 'step_done'; step: number }
   | { type: 'approval'; n: number; request: ApprovalRequest; approved: boolean; dryRun: boolean }
+  /** 로그인 화면을 만나 사람이 로그인하기를 기다리기 시작함 */
+  | { type: 'login_wait'; url: string; timeoutSec: number }
+  /** 로그인이 끝나 이어서 진행함 */
+  | { type: 'login_done'; url: string }
   | { type: 'end'; status: RunStatus; message: string };
 
 export interface DatasetInfo {

@@ -19,6 +19,8 @@ export interface PageAgent {
    */
   fillTable(ref: number, columns: string[], rows: string[][], addRef?: number): ActResult;
   hasText(text: string): boolean;
+  /** 화면(ref를 주면 그 요소)에 보이는 글. 요약처럼 화면의 글이 필요할 때 쓴다. 입력 칸의 값과 비밀번호는 담지 않는다. */
+  readText(ref?: number): string;
   settle(quietMs?: number, maxMs?: number): Promise<void>;
   /** 곧 조작할 요소를 화면에 표시한다. 요소가 사라졌으면 false. */
   point(ref: number, label: string): boolean;
@@ -733,6 +735,21 @@ export function createPageAgent(
       const width = Math.max(header.length, ...data.map((r) => r.length), 0);
       const columns = Array.from({ length: width }, (_, i) => header[i] || `컬럼${i + 1}`);
       return { columns, rows: data.map((r) => Array.from({ length: width }, (_, i) => r[i] ?? '')) };
+    },
+
+    readText(ref) {
+      const root = ref === undefined ? doc.body : resolve(ref);
+      if (!root) return '';
+      // innerText는 화면에 보이는 줄바꿈을 살리고 숨긴 요소를 뺀다. 지원하지 않는 환경(jsdom)은 textContent를 쓴다.
+      // 입력 칸의 값은 innerText에 들어가지 않는다 (비밀번호 칸 포함).
+      const el = root as HTMLElement;
+      const raw = typeof el.innerText === 'string' ? el.innerText : (el.textContent ?? '');
+      return raw
+        .split(/\r?\n/)
+        .map((l) => l.replace(/[ \t\u00a0]+/g, ' ').trim())
+        .filter((l, i, all) => l !== '' || (i > 0 && all[i - 1] !== ''))
+        .join('\n')
+        .trim();
     },
 
     hasText(text) {

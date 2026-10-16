@@ -34,8 +34,12 @@ import { BatchView } from './Batch';
 import { History } from './History';
 import { Inspect } from './Inspect';
 import { Sites } from './Sites';
+import { Connect } from './Connect';
 import { hostAccess } from '@/src/ext/sites';
 import { download, targetTab } from './util';
+
+/** 로그인 화면을 만났을 때 사람이 로그인하기를 기다리는 시간 */
+const LOGIN_WAIT_MS = 5 * 60_000;
 
 const STATUS_LABEL: Record<RunResult['status'], string> = {
   done: '완료',
@@ -329,9 +333,13 @@ export function App() {
               setApproval({ request, decide: resolve });
             }),
         },
+        // 로그인 화면을 만나면 사람이 로그인할 때까지 기다렸다가 이어 간다 (비밀번호는 에이전트가 입력하지 않음).
+        loginWaitMs: LOGIN_WAIT_MS,
         onEvent(e) {
           collected.push(e);
           setEvents([...collected]);
+          // 로그인할 화면을 사람 앞으로 가져온다.
+          if (e.type === 'login_wait') void browser.tabs.update(tab.id, { active: true }).catch(() => {});
         },
       });
     } catch (e) {
@@ -499,6 +507,7 @@ export function App() {
           <p className="hint">기본은 응답 60초, 스킬별 전체 제한 시간입니다. 느린 로컬 모델이면 배율을 올리세요.</p>
           <p className="hint">API 주소를 여기서 바꾸면 그 호스트가 빌드의 허용 목록에 있어야 닿습니다. 새 주소는 환경 파일에 적고 다시 빌드하세요.</p>
           <Sites />
+          <Connect />
           <label>
             공유 스킬 저장소 (index.json 주소)
             <input
@@ -775,6 +784,20 @@ export function App() {
                   </li>
                 );
               }
+              if (e.type === 'login_wait') {
+                return (
+                  <li key={i} className="fail">
+                    로그인 화면을 만나 기다림: {e.url}
+                  </li>
+                );
+              }
+              if (e.type === 'login_done') {
+                return (
+                  <li key={i} className="minor">
+                    로그인됨, 이어서 진행
+                  </li>
+                );
+              }
               if (e.type === 'llm_retry') {
                 return (
                   <li key={i} className="minor">
@@ -785,6 +808,18 @@ export function App() {
               return null;
             })}
           </ol>
+
+          {running && events.at(-1)?.type === 'login_wait' && (
+            <div id="login-wait" className="notice login-wait">
+              <b>로그인이 필요합니다</b>
+              <p>
+                업무 화면 탭에서 직접 로그인해 주세요. 로그인되면 그 자리에서 이어서 진행합니다. Dogent는 비밀번호를 입력하지 않습니다.
+              </p>
+              <p className="hint">
+                {Math.round(((events.at(-1) as Extract<RunEvent, { type: 'login_wait' }>).timeoutSec ?? 300) / 60)}분 안에 로그인하지 않으면 멈춥니다. 그만두려면 중지를 누르세요.
+              </p>
+            </div>
+          )}
 
           {approval && (
             <div id="approval" className="approval">
