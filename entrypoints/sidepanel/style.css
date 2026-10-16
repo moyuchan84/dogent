@@ -574,3 +574,27 @@ textarea.code {
 .notice.ok {
   background: var(--ok-soft);
 }
+
+/* 조작할 사이트 */
+.sites h3 {
+  font-size: 13px;
+  margin: 14px 0 6px;
+}
+.site-list {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+}
+.site-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+.site-list code {
+  overflow-wrap: anywhere;
+}

@@ -18,12 +18,16 @@ export default defineConfig({
       ...dogentConfig.sitePermissions,
       ...((import.meta.env.WXT_SITE_PERMISSIONS as string | undefined) ?? '').split(',').map((x) => x.trim()).filter(Boolean),
     ];
-    if (command === 'build') printProfile(mode, sites);
+    // 사용자가 설정에서 더할 수 있는 사이트의 범위. 이 안의 사이트는 다시 빌드하지 않고 크롬 권한 요청으로 더한다.
+    const scopeRaw = ((import.meta.env.WXT_SITE_SCOPE as string | undefined) ?? '').split(',').map((x) => x.trim()).filter(Boolean);
+    const scope = scopeRaw.length ? scopeRaw : ['http://*/*', 'https://*/*'];
+    if (command === 'build') printProfile(mode, sites, scope);
     return {
       name: 'Dogent',
       description: '스킬(업무 절차서)을 따라 사내 웹 시스템을 조작하는 업무 에이전트',
       permissions: ['sidePanel', 'scripting', 'storage', 'tabs', 'downloads'],
       host_permissions: [...new Set([...sites, ...dogentConfig.llmPermissions, ...llmHost, ...skillsHost])],
+      optional_host_permissions: scope,
       // 아이콘 원본은 public/icon/dogent.svg. PNG는 그것을 크기별로 그린 것이다 (Do-Agent: D 위의 클릭하는 포인터).
       icons: { 16: 'icon/16.png', 32: 'icon/32.png', 48: 'icon/48.png', 128: 'icon/128.png' },
       action: {
@@ -58,7 +62,7 @@ function checkHeaders(raw: string | undefined): void {
 let printed = false;
 
 /** 어떤 설정으로 빌드했는지 보여 준다. 집(Ollama)용과 회사(Gemma)용을 바꿔 빌드할 때 실수를 줄인다. 키 값은 찍지 않는다. */
-function printProfile(mode: string, sites: string[]): void {
+function printProfile(mode: string, sites: string[], scope: string[]): void {
   if (printed) return;
   printed = true;
   const env = import.meta.env as Record<string, string | undefined>;
@@ -76,6 +80,7 @@ function printProfile(mode: string, sites: string[]): void {
     `  요청 헤더  ${headers.length ? headers.join(', ') : 'Authorization: Bearer (OpenAI 방식)'}`,
     `  시스템 이름 Send-System-Name: ${systemName}`,
     `  사이트     ${sites.join(', ')}`,
+    `  추가 가능  ${scope.join(', ')} (설정 → 조작할 사이트에서 더함)`,
     `  확장 폴더  ${out}  ← chrome://extensions 에서 이 폴더를 로드`,
   ];
   console.log(['', ...lines, ''].join('\n'));

@@ -495,6 +495,12 @@ try {
       await panel.locator('#inspect-verdict').waitFor({ timeout: RUN_TIMEOUT });
       assert.equal(await panel.locator('#inspect-verdict').getAttribute('data-verdict'), 'blocked');
       assert.match(await panel.locator('#inspect').innerText(), /'http:\/\/127\.0\.0\.1:4173\/\*'/);
+      // 버튼 하나로 크롬에 이 사이트 권한을 요청할 수 있다 (크롬이 묻는 창은 자동화에서 누를 수 없어 버튼까지만 본다).
+      await panel.locator('#inspect-allow').waitFor();
+      assert.match(await panel.locator('#inspect').innerText(), /이 사이트 허용\s+http:\/\/127\.0\.0\.1:4173\/\*/);
+      // 설정의 조작할 사이트에는 빌드에 든 사이트가 지울 수 없게 보인다.
+      await panel.click('#open-settings');
+      assert.match(await panel.locator('#sites').innerText(), /http:\/\/localhost:4173\/\*\s+빌드에 포함/);
     } finally {
       await target.close();
       await panel.close();

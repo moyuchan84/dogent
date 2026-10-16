@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { browser } from 'wxt/browser';
-import { VERDICT_LABEL, diagnose, renderInspection, type SiteInspection } from '@/src/core';
+import { VERDICT_LABEL, diagnose, originPattern, renderInspection, unreadFrames, type SiteInspection } from '@/src/core';
 import { ChromeBrowser } from '@/src/ext/browser';
+import { requestSites } from '@/src/ext/sites';
 import { download, targetTab } from './util';
 
 const LEVEL_LABEL = { fail: '막힘', warn: '확인', ok: '정상', info: '참고' } as const;
@@ -45,6 +46,23 @@ export function Inspect({ onClose }: { onClose: () => void }) {
   }
 
   const result = site ? diagnose(site) : null;
+  // 읽지 못한 화면과 iframe의 출처. 버튼 하나로 크롬에 권한을 요청한다.
+  const blocked = site
+    ? [...new Set([...(site.readable ? [] : [originPattern(site.url)]), ...unreadFrames(site.frames).map((o) => originPattern(o))])].filter(
+        (p): p is string => !!p,
+      )
+    : [];
+
+  async function allow() {
+    setError('');
+    try {
+      await requestSites(blocked);
+      // 이미 열린 화면에는 새로 허용한 권한이 바로 걸리지 않을 수 있어 다시 점검한다.
+      await check();
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
 
   return (
     <section className="card" id="inspect">
@@ -72,6 +90,14 @@ export function Inspect({ onClose }: { onClose: () => void }) {
               </li>
             ))}
           </ul>
+          {blocked.length > 0 && (
+            <div className="row wrap">
+              <button id="inspect-allow" onClick={() => void allow()}>
+                이 사이트 허용
+              </button>
+              <span className="hint">{blocked.join(', ')}</span>
+            </div>
+          )}
           <label className="check">
             <input id="inspect-hide" type="checkbox" checked={hide} onChange={(e) => setHide(e.target.checked)} />
             보고서에서 화면 글자(라벨·머리글·버튼 이름)와 주소 가리기
