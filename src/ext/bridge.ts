@@ -16,6 +16,8 @@ export interface BridgeSettings {
   mode: BridgeMode;
   port: number;
   token: string;
+  /** 클라이언트가 브라우저를 고를 때 보이는 이름. 비우면 브라우저 이름(예: Microsoft Edge 141) */
+  label?: string;
 }
 export interface BridgeStatus {
   state: 'off' | 'connecting' | 'connected' | 'error';
@@ -237,7 +239,7 @@ async function onMessage(msg: BridgeMessage, settings: BridgeSettings, t: Transp
       refused = '';
       await setStatus('connected', settings.mode === 'ws' ? `WebSocket 127.0.0.1:${settings.port}` : 'Native Messaging');
       // 크롬과 엣지가 함께 붙어도 클라이언트가 고를 수 있게 브라우저 이름을 알린다.
-      t.send({ type: 'hello', browser: browserName(), key: await installKey() });
+      t.send({ type: 'hello', browser: settings.label?.trim() || browserName(), key: await installKey() });
       if (keepalive) clearInterval(keepalive);
       // 연결이 살아 있는 동안 서비스 워커가 잠들지 않게 주기적으로 신호를 보낸다.
       keepalive = setInterval(() => transport?.send({ type: 'ping' }), 20_000);
@@ -259,24 +261,34 @@ async function onMessage(msg: BridgeMessage, settings: BridgeSettings, t: Transp
 }
 
 let connecting: Promise<void> | null = null;
+/** 설정이 바뀔 때마다 늘린다. 바뀌기 전에 시작한 연결 시도는 옛 설정을 읽었으므로 그만둔다. */
+let generation = 0;
 
 /**
  * 설정에 맞게 연결을 맺거나 끊는다. 이미 연결되어 있으면 그대로 둔다.
  * 알람, 다시 붙기, 설정 변경이 한꺼번에 불러도 연결은 하나만 연다.
  */
 export function ensureConnected(): Promise<void> {
-  connecting ??= connect().finally(() => (connecting = null));
+  if (!connecting) {
+    const mine = connect(generation).finally(() => {
+      if (connecting === mine) connecting = null;
+    });
+    connecting = mine;
+  }
   return connecting;
 }
 
-async function connect(): Promise<void> {
+async function connect(gen: number): Promise<void> {
   const settings = await loadBridgeSettings();
+  if (gen !== generation) return;
   if (settings.mode === 'off') {
     drop();
     return void setStatus('off');
   }
   if (transport) return;
   const status = settings.mode === 'ws' ? `ws://127.0.0.1:${settings.port} 에 붙는 중` : 'Native Messaging 호스트를 띄우는 중';
+  // 여기서부터는 기다리지 않는다. 기다리는 사이에 브리지의 첫 메시지(challenge)가 오면 받지 못한다.
+  void setStatus('connecting', status);
   if (settings.mode === 'ws') {
     let ws: WebSocket;
     try {
@@ -286,9 +298,7 @@ async function connect(): Promise<void> {
       return scheduleRetry(10_000);
     }
     const t: Transport = { send: (m) => ws.readyState === WebSocket.OPEN && ws.send(JSON.stringify(m)), close: () => ws.close() };
-    // 기다리는 일(상태 저장)보다 먼저 연결을 정해 둔다.
     transport = t;
-    await setStatus('connecting', status);
     ws.onmessage = (e) => {
       try {
         void onMessage(JSON.parse(String(e.data)), settings, t);
@@ -306,7 +316,8 @@ async function connect(): Promise<void> {
         return scheduleRetry(60_000);
       }
       void setStatus('error', wasAuthed ? '브리지와 연결이 끊겼습니다. 다시 붙는 중' : `ws://127.0.0.1:${settings.port} 에 닿지 않습니다. 브리지가 실행 중인지 확인하세요`);
-      scheduleRetry(5_000);
+      // 클라이언트가 켜지면 곧 붙도록 짧게 다시 시도한다 (클라이언트의 브라우저 목록은 6초를 기다린다).
+      scheduleRetry(3_000);
     };
     return;
   }
@@ -319,7 +330,6 @@ async function connect(): Promise<void> {
   }
   const t: Transport = { send: (m) => port.postMessage(m), close: () => port.disconnect() };
   transport = t;
-  await setStatus('connecting', status);
   port.onMessage.addListener((m) => void onMessage(m as BridgeMessage, settings, t));
   port.onDisconnect.addListener(() => {
     if (transport !== t) return;
@@ -353,9 +363,13 @@ export function startBridge(): void {
     if (retry) clearTimeout(retry);
     retry = null;
     drop();
+    // 진행 중인 연결 시도는 옛 설정을 읽었을 수 있다. 새 설정으로 다시 시작한다.
+    generation++;
+    connecting = null;
     void ensureConnected();
   });
-  void browser.alarms.create('dogent-bridge', { periodInMinutes: 1 });
+  // 연결이 없으면 서비스 워커가 잠들어 다시 붙기 타이머가 사라진다. 크롬이 허용하는 가장 짧은 주기(30초)로 깨워 다시 붙는다.
+  void browser.alarms.create('dogent-bridge', { periodInMinutes: 0.5 });
   browser.alarms.onAlarm.addListener((a) => {
     if (a.name === 'dogent-bridge') void ensureConnected();
   });

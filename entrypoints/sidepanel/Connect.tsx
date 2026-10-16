@@ -82,6 +82,18 @@ export function Connect() {
           />
         </label>
       )}
+      {s.mode !== 'off' && (
+        <label>
+          이 브라우저 이름
+          <input
+            id="bridge-label"
+            value={s.label ?? ''}
+            placeholder="비우면 브라우저 이름 (예: 업무용 크롬, 엣지)"
+            onChange={(e) => setS({ ...s, label: e.target.value })}
+          />
+          <span className="hint">크롬·엣지처럼 Dogent가 든 브라우저가 여럿이면, 클라이언트에서 이 이름으로 고릅니다.</span>
+        </label>
+      )}
       <div className="row">
         <button id="bridge-save" className="secondary" onClick={() => void save()}>
           {saved ? '저장됨' : '연결 설정 저장'}
