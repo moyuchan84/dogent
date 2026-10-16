@@ -19,3 +19,4 @@ export * from './skill';
 export * from './snapshot';
 export * from './stats';
 export * from './transform';
+export * from './inspect';

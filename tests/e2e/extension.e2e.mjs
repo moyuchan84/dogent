@@ -457,6 +457,50 @@ try {
     return `${r.status}, ${r.sec}초`;
   });
 
+  await scenario('화면 점검: 읽을 수 있는 화면은 표와 버튼을 보고, 보고서에는 값을 넣지 않음', async (openPages) => {
+    const { target, panel } = await openPages('/portal.html');
+    await target.frameLocator('iframe').locator('#line').selectOption('7라인');
+    await target.frameLocator('iframe').locator('#query').click();
+    await target.frameLocator('iframe').locator('#total').filter({ hasText: '총' }).waitFor();
+    await panel.click('#open-inspect');
+    const verdict = panel.locator('#inspect-verdict');
+    await verdict.waitFor({ timeout: RUN_TIMEOUT });
+    const text = await panel.locator('#inspect').innerText();
+    assert.match(text, /조작할 수 있는 요소 \d+개를 읽었습니다/);
+    assert.match(text, /표 "재공 목록" \(http:\/\/localhost:4173\/wip\.html\): \d+행, 열 6개/);
+    assert.match(text, /내려받기 버튼: 엑셀 다운로드, CSV 내려받기/);
+    assert.notEqual(await verdict.getAttribute('data-verdict'), 'blocked', text);
+    await panel.screenshot({ path: join(ROOT, 'test-results/panel-inspect.png'), fullPage: true });
+
+    // 기본은 가린 보고서. 화면 글자도 값도 들어가지 않는다.
+    const lot = (await target.frameLocator('iframe').locator('#wipGrid tbody td').first().innerText()).trim();
+    const [download] = await Promise.all([panel.waitForEvent('download'), panel.click('#inspect-report')]);
+    const report = await readFile(await download.path(), 'utf8');
+    assert.match(report, /# Dogent 화면 점검/);
+    for (const hidden of ['localhost', '재공 목록', 'Lot ID', lot]) assert.ok(!report.includes(hidden), `보고서에 ${hidden}이(가) 들어감`);
+  });
+
+  await scenario('화면 점검: 허용 목록 밖의 화면은 막힘과 넣어야 할 주소를 알려 줌', async () => {
+    // 같은 모의 사이트라도 127.0.0.1은 허용 목록(localhost:4173)에 없다.
+    const target = await context.newPage();
+    await target.goto('http://127.0.0.1:4173/wip.html');
+    const panel = await context.newPage();
+    try {
+      await panel.goto(`chrome-extension://${extId}/sidepanel.html`);
+      const tabId = await panel.evaluate(
+        async () => (await chrome.tabs.query({})).find((t) => t.url?.startsWith('http://127.0.0.1:4173'))?.id,
+      );
+      await panel.goto(`chrome-extension://${extId}/sidepanel.html?tabId=${tabId}`);
+      await panel.click('#open-inspect');
+      await panel.locator('#inspect-verdict').waitFor({ timeout: RUN_TIMEOUT });
+      assert.equal(await panel.locator('#inspect-verdict').getAttribute('data-verdict'), 'blocked');
+      assert.match(await panel.locator('#inspect').innerText(), /'http:\/\/127\.0\.0\.1:4173\/\*'/);
+    } finally {
+      await target.close();
+      await panel.close();
+    }
+  });
+
   await scenario('스킬 만들기: 한 번 해 보이면 초안이 나오고, 시험 실행을 통과하면 배포 요청 가능', async (openPages) => {
     const { target, panel } = await openPages('/fw.html');
     await fwApi('DELETE');

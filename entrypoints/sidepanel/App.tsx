@@ -31,6 +31,7 @@ import { appendRun, clearPaths, effectiveSettings, hasBuiltInKey, loadDrafts, lo
 import { Author } from './Author';
 import { BatchView } from './Batch';
 import { History } from './History';
+import { Inspect } from './Inspect';
 import { download, targetTab } from './util';
 
 const STATUS_LABEL: Record<RunResult['status'], string> = {
@@ -82,6 +83,7 @@ export function App() {
   const reloadDrafts = () => loadDrafts().then(setDrafts);
   const [settings, setSettings] = useState<LlmSettings | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [showInspect, setShowInspect] = useState(false);
   const [skillId, setSkillId] = useState(FREE_SKILL_ID);
   const [form, setForm] = useState<Record<string, string>>({});
   const [request, setRequest] = useState('');
@@ -331,11 +333,16 @@ export function App() {
           <button className="ghost" onClick={exportLog} title="실행 기록을 JSON으로 저장">
             기록 내보내기
           </button>
+          <button className="ghost" id="open-inspect" disabled={running} onClick={() => setShowInspect((v) => !v)} title="지금 화면을 Dogent가 읽을 수 있는지 점검">
+            화면 점검
+          </button>
           <button className="ghost" id="open-settings" onClick={() => setShowSettings((v) => !v)}>
             설정
           </button>
         </div>
       </header>
+
+      {showInspect && !running && <Inspect onClose={() => setShowInspect(false)} />}
 
       {showSettings && (
         <section className="card">

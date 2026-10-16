@@ -1,11 +1,13 @@
 import { browser, type Browser } from 'wxt/browser';
 import { dogentConfig } from '@/dogent.config';
+import type { SiteInspection } from '../core/inspect';
 import { mergeFrames } from '../core/snapshot';
 import type {
   ActResult,
   BrowserPort,
   ConfirmPolicy,
   DownloadedFile,
+  FrameInspection,
   FrameSnapshot,
   PageDialog,
   PageSnapshot,
@@ -284,6 +286,21 @@ export class ChromeBrowser implements BrowserPort {
         dialogs,
       };
     }
+  }
+
+  /** 화면 점검. 허용 목록 밖이라 스크립트가 들어가지 못하면 readable이 false다. */
+  async inspect(): Promise<SiteInspection> {
+    await this.waitLoaded();
+    const tab = await browser.tabs.get(this.tabId);
+    const frames = await this.run<FrameInspection>('inspect', [])
+      .then((results) =>
+        results
+          .filter((r): r is typeof r & { reply: { ok: true; value: FrameInspection } } => r.reply.ok)
+          .filter((r) => r.frameId === 0 || r.reply.value.elements > 0 || r.reply.value.tables.length > 0)
+          .map((r) => r.reply.value),
+      )
+      .catch(() => []);
+    return { url: tab.url ?? '', readable: frames.length > 0, frames };
   }
 
   async navigate(url: string): Promise<ActResult> {
