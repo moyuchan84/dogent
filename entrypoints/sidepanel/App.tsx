@@ -398,6 +398,15 @@ export function App() {
               이 배포는 사내 게이트웨이용 헤더로 부릅니다: {Object.keys(builtInHeaders).join(', ')}
             </p>
           )}
+          <label>
+            시스템 이름 (Send-System-Name)
+            <input
+              id="llm-system-name"
+              value={settings.systemName ?? ''}
+              placeholder="사내 게이트웨이에 등록한 이름"
+              onChange={(e) => setSettings({ ...settings, systemName: e.target.value.trim() })}
+            />
+          </label>
           {placeholders.has('userId') && (
             <label>
               사용자 ID <span className="req">*</span>
