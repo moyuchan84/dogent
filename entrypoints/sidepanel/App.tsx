@@ -159,13 +159,13 @@ export function App() {
   const isFree = skillId === FREE_SKILL_ID;
   const skill = isFree ? freeTemplate : skills.find((s) => s.id === skillId);
 
-  async function syncShared(url: string) {
+  async function syncShared(url: string, withLogin = false) {
     if (!url) return setShared(null);
     setShared(await loadShared(url));
     setSyncing(true);
     setSyncError('');
     try {
-      setShared(await refreshShared(url));
+      setShared(await refreshShared(url, withLogin));
     } catch (e) {
       // 저장소에 닿지 않으면 받아 둔 스킬로 계속 쓴다.
       setSyncError((e as Error).message);
@@ -177,7 +177,7 @@ export function App() {
   useEffect(() => {
     loadSettings().then((s) => {
       setSettings(s);
-      void syncShared(s.skillsUrl);
+      void syncShared(s.skillsUrl, s.skillsWithLogin);
     });
     void reloadDrafts();
   }, []);
@@ -508,6 +508,15 @@ export function App() {
               placeholder="비워 두면 확장에 든 스킬만 씁니다"
             />
           </label>
+          <label className="check">
+            <input
+              id="skills-login"
+              type="checkbox"
+              checked={settings.skillsWithLogin ?? false}
+              onChange={(e) => setSettings({ ...settings, skillsWithLogin: e.target.checked })}
+            />
+            브라우저 로그인으로 읽기 (사내 GitHub처럼 로그인해야 보이는 저장소)
+          </label>
           <div className="row wrap">
             <button id="test-llm" className="secondary" disabled={llmTest === '시험하는 중…'} onClick={() => void testLlm()}>
               연결 시험
@@ -539,7 +548,7 @@ export function App() {
             id="save-settings"
             onClick={async () => {
               await saveSettings(settings);
-              void syncShared(settings.skillsUrl);
+              void syncShared(settings.skillsUrl, settings.skillsWithLogin);
               setShowSettings(false);
             }}
           >
@@ -617,7 +626,7 @@ export function App() {
               : shared
                 ? `공유 스킬 ${shared.skills.length}개 · ${new Date(shared.syncedAt).toLocaleString('ko-KR')} 기준`
                 : '공유 스킬을 받지 못했습니다'}{' '}
-            <button className="ghost" id="sync-skills" disabled={syncing || running} onClick={() => void syncShared(settings.skillsUrl)}>
+            <button className="ghost" id="sync-skills" disabled={syncing || running} onClick={() => void syncShared(settings.skillsUrl, settings.skillsWithLogin)}>
               다시 받기
             </button>
           </p>

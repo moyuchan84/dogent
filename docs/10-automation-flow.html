@@ -1,0 +1,515 @@
+<title>Dogent 업무 자동화 흐름</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* 레이아웃: 위에 구성도(SVG) 하나를 두고, 시나리오를 고르면 같은 그림 위에서 단계가 진행된다. 아래로 결정·안전장치·진행 단계 */
+:root {
+  --bg: #f4f6fa;
+  --paper: #ffffff;
+  --ink: #152033;
+  --muted: #5a6577;
+  --line: #d9dfe8;
+  --accent: #1f5fd6;
+  --accent-soft: #e6eefc;
+  --act: #f2b51c;
+  --act-soft: #fff4d6;
+  --act-ink: #6b4b00;
+  --ok: #1d7a4c;
+  --ok-soft: #e1f3e9;
+  --risk: #b3261e;
+  --risk-soft: #fbe8e6;
+  --node: #ffffff;
+  --node-stroke: #c3ccda;
+  --edge: #b7c1d1;
+  --code-bg: #182235;
+  --code-fg: #e3e9f3;
+  --sans: "IBM Plex Sans KR", "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif;
+  --mono: "JetBrains Mono", Consolas, "D2Coding", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f141d; --paper: #171e2a; --ink: #e5eaf2; --muted: #9aa6b8; --line: #2a3445;
+    --accent: #78a6ff; --accent-soft: #1b2944; --act: #f5c544; --act-soft: #3a2e10; --act-ink: #f8dc8c;
+    --ok: #6fd3a0; --ok-soft: #163425; --risk: #ff8b80; --risk-soft: #3c1d1a;
+    --node: #1c2433; --node-stroke: #36425a; --edge: #3f4c64; --code-bg: #0a0e15; --code-fg: #dfe6f0;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f141d; --paper: #171e2a; --ink: #e5eaf2; --muted: #9aa6b8; --line: #2a3445;
+  --accent: #78a6ff; --accent-soft: #1b2944; --act: #f5c544; --act-soft: #3a2e10; --act-ink: #f8dc8c;
+  --ok: #6fd3a0; --ok-soft: #163425; --risk: #ff8b80; --risk-soft: #3c1d1a;
+  --node: #1c2433; --node-stroke: #36425a; --edge: #3f4c64; --code-bg: #0a0e15; --code-fg: #dfe6f0;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--sans); font-size: 15px; line-height: 1.65; margin: 0; }
+.wrap {
+  max-width: 1180px; margin: 0 auto;
+  padding-block: 36px 72px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+header.hero { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 18px; align-items: center; margin-bottom: 26px; }
+header.hero svg { width: 56px; height: 56px; }
+.eyebrow { font-size: 12px; letter-spacing: .1em; color: var(--accent); font-weight: 700; }
+h1 { font-size: 30px; line-height: 1.25; margin: 2px 0 6px; text-wrap: balance; }
+.lede { color: var(--muted); margin: 0; max-width: 70ch; }
+h2 { font-size: 21px; margin: 0 0 4px; text-wrap: balance; }
+.sub { color: var(--muted); margin: 0 0 14px; font-size: 14px; max-width: 72ch; }
+section { margin-top: 44px; }
+section.first { margin-top: 0; }
+
+/* 시나리오 고르기 */
+.scenarios { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 14px; }
+.scenarios button {
+  font: 500 14px var(--sans); color: var(--ink); background: var(--paper); border: 1px solid var(--line);
+  border-radius: 999px; padding: 7px 14px; cursor: pointer;
+}
+.scenarios button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+.scenarios button:focus-visible, .ctrl button:focus-visible, .node:focus-visible { outline: 3px solid var(--act); outline-offset: 2px; }
+
+.stage { display: grid; grid-template-columns: minmax(0, 2.1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.diagram { background: var(--paper); border: 1px solid var(--line); border-radius: 14px; overflow-x: auto; }
+.diagram svg { display: block; width: 100%; height: auto; }
+.panel { background: var(--paper); border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; min-width: 0; }
+
+/* SVG */
+.node rect { fill: var(--node); stroke: var(--node-stroke); stroke-width: 1.5; transition: fill .25s, stroke .25s; }
+.node .t { font: 700 15px var(--sans); fill: var(--ink); }
+.node .s { font: 400 11.5px var(--sans); fill: var(--muted); }
+.node .chip { font: 700 10px var(--sans); }
+.node .chip-bg { stroke: none; }
+.node { cursor: pointer; }
+.node:hover rect.box { stroke: var(--accent); }
+.node.on rect.box { fill: var(--act-soft); stroke: var(--act); stroke-width: 2.5; }
+.node.sel rect.box { stroke: var(--accent); stroke-width: 2.5; }
+.node.dim { opacity: .38; }
+.edge path { fill: none; stroke: var(--edge); stroke-width: 2; }
+.edge.dashed path { stroke-dasharray: 5 5; }
+.edge text { font: 600 11.5px var(--sans); fill: var(--act-ink); opacity: 0; transition: opacity .2s; }
+.edge .lbl-bg { fill: var(--act-soft); opacity: 0; transition: opacity .2s; }
+.edge.on path { stroke: var(--act); stroke-width: 3.5; stroke-dasharray: 9 7; animation: flow 1s linear infinite; }
+.edge.on text, .edge.on .lbl-bg { opacity: 1; }
+.edge.dim { opacity: .3; }
+.zone { fill: none; stroke: var(--line); stroke-width: 1.5; stroke-dasharray: 4 6; }
+.zone-t { font: 700 11px var(--sans); fill: var(--muted); letter-spacing: .06em; }
+@keyframes flow { to { stroke-dashoffset: -32; } }
+@media (prefers-reduced-motion: reduce) { .edge.on path { animation: none; } * { transition: none !important; } }
+
+/* 단계 패널 */
+.stepno { font: 600 12px var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+.panel h3 { font-size: 17px; margin: 4px 0 8px; text-wrap: balance; }
+.panel p { margin: 0 0 10px; }
+.who { display: inline-block; font-size: 12px; font-weight: 700; padding: 1px 8px; border-radius: 6px; background: var(--accent-soft); color: var(--accent); margin-right: 4px; }
+pre.msg { background: var(--code-bg); color: var(--code-fg); font: 12.5px/1.55 var(--mono); padding: 10px 12px; border-radius: 8px; margin: 8px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.note { font-size: 13px; padding: 8px 10px; border-radius: 8px; margin-top: 10px; }
+.note.safe { background: var(--ok-soft); color: var(--ok); }
+.note.warn { background: var(--risk-soft); color: var(--risk); }
+.ctrl { display: flex; gap: 8px; align-items: center; margin-top: 14px; flex-wrap: wrap; }
+.ctrl button {
+  font: 600 13.5px var(--sans); border-radius: 8px; padding: 7px 13px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--paper); color: var(--ink);
+}
+.ctrl button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.ctrl button:disabled { opacity: .45; cursor: default; }
+.dots { display: flex; gap: 5px; margin-left: auto; }
+.dots span { width: 8px; height: 8px; border-radius: 50%; background: var(--line); }
+.dots span.on { background: var(--act); }
+.dots span.done { background: var(--accent); }
+.hint { font-size: 12.5px; color: var(--muted); margin-top: 8px; }
+
+/* 구성 요소 설명 */
+.role-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px; }
+.role-grid div { min-width: 0; }
+.role-grid h4 { margin: 0 0 4px; font-size: 12px; letter-spacing: .05em; color: var(--muted); }
+.role-grid ul { margin: 0; padding-left: 18px; font-size: 13.5px; }
+.status { display: inline-block; font-size: 11.5px; font-weight: 700; padding: 1px 8px; border-radius: 999px; }
+.status.now { background: var(--ok-soft); color: var(--ok); }
+.status.wip { background: var(--act-soft); color: var(--act-ink); }
+.status.next { background: var(--accent-soft); color: var(--accent); }
+
+/* 결정 */
+.decisions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+details.dec { background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+details.dec summary { cursor: pointer; list-style: none; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; align-items: baseline; }
+details.dec summary::-webkit-details-marker { display: none; }
+details.dec .id { font: 700 12px var(--mono); color: var(--accent); }
+details.dec .what { font-weight: 700; font-size: 14px; }
+details.dec p { margin: 8px 0 0; font-size: 13.5px; color: var(--muted); }
+details.dec[open] { border-color: var(--accent); }
+
+/* 안전장치 */
+.guards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.guard { background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+.guard b { display: block; margin-bottom: 4px; }
+.guard span { font-size: 13.5px; color: var(--muted); }
+
+/* 진행 단계 */
+.road { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+.road li { background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; display: grid; gap: 4px; align-content: start; }
+.road .n { font: 700 12px var(--mono); color: var(--muted); }
+.road b { font-size: 14.5px; }
+.road span { font-size: 13px; color: var(--muted); }
+.road li.cur { border-color: var(--act); box-shadow: inset 0 3px 0 var(--act); }
+footer { margin-top: 40px; font-size: 13px; color: var(--muted); }
+
+@media (max-width: 980px) {
+  .stage { grid-template-columns: minmax(0, 1fr); }
+  .decisions, .guards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .road { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 760px) {
+  .diagram svg { min-width: 720px; }
+}
+@media (max-width: 560px) {
+  h1 { font-size: 24px; }
+  header.hero { grid-template-columns: minmax(0, 1fr); }
+  .decisions, .guards, .road, .role-grid { grid-template-columns: minmax(0, 1fr); }
+}
+</style>
+
+<div class="wrap">
+  <header class="hero">
+    <svg viewBox="0 0 128 128" aria-hidden="true"><defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2667e0"/><stop offset="1" stop-color="#1544a3"/></linearGradient></defs><rect x="4" y="4" width="120" height="120" rx="28" fill="url(#lg)"/><path fill="#fff" fill-rule="evenodd" d="M28 24h28a40 40 0 0 1 0 80H28z M44 40h12a24 24 0 0 1 0 48H44z"/><path d="M64 56 L64 112 L77 99 L86 118 L96 113.5 L87 95 L105 95 Z" fill="#ffc93c" stroke="#10306f" stroke-width="6" stroke-linejoin="round"/></svg>
+    <div>
+      <div class="eyebrow">DOGENT · DO-AGENT</div>
+      <h1>말로 시키면, 사내 화면과 엑셀에서 대신 해 주는 업무 에이전트</h1>
+      <p class="lede">업무를 아는 사람이 스킬(업무 절차서)로 큰 흐름을 정하고, 화면 상황과 값은 에이전트가 맞춥니다. 판단은 클라이언트, 브라우저 조작은 크롬 확장, NASCA 문서는 Excel이 맡습니다. Claude Code와 Claude in Chrome이 나뉘어 있는 것과 같은 구조입니다.</p>
+    </div>
+  </header>
+
+  <section class="first" id="flow">
+    <h2>흐름 따라가기</h2>
+    <p class="sub">시나리오를 고르고 <b>다음</b>을 누르면 구성도 위에서 요청이 어디로 흐르는지 보입니다. 구성도의 상자를 누르면 그 부분이 하는 일과 하지 않는 일이 나옵니다.</p>
+    <div class="scenarios" role="group" aria-label="시나리오">
+      <button type="button" data-s="report" aria-pressed="true">조회 → 엑셀 보고서</button>
+      <button type="button" data-s="input" aria-pressed="false">NASCA 엑셀 → 웹 입력·상신</button>
+      <button type="button" data-s="login" aria-pressed="false">로그인이 필요한 화면</button>
+      <button type="button" data-s="skill" aria-pressed="false">스킬 만들어 팀에 공유</button>
+    </div>
+    <div class="stage">
+      <div class="diagram" aria-label="Dogent 구성도">
+        <svg id="dia" viewBox="0 0 1000 540" role="img" aria-labelledby="dia-title">
+          <title id="dia-title">사용자, 클라이언트, 사내 Gemma, 팀 스킬 저장소, 브리지, 크롬 확장, 사내 웹 시스템, 오피스 도구, NASCA 엑셀의 연결</title>
+          <rect class="zone" x="190" y="18" width="250" height="500" rx="16"/>
+          <text class="zone-t" x="204" y="512">사용자 PC · 클라이언트 쪽</text>
+          <rect class="zone" x="630" y="190" width="360" height="160" rx="16"/>
+          <text class="zone-t" x="644" y="342">브라우저 (크롬·엣지)</text>
+
+          <g id="edges"></g>
+          <g id="nodes"></g>
+        </svg>
+      </div>
+      <div class="panel" id="panel" aria-live="polite"></div>
+    </div>
+  </section>
+
+  <section id="decisions">
+    <h2>정한 것 (D1~D9)</h2>
+    <p class="sub">누르면 이유가 나옵니다. 자세한 내용은 저장소의 <code>docs/09-client-architecture.md</code>에 있습니다.</p>
+    <div class="decisions" id="dec"></div>
+  </section>
+
+  <section id="guards">
+    <h2>안전장치</h2>
+    <p class="sub">어떤 클라이언트가 붙든(Claude Code 포함) 확장과 실행 엔진이 직접 지키는 규칙입니다.</p>
+    <div class="guards">
+      <div class="guard"><b>조작할 사이트만</b><span>설정에 등록한 사이트 밖으로는 이동하지도, 읽지도 않습니다. 사이트는 크롬 권한 요청으로 더하고 뺍니다.</span></div>
+      <div class="guard"><b>저장·상신은 사람이 승인</b><span>스킬에 선언된 단계와 버튼만, 확장의 승인 창에서 승인해야 누릅니다. 시험 실행은 그 직전에 멈춥니다.</span></div>
+      <div class="guard"><b>비밀번호는 사람이</b><span>로그인 화면을 만나면 멈추고 알립니다. 에이전트는 비밀번호 칸을 읽거나 입력하지 않습니다.</span></div>
+      <div class="guard"><b>넣은 값은 다시 읽어 대조</b><span>입력한 뒤와 상신 직전에 화면 값을 원본과 비교합니다. 다르면 멈춥니다.</span></div>
+      <div class="guard"><b>표 데이터는 모델에 보내지 않음</b><span>표는 PC 안에 두고 Gemma에는 컬럼 이름과 샘플만 줍니다. 가공은 로컬에서 합니다.</span></div>
+      <div class="guard"><b>입력값 규칙</b><span>스킬의 <code>policy.yaml</code>(IP 대역, 금지 값, 숫자 범위)을 실행 전에 검사합니다.</span></div>
+    </div>
+  </section>
+
+  <section id="road">
+    <h2>진행 단계</h2>
+    <p class="sub">지금의 확장 단독 버전으로 회사에서 쓰면서, 구조를 하나씩 나눠 갑니다.</p>
+    <ol class="road">
+      <li><span class="n">지금</span><b>확장 단독</b><span>사이드 패널 안에서 판단·조작. 녹화, 엑셀 입력, 승인, 화면 점검, 사내 Gemma 연결까지 사용 가능</span></li>
+      <li class="cur"><span class="n">1단계 · 진행 중</span><b>확장 = 브라우저 도구</b><span>브리지, MCP 도구, Native Messaging·WebSocket, 승인 창. Claude Code에 붙여 시험</span></li>
+      <li><span class="n">2단계</span><b>Dogent 클라이언트</b><span>터미널 프로그램. Gemma, 스킬 폴더, 목표 단계, 잘 된 실행을 스킬로</span></li>
+      <li><span class="n">3단계</span><b>오피스 도구 (C#)</b><span>Excel COM으로 NASCA 문서 열기·읽기·쓰기·저장</span></li>
+      <li><span class="n">4단계</span><b>데스크탑 화면</b><span>Electron. 현업이 터미널 없이 사용. 패널은 승인·진행 표시</span></li>
+    </ol>
+  </section>
+
+  <footer>Dogent 저장소 docs/10-automation-flow.html · 결정 기록 docs/09-client-architecture.md (v0.2, 2026-10-16)</footer>
+</div>
+
+<script>
+const NODES = {
+  user:   { x: 20,  y: 230, w: 140, h: 80,  t: '사용자', s: '업무 담당자', st: 'now',
+    does: ['말로 요청한다', '저장·상신을 승인한다', '로그인은 직접 한다', '스킬을 녹화하고 검토한다'],
+    not: ['같은 화면을 반복해 누르지 않는다'] },
+  client: { x: 205, y: 200, w: 230, h: 140, t: 'Dogent 클라이언트', s: '판단 · 스킬 · 승인 · 기록', st: 'wip',
+    does: ['요청을 스킬과 입력값으로 바꾼다', '단계를 진행하고 끝났는지 검사한다', '표를 PC 안에서 가공한다', '실행 기록을 남긴다'],
+    not: ['화면을 직접 읽거나 누르지 않는다 (도구를 부른다)'], dec: ['D1', 'D4', 'D7'],
+    now: '지금은 확장의 사이드 패널 안에 들어 있습니다. 2단계에서 따로 나옵니다.' },
+  gemma:  { x: 225, y: 40,  w: 200, h: 64,  t: '사내 Gemma', s: 'API 게이트웨이', st: 'now',
+    does: ['요청 해석, 단계 안의 판단', '화면 글 요약'],
+    not: ['표 전체 데이터는 받지 않는다'], now: 'x-dep-ticket, Send-System-Name(RFGo), user-id 같은 사내 헤더로 부릅니다.' },
+  skills: { x: 470, y: 40,  w: 300, h: 64,  t: '팀 스킬 저장소', s: '사내 GitHub Enterprise · PR · CI', st: 'now',
+    does: ['검토를 거친 스킬을 모두에게 배포', 'PR마다 품질 검사(B등급 이상)', 'CODEOWNERS 승인'],
+    not: ['프로그램을 다시 배포하지 않아도 된다'], dec: ['D8'], now: '틀은 templates/dogent-skills에 있습니다.' },
+  bridge: { x: 470, y: 235, w: 130, h: 70,  t: '브리지', s: 'MCP 중계', st: 'wip',
+    does: ['MCP 요청을 확장에 전달', 'Native Messaging과 WebSocket을 한곳에서 받음', '토큰으로 서로 확인'],
+    not: ['판단하지 않는다', '상태를 갖지 않는다'], dec: ['D2', 'D3'] },
+  ext:    { x: 645, y: 210, w: 160, h: 120, t: '크롬 확장', s: '브라우저 도구 · 안전장치', st: 'now',
+    does: ['화면을 요소 번호 붙은 텍스트로 읽기', '클릭·입력·선택, 표 읽기·채우기, 내려받기', '조작할 사이트 확인, 승인 창', '로그인 화면 감지'],
+    not: ['비밀번호를 입력하지 않는다', '모델을 부르지 않는다 (이행 뒤)'], dec: ['D6', 'D9'] },
+  web:    { x: 840, y: 210, w: 140, h: 120, t: '사내 웹 시스템', s: 'MES, 결재, 방화벽 신청…', st: 'now',
+    does: ['평소 화면 그대로'], not: ['시스템을 고치거나 API를 붙이지 않아도 된다'] },
+  office: { x: 225, y: 420, w: 200, h: 64,  t: '오피스 도구', s: 'dogent-office.exe · C# COM', st: 'next',
+    does: ['Excel로 문서 열기, 범위 읽기·쓰기, 저장'], not: ['판단하지 않는다'], dec: ['D5'] },
+  excel:  { x: 470, y: 420, w: 170, h: 64,  t: 'Excel · NASCA 문서', s: '권한 있는 사용자의 Excel', st: 'now',
+    does: ['암호화된 문서를 열고 저장'], not: ['라이브러리로는 직접 열 수 없다'] },
+};
+const STATUS = { now: ['지금 있음', 'now'], wip: ['만드는 중', 'wip'], next: ['3단계', 'next'] };
+
+const EDGES = {
+  'user-client':   { d: 'M160 270 H205', lx: 182, ly: 262, l: '요청' },
+  'client-gemma':  { d: 'M325 200 V104', lx: 325, ly: 152, l: '판단 요청' },
+  'skills-client': { d: 'M560 104 C560 160 445 150 435 205', lx: 520, ly: 150, l: '스킬' },
+  'client-bridge': { d: 'M435 270 H470', lx: 452, ly: 262, l: 'MCP' },
+  'bridge-ext':    { d: 'M600 270 H645', lx: 622, ly: 262, l: '연결' },
+  'ext-web':       { d: 'M805 270 H840', lx: 822, ly: 262, l: '조작' },
+  'client-office': { d: 'M325 340 V420', lx: 325, ly: 382, l: 'MCP' },
+  'office-excel':  { d: 'M425 452 H470', lx: 447, ly: 444, l: 'COM' },
+  'ext-user':      { d: 'M725 330 C725 400 90 400 90 310', lx: 520, ly: 382, l: '승인 창 · 알림' },
+  'user-web':      { d: 'M90 230 C90 150 910 150 910 210', lx: 600, ly: 164, l: '사람이 직접 로그인', dashed: true },
+  'user-skills':   { d: 'M60 230 C60 20 470 20 470 60', lx: 160, ly: 64, l: 'PR', dashed: true },
+};
+
+const S = {
+  report: { name: '조회 → 엑셀 보고서', steps: [
+    { n: ['user', 'client'], e: ['user-client'], who: '사용자', t: '말로 요청한다',
+      p: '사이드 패널(나중에는 클라이언트)에 요청을 적습니다.', m: '"7라인 재공 확인해서 정체 Lot 정리해줘"' },
+    { n: ['client', 'gemma', 'skills'], e: ['client-gemma', 'skills-client'], who: '클라이언트', t: '스킬과 입력값을 고른다',
+      p: '스킬 목록의 설명을 보고 Gemma가 "재공 확인" 스킬을 고르고, 요청에서 입력값을 뽑습니다.', m: '{ "skill_id": "wip-check", "inputs": { "line": "7라인" } }' },
+    { n: ['client', 'bridge', 'ext', 'web'], e: ['client-bridge', 'bridge-ext', 'ext-web'], who: '확장', t: '화면을 읽는다',
+      p: '화면을 그림이 아니라 요소 번호가 붙은 텍스트로 읽습니다. 모델은 번호만 고르면 됩니다.', m: 'snapshot →\n# 재공 현황 조회\n[1] combobox "라인" options=[6라인, 7라인, 8라인]\n[4] button "조회"\n[9] table "재공 목록" rows=0' },
+    { n: ['client', 'bridge', 'ext', 'web'], e: ['client-bridge', 'bridge-ext', 'ext-web'], who: '확장', t: '조건을 넣고 조회한다',
+      p: '스킬에 도구와 인자가 적힌 단계는 모델을 부르지 않고 바로 실행합니다. 화면이 달라져 실패하면 그 단계만 모델이 다시 찾습니다.', m: 'select {"ref":"라인","value":"7라인"}\nclick  {"ref":"조회"}' },
+    { n: ['client', 'bridge', 'ext', 'web'], e: ['client-bridge', 'bridge-ext', 'ext-web'], who: '확장', t: '표를 끝 페이지까지 읽는다',
+      p: '"다음" 버튼으로 넘기며 모든 페이지를 읽습니다. 표 데이터는 클라이언트(PC)에 보관하고 모델에는 보내지 않습니다.', m: 'extract_table {"ref":"재공 목록","next_ref":"다음"}\n→ 3페이지, 128행', safe: '표 데이터는 Gemma로 가지 않습니다.' },
+    { n: ['client'], e: [], who: '클라이언트', t: 'PC 안에서 가공한다',
+      p: '정체 24시간 이상인 Lot을 거르고 공정별로 묶습니다. 스킬에 적힌 규칙대로 로컬 엔진이 계산합니다.', m: 'transform: filter 정체시간 >= 24 → hold 40행\ntransform: group 공정 → by_step 5행' },
+    { n: ['client', 'office', 'excel'], e: ['client-office', 'office-excel'], who: '오피스 도구', t: 'Excel로 저장한다',
+      p: '결과를 Excel이 직접 저장하게 해서, 회사 규정(NASCA)에 맞는 파일만 남깁니다.', m: '재공확인_7라인.xlsx (원본 / 정체Lot / 공정별집계)', warn: '지금 확장은 직접 파일을 만듭니다. 3단계에서 오피스 도구로 바꿉니다.' },
+    { n: ['client', 'user'], e: ['user-client'], who: '클라이언트', t: '결과를 알린다',
+      p: '건수는 모델이 세지 않고 데이터에서 그대로 넣습니다. 실행 기록에 남아 성공률을 볼 수 있습니다.', m: '총 재공 128 Lot, 정체 Lot 40건, 공정 5개. 파일: 재공확인_7라인.xlsx' },
+  ]},
+  input: { name: 'NASCA 엑셀 → 웹 입력·상신', steps: [
+    { n: ['user', 'client'], e: ['user-client'], who: '사용자', t: '파일과 함께 요청한다',
+      p: '보안 문서(NASCA)로 받은 조정 내역 파일을 그대로 넘깁니다.', m: '"조정내역.xlsx 를 수량 조정 화면에 입력하고 상신해줘"' },
+    { n: ['client', 'office', 'excel'], e: ['client-office', 'office-excel'], who: '오피스 도구', t: 'Excel로 문서를 열어 읽는다',
+      p: 'NASCA 문서는 라이브러리로 열 수 없어서 사용자의 Excel이 열게 합니다. 표를 읽어 클라이언트에 넘깁니다.', m: 'open_workbook → read_range "조정!A1:D6"\n→ Lot ID, 공정, 조정수량, 사유 · 5행' },
+    { n: ['client', 'gemma', 'skills'], e: ['client-gemma', 'skills-client'], who: '클라이언트', t: '스킬을 고르고 값을 검사한다',
+      p: '"재공 수량 조정 입력" 스킬을 고르고, 실행하기 전에 행마다 입력값 규칙(policy.yaml)을 검사합니다.', m: 'policy: 조정수량은 -500~500, 사유 4자 이상 → 5행 모두 통과' },
+    { n: ['client', 'bridge', 'ext', 'web'], e: ['client-bridge', 'bridge-ext', 'ext-web'], who: '확장', t: '표에 채운다',
+      p: '입력 칸이 있는 표는 칸마다, 입력 칸 없는 그리드는 엑셀에서 복사한 것처럼 붙여 넣습니다.', m: 'fill_table {"ref":"조정 목록","rows":5행,"add_ref":"행 추가"}' },
+    { n: ['ext', 'web'], e: ['ext-web'], who: '확장', t: '다시 읽어 원본과 대조한다',
+      p: '넣은 값을 화면에서 다시 읽어 파일과 비교합니다. 그리드가 값을 바꿨거나 빠뜨렸으면 상신으로 넘어가지 않습니다.', m: '화면 5행 = 원본 5행 · 불일치 0', safe: '다르면 몇 행의 무슨 칸인지 알리고 멈춥니다.' },
+    { n: ['ext', 'user'], e: ['ext-user'], who: '확장', t: '상신 전에 승인을 받는다',
+      p: '"상신"은 저장·상신 계열 버튼이라 확장이 승인 창을 띄웁니다. 창에는 화면에서 다시 읽은 현재 값이 나옵니다.', m: '"상신" 전에 확인해 주세요\n조정 목록 5행 · P7-00012 PHOTO -25 …', safe: '클라이언트가 무엇이든 승인 없이 누를 수 없습니다.' },
+    { n: ['user', 'ext', 'web'], e: ['ext-user', 'ext-web'], who: '사용자', t: '승인하면 한 번만 누른다',
+      p: '승인한 단계의 버튼만, 한 번만 누릅니다. 화면에 뜬 접수 번호는 결과에 기록합니다.', m: '상신 → "접수번호 ADJ-000123"' },
+    { n: ['client', 'user'], e: ['user-client'], who: '클라이언트', t: '결과를 알린다',
+      p: '여러 파일이나 여러 건이면 행마다 같은 스킬을 돌리고, 행별 결과를 엑셀로 돌려줍니다(묶어 실행).', m: '5건 저장, 접수번호 ADJ-000123' },
+  ]},
+  login: { name: '로그인이 필요한 화면', steps: [
+    { n: ['client', 'bridge', 'ext', 'web'], e: ['client-bridge', 'bridge-ext', 'ext-web'], who: '확장', t: '업무 화면으로 이동한다',
+      p: '스킬의 첫 단계로 결재 시스템을 엽니다. 세션이 끊겨 있으면 로그인 화면이 나옵니다.', m: 'navigate {"url":"https://approval.example.com/inbox"}' },
+    { n: ['ext', 'client'], e: ['client-bridge', 'bridge-ext'], who: '확장', t: '로그인 화면을 알아챈다',
+      p: '비밀번호 칸이 보이면 화면 읽기 결과에 "로그인 필요"를 붙입니다. 비밀번호 칸의 내용은 읽지 않습니다.', m: 'snapshot → { login_required: true }', safe: '에이전트는 비밀번호 칸에 입력하지 않습니다.' },
+    { n: ['client', 'ext', 'user'], e: ['ext-user'], who: '클라이언트', t: '멈추고 사용자에게 알린다',
+      p: '실행을 멈추고 "이 탭에서 로그인해 주세요"를 알립니다. 화면은 그대로 둡니다.', m: '로그인이 필요합니다. 이 탭에서 로그인하면 이어서 진행합니다. (최대 5분)' },
+    { n: ['user', 'web'], e: ['user-web'], who: '사용자', t: '사람이 직접 로그인한다',
+      p: '평소처럼 아이디·비밀번호나 SSO로 로그인합니다. 자동 로그인(SSO)으로 넘어가도 됩니다.', m: '(사용자가 직접 입력)' },
+    { n: ['client', 'bridge', 'ext', 'web'], e: ['client-bridge', 'bridge-ext', 'ext-web'], who: '확장', t: '로그인이 끝나면 이어 간다',
+      p: '비밀번호 칸이 사라지면 그 단계부터 다시 진행합니다. 로그인 뒤 다른 화면으로 갔으면 단계의 검사와 모델이 다시 맞춥니다.', m: 'wait_for_login → 완료\n→ 1단계 계속' },
+    { n: ['client', 'user'], e: ['user-client'], who: '클라이언트', t: '끝내 로그인하지 않으면',
+      p: '정해진 시간 안에 로그인하지 않거나 사용자가 중지하면 실행을 끝내고 "로그인이 필요합니다"로 기록합니다.', m: '중단: 로그인이 필요합니다 (5분 대기)' },
+  ]},
+  skill: { name: '스킬 만들어 팀에 공유', steps: [
+    { n: ['user', 'client', 'ext', 'web'], e: ['user-client', 'client-bridge', 'bridge-ext', 'ext-web'], who: '사용자', t: '업무를 한 번 해 보인다',
+      p: '녹화를 켜고 평소처럼 하면 클릭·입력이 쌓입니다. 화면 요약, 말로 적은 단계도 끼워 넣을 수 있습니다. 자유 요청으로 잘 된 실행을 그대로 초안으로 만들 수도 있습니다.', m: '1. "라인"에서 7라인 선택  ☑ 실행할 때마다 입력받기\n2. "조회" 누름 → "총" 나타남\n3. 화면의 표 읽기 (다음 버튼으로 끝까지)' },
+    { n: ['client', 'gemma'], e: ['client-gemma'], who: '클라이언트', t: '초안과 품질 검사',
+      p: 'SKILL.md 초안이 같은 형식으로 나오고 A~F 등급을 매깁니다. 모델로 다듬기는 글만 고치고, 동작이 바뀌는 제안은 버립니다.', m: '품질 검사: B · 모델 없이 실행되는 단계 9/9' },
+    { n: ['client', 'bridge', 'ext', 'web'], e: ['client-bridge', 'bridge-ext', 'ext-web'], who: '확장', t: '다른 값으로 시험 실행',
+      p: '녹화 때와 다른 값으로 돌려 봅니다. 저장·상신하는 스킬은 상신 직전에 멈춥니다.', m: '시험 실행 완료: "상신" 직전에 멈췄습니다' },
+    { n: ['client', 'user'], e: ['user-client'], who: '클라이언트', t: '개인 스킬로 바로 쓴다',
+      p: '통과한 초안은 개인 스킬 폴더에 들어가 그 PC에서 바로 쓸 수 있습니다.', m: '%USERPROFILE%\\.dogent\\skills\\wip-check\\SKILL.md' },
+    { n: ['user', 'skills'], e: ['user-skills'], who: '사용자', t: '팀 저장소에 PR',
+      p: '사내 GitHub의 dogent-skills에 PR을 올리면 CI가 품질 검사(B 이상)와 목록을 확인하고, 담당자(CODEOWNERS)가 승인합니다.', m: 'skills/wip-check/SKILL.md\nskills/index.json  (해시 포함)\nCI: 통과 · 승인: fab-ops' },
+    { n: ['skills', 'client', 'user'], e: ['skills-client'], who: '팀 저장소', t: '모두의 목록에 나타난다',
+      p: 'main에 반영되면 모든 사용자의 목록에 [팀]으로 나타납니다. 프로그램을 다시 배포하지 않습니다. 목록의 해시와 다른 파일은 쓰지 않습니다.', m: '[팀] 재공 확인 (R1)' },
+  ]},
+};
+
+const DECISIONS = [
+  ['D1', 'Claude Code + Claude in Chrome처럼 나눈다', '업무는 브라우저 밖(엑셀 문서, PC 파일, 예약 실행)에도 걸쳐 있어 확장 하나로는 부족합니다. 판단은 클라이언트, 조작은 확장이 맡습니다.'],
+  ['D2', '둘 사이는 MCP로 잇는다', '도구를 붙이는 방식이 하나로 정해집니다. 한글(HWP), 사내 API 같은 도구도 같은 방식으로 더합니다. 집에서는 Claude Code에 붙여 시험합니다.'],
+  ['D3', 'Native Messaging과 WebSocket 둘 다', '회사 크롬 정책이나 보안 검토에서 한쪽이 막혀도 다른 쪽으로 씁니다. WebSocket은 토큰으로 서로 확인합니다.'],
+  ['D4', '클라이언트는 TypeScript', '지금의 실행 엔진(src/core)과 테스트를 그대로 씁니다. 처음엔 터미널, 나중에 Electron 화면.'],
+  ['D5', 'NASCA 문서는 C# 오피스 도구', '암호화된 문서는 권한 있는 사용자의 Excel이 열어야 합니다. COM 방식은 VSTO로 이미 확인했습니다.'],
+  ['D6', '안전장치는 확장에', '조작할 사이트와 승인은 어떤 클라이언트가 붙어도 확장이 직접 지킵니다.'],
+  ['D7', '스킬은 목표 + 매개변수', '업무를 아는 사람이 큰 흐름을 정하고, 화면 상황과 값은 에이전트가 맞춥니다. 녹화한 경로는 빠른 경로로 덧붙습니다.'],
+  ['D8', '스킬은 개인 · 팀 저장소 · 기본', '팀 저장소는 사내 GitHub Enterprise의 평범한 Git 저장소입니다. PR, CI, CODEOWNERS로 검토 이력이 남습니다.'],
+  ['D9', '로그인은 사람이 한다', '로그인 화면을 만나면 멈추고 알린 뒤, 로그인이 끝나면 그 자리에서 이어 갑니다. 비밀번호는 다루지 않습니다.'],
+];
+
+const svgNS = 'http://www.w3.org/2000/svg';
+const el = (tag, attrs = {}, parent) => {
+  const e = document.createElementNS(svgNS, tag);
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+  if (parent) parent.appendChild(e);
+  return e;
+};
+
+const edgeLayer = document.getElementById('edges');
+for (const [id, e] of Object.entries(EDGES)) {
+  const g = el('g', { class: `edge${e.dashed ? ' dashed' : ''}`, 'data-e': id }, edgeLayer);
+  el('path', { d: e.d }, g);
+  const w = e.l.length * 11 + 14;
+  el('rect', { class: 'lbl-bg', x: e.lx - w / 2, y: e.ly - 13, width: w, height: 20, rx: 6 }, g);
+  const t = el('text', { x: e.lx, y: e.ly + 1, 'text-anchor': 'middle' }, g);
+  t.textContent = e.l;
+}
+const nodeLayer = document.getElementById('nodes');
+for (const [id, n] of Object.entries(NODES)) {
+  const g = el('g', { class: 'node', 'data-n': id, tabindex: '0', role: 'button', 'aria-label': `${n.t} 설명 보기` }, nodeLayer);
+  el('rect', { class: 'box', x: n.x, y: n.y, width: n.w, height: n.h, rx: 12 }, g);
+  const cx = n.x + n.w / 2;
+  const tall = n.h >= 100;
+  const t = el('text', { class: 't', x: cx, y: n.y + (tall ? n.h / 2 - 6 : 28), 'text-anchor': 'middle' }, g);
+  t.textContent = n.t;
+  const s = el('text', { class: 's', x: cx, y: n.y + (tall ? n.h / 2 + 14 : 47), 'text-anchor': 'middle' }, g);
+  s.textContent = n.s;
+  if (tall) {
+    const [label, cls] = STATUS[n.st];
+    const cw = label.length * 10 + 14;
+    el('rect', { class: 'chip-bg', x: cx - cw / 2, y: n.y + n.h - 28, width: cw, height: 18, rx: 9, style: `fill: var(--${cls === 'now' ? 'ok' : cls === 'wip' ? 'act' : 'accent'}-soft)` }, g);
+    const c = el('text', { class: 'chip', x: cx, y: n.y + n.h - 15, 'text-anchor': 'middle', style: `fill: var(--${cls === 'now' ? 'ok' : cls === 'wip' ? 'act-ink' : 'accent'})` }, g);
+    c.textContent = label;
+  }
+  const open = () => showNode(id);
+  g.addEventListener('click', open);
+  g.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); open(); } });
+}
+
+const panel = document.getElementById('panel');
+let scenario = 'report';
+let step = 0;
+let mode = 'step';
+let timer = null;
+
+function highlight(nodes, edges, selected) {
+  document.querySelectorAll('.node').forEach((g) => {
+    const id = g.dataset.n;
+    g.classList.toggle('on', nodes.includes(id));
+    g.classList.toggle('sel', id === selected);
+    g.classList.toggle('dim', nodes.length > 0 && !nodes.includes(id) && id !== selected);
+  });
+  document.querySelectorAll('.edge').forEach((g) => {
+    const on = edges.includes(g.dataset.e);
+    g.classList.toggle('on', on);
+    g.classList.toggle('dim', edges.length > 0 && !on);
+  });
+}
+
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+
+function render() {
+  mode = 'step';
+  const sc = S[scenario];
+  const st = sc.steps[step];
+  highlight(st.n, st.e);
+  const dots = sc.steps.map((_, i) => `<span class="${i === step ? 'on' : i < step ? 'done' : ''}"></span>`).join('');
+  panel.innerHTML = `
+    <div class="stepno">${esc(sc.name)} · ${step + 1} / ${sc.steps.length}</div>
+    <h3><span class="who">${esc(st.who)}</span>${esc(st.t)}</h3>
+    <p>${esc(st.p)}</p>
+    ${st.m ? `<pre class="msg">${esc(st.m)}</pre>` : ''}
+    ${st.safe ? `<div class="note safe">${esc(st.safe)}</div>` : ''}
+    ${st.warn ? `<div class="note warn">${esc(st.warn)}</div>` : ''}
+    <div class="ctrl">
+      <button type="button" id="prev" ${step === 0 ? 'disabled' : ''}>이전</button>
+      <button type="button" id="next" class="primary">${step === sc.steps.length - 1 ? '처음부터' : '다음'}</button>
+      <button type="button" id="play">${timer ? '멈춤' : '자동 재생'}</button>
+      <div class="dots" aria-hidden="true">${dots}</div>
+    </div>
+    <div class="hint">키보드 ← → 로도 넘길 수 있습니다.</div>`;
+  panel.querySelector('#prev').onclick = () => go(-1);
+  panel.querySelector('#next').onclick = () => go(1);
+  panel.querySelector('#play').onclick = togglePlay;
+}
+
+function go(d) {
+  const n = S[scenario].steps.length;
+  step = d > 0 && step === n - 1 ? 0 : Math.max(0, Math.min(n - 1, step + d));
+  render();
+}
+
+function togglePlay() {
+  if (timer) { clearInterval(timer); timer = null; render(); return; }
+  timer = setInterval(() => {
+    const n = S[scenario].steps.length;
+    if (step >= n - 1) { clearInterval(timer); timer = null; render(); return; }
+    step++;
+    render();
+  }, 2600);
+  render();
+}
+
+function showNode(id) {
+  if (timer) { clearInterval(timer); timer = null; }
+  mode = 'node';
+  const n = NODES[id];
+  const linked = Object.entries(EDGES).filter(([k]) => k.split('-').includes(id)).map(([k]) => k);
+  highlight([id], linked, id);
+  const [label, cls] = STATUS[n.st];
+  panel.innerHTML = `
+    <div class="stepno">구성 요소</div>
+    <h3>${esc(n.t)} <span class="status ${cls}">${label}</span></h3>
+    <p>${esc(n.s)}</p>
+    <div class="role-grid">
+      <div><h4>하는 일</h4><ul>${n.does.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>
+      <div><h4>하지 않는 일</h4><ul>${n.not.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>
+    </div>
+    ${n.now ? `<div class="note safe">${esc(n.now)}</div>` : ''}
+    ${n.dec ? `<p class="hint">관련 결정: ${n.dec.join(', ')}</p>` : ''}
+    <div class="ctrl"><button type="button" id="back" class="primary">시나리오로 돌아가기</button></div>`;
+  panel.querySelector('#back').onclick = render;
+}
+
+document.querySelectorAll('.scenarios button').forEach((b) => {
+  b.addEventListener('click', () => {
+    if (timer) { clearInterval(timer); timer = null; }
+    scenario = b.dataset.s;
+    step = 0;
+    document.querySelectorAll('.scenarios button').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+    render();
+  });
+});
+document.addEventListener('keydown', (ev) => {
+  if (ev.target.closest && ev.target.closest('input, textarea, summary')) return;
+  if (mode !== 'step') return;
+  if (ev.key === 'ArrowRight') go(1);
+  if (ev.key === 'ArrowLeft') go(-1);
+});
+
+document.getElementById('dec').innerHTML = DECISIONS.map(([id, what, why]) => `
+  <details class="dec"><summary><span class="id">${id}</span><span class="what">${esc(what)}</span></summary><p>${esc(why)}</p></details>`).join('');
+
+if (/^#(report|input|login|skill)$/.test(location.hash)) {
+  scenario = location.hash.slice(1);
+  document.querySelectorAll('.scenarios button').forEach((x) => x.setAttribute('aria-pressed', String(x.dataset.s === scenario)));
+}
+render();
+</script>

@@ -45,6 +45,9 @@ importers:
       playwright:
         specifier: ^1.64.0
         version: 1.64.0
+      rolldown:
+        specifier: 1.2.13
+        version: 1.2.13
       typescript:
         specifier: ^7.0.2
         version: 7.0.2
