@@ -9,18 +9,35 @@ import type { PageDialog, PageSnapshot, RecordedEvent } from './types';
  * - 단계마다 검사 식이 붙는다.
  * - 저장·상신 계열 버튼을 누르면 R3, submit_steps, submit_labels가 자동으로 선언된다.
  */
-export type AuthorStep =
+export type AuthorStep = (
   /** dialogs는 누른 뒤에 뜬 알림·확인 창과 사람이 한 답이다. */
   | (Extract<RecordedEvent, { kind: 'click' }> & { expect?: string; dialogs?: PageDialog[] })
-  /** variable이면 실행할 때마다 입력받고, 아니면 녹화한 값을 그대로 쓴다. */
-  | (Extract<RecordedEvent, { kind: 'type' | 'select' }> & { variable: boolean })
+  /**
+   * variable이면 실행할 때마다 입력받고, 아니면 녹화한 값을 그대로 쓴다.
+   * param은 입력받을 때의 이름(영문)과 설명이다. 설명은 요청을 해석할 때 모델이 값을 뽑는 근거가 된다.
+   */
+  | (Extract<RecordedEvent, { kind: 'type' | 'select' }> & { variable: boolean; param?: { name?: string; description?: string } })
   /** next는 다음 페이지 버튼의 이름. 있으면 마지막 페이지까지 넘기며 읽는다. */
   | { kind: 'extract'; name: string; next?: string }
   /**
    * 엑셀 파일의 행을 표에 채운다. columns는 표에서 값을 넣을 수 있는 컬럼(= 엑셀 파일의 첫 행),
    * add는 빈 행이 모자랄 때 누를 버튼의 이름이다.
    */
-  | { kind: 'fill'; name: string; columns: string[]; add?: string };
+  | { kind: 'fill'; name: string; columns: string[]; add?: string }
+  /** 말로 적은 단계. 클릭 대신 할 일을 문장으로 두고, 실행할 때 모델이 화면을 보고 수행한다. */
+  | { kind: 'goal'; text: string }
+  /**
+   * 화면 정리. 화면의 글(source "page")이나 표를 지시대로 정리해 보고에 넣는다.
+   * 표면 그 표를 읽은 뒤(next가 있으면 끝 페이지까지) 정리한다.
+   */
+  | { kind: 'summarize'; instruction: string; source: 'page' | { table: string; next?: string } }
+) & {
+  /** 이 조작의 목적. 빠른 경로가 실패했을 때 모델이 같은 일을 하는 요소를 찾는 근거가 된다. */
+  note?: string;
+};
+
+/** 입력 이름으로 쓸 수 있는지 (스킬의 {name} 규칙) */
+export const PARAM_NAME = /^[a-z][a-z0-9_]*$/;
 
 export interface DraftMeta {
   id: string;
@@ -108,11 +125,29 @@ export function draftSkill(meta: DraftMeta, start: DraftStart, steps: AuthorStep
   let n = 0;
   let vars = 0;
 
-  const push = (head: string, literal: object | null, check?: string) => {
+  const push = (head: string, literal: object | null, check?: string, note?: string) => {
     lines.push(`${++n}. ${head}`);
     if (literal) lines.push(`   \`${JSON.stringify(literal)}\``);
+    // 목적은 모델이 읽는 줄이다. 빠른 경로가 실패하면 이 문장을 보고 같은 일을 하는 요소를 찾는다.
+    if (note?.trim()) lines.push(`   - 목적: ${note.trim().replace(/\s*\n\s*/g, ' ')}`);
     if (check) lines.push(`   - 검사: ${check}`);
   };
+  const usedNames = new Set<string>();
+  /** 입력 이름을 정한다. 사람이 붙인 이름이 규칙에 맞고 겹치지 않으면 그것을, 아니면 v1, v2… */
+  const paramName = (wanted?: string) => {
+    const w = wanted?.trim();
+    if (w && PARAM_NAME.test(w) && !usedNames.has(w)) {
+      usedNames.add(w);
+      return w;
+    }
+    if (w) notes.push(`입력 이름 "${w}"은(는) 영문 소문자로 시작하는 영문·숫자·_만 쓸 수 있고 겹치면 안 되어 v${vars + 1}로 바꿨습니다.`);
+    let name: string;
+    do name = `v${++vars}`;
+    while (usedNames.has(name));
+    usedNames.add(name);
+    return name;
+  };
+  const summaries: string[] = [];
   /** 이름을 읽지 못했거나 여럿이라 그대로는 실행할 수 없는 조작 */
   const vague = (what: string, step: AuthorStep & { name: string; dup?: boolean; row?: string }) => {
     if (step.name === '') {
@@ -140,7 +175,39 @@ export function draftSkill(meta: DraftMeta, start: DraftStart, steps: AuthorStep
   const dropped = steps.filter(byHand).length;
   if (dropped > 0) notes.push(`표에 직접 넣은 값과 행 추가 누름 ${dropped}개는 뺐습니다. 실행할 때는 엑셀 파일의 행이 표에 들어갑니다.`);
 
-  for (const step of steps.filter((s) => !byHand(s))) {
+  const recorded = steps.filter((s) => !byHand(s));
+  // 마지막이 말로 적은 단계면 그 단계가 결과를 정리해 보고한다 (모델이 finish로 끝냄). 고정 문구의 finish를 붙이지 않는다.
+  const closing = recorded.at(-1)?.kind === 'goal' ? (recorded.pop() as Extract<AuthorStep, { kind: 'goal' }>) : undefined;
+
+  for (const step of recorded) {
+    if (step.kind === 'goal') {
+      push(step.text.trim().replace(/\s*\n\s*/g, ' '), null, undefined, step.note);
+      notes.push(`${n}단계: 말로 적은 단계라 실행할 때 모델이 화면을 보고 수행합니다. 끝났는지 확인할 조건이 있으면 "- 검사:" 줄을 더하세요 (없으면 모델이 판단합니다).`);
+      continue;
+    }
+    if (step.kind === 'summarize') {
+      const k = summaries.length + 1;
+      const report = `report${k}`;
+      let source = 'page';
+      if (step.source !== 'page') {
+        // 정리할 표를 먼저 읽는다. 엑셀로 저장하는 표와는 따로 둔다.
+        source = `sum${k}`;
+        push(
+          `extract_table로 "${step.source.table}" 표를 ${step.source.next ? `"${step.source.next}" 버튼으로 마지막 페이지까지 넘기며 ` : ''}데이터셋 \`${source}\`에 읽는다. args는 다음을 그대로 쓴다.`,
+          step.source.next ? { ref: step.source.table, dataset: source, next_ref: step.source.next } : { ref: step.source.table, dataset: source },
+          `dataset(${q(source)})`,
+        );
+      }
+      summaries.push(report);
+      push(
+        `summarize로 ${source === 'page' ? '화면의 글' : `"${(step.source as { table: string }).table}" 표`}을(를) 정리한다. args는 다음을 그대로 쓴다.`,
+        { instruction: step.instruction.trim(), source, name: report },
+        'did("summarize")',
+        step.note,
+      );
+      notes.push(`${n}단계: 정리할 자료(${source === 'page' ? '화면 글 12,000자' : '표 앞 200행'}까지)를 사내 모델에 보냅니다. 표가 크면 집계(transform) 단계를 앞에 두는 편이 정확합니다.`);
+      continue;
+    }
     if (step.kind === 'fill') {
       const k = filled.length + 1;
       const dataset = `src${k}`;
@@ -156,6 +223,7 @@ export function draftSkill(meta: DraftMeta, start: DraftStart, steps: AuthorStep
         `fill_table로 엑셀 데이터 \`${dataset}\`을 "${step.name}" 표에 채운다. args는 다음을 그대로 쓴다.`,
         { ref: step.name, dataset, ...(step.add ? { add_ref: step.add } : {}) },
         'did("fill_table")',
+        step.note,
       );
       notes.push(`${n}단계: 엑셀 파일의 첫 행은 표의 컬럼 이름(${step.columns.join(', ')})과 같아야 합니다. 표는 비어 있어야 하고, 넣은 값은 화면에서 다시 읽어 파일과 대조합니다.`);
       if (!step.add) notes.push(`${n}단계: 행 추가 버튼을 정하지 않아, 엑셀의 행이 화면의 빈 행보다 많으면 멈춥니다. 필요하면 인자에 "add_ref": "버튼 이름"을 더하세요.`);
@@ -168,6 +236,7 @@ export function draftSkill(meta: DraftMeta, start: DraftStart, steps: AuthorStep
         `extract_table로 "${step.name}" 표를 ${step.next ? `"${step.next}" 버튼으로 마지막 페이지까지 넘기며 ` : ''}데이터셋 \`${dataset}\`에 추출한다. args는 다음을 그대로 쓴다.`,
         step.next ? { ref: step.name, dataset, next_ref: step.next } : { ref: step.name, dataset },
         `dataset(${q(dataset)})`,
+        step.note,
       );
       if (!step.next) notes.push(`${n}단계: 표가 여러 페이지면 인자에 "next_ref": "다음" 처럼 다음 페이지 버튼 이름을 더하세요.`);
       continue;
@@ -181,6 +250,7 @@ export function draftSkill(meta: DraftMeta, start: DraftStart, steps: AuthorStep
           `download_table로 "${step.name}" 버튼을 눌러 받은 파일을 데이터셋 \`${dataset}\`에 담는다. args는 다음을 그대로 쓴다.`,
           { ref: step.name, dataset },
           `dataset(${q(dataset)})`,
+          step.note,
         );
         notes.push(`${n}단계: "${step.name}"을(를) 파일 내려받기로 보고 받은 파일을 읽게 했습니다. 내려받기가 아니면 도구를 click으로 바꾸세요.`);
         continue;
@@ -200,6 +270,7 @@ export function draftSkill(meta: DraftMeta, start: DraftStart, steps: AuthorStep
         `click으로 "${step.name}" ${toggle ? '항목을 선택한다' : '버튼을 한 번 누른다'}. args는 다음을 그대로 쓴다.${submit ? ' 누르기 전에 사용자 승인을 받는다.' : ''}`,
         { ref: step.name, ...(step.dup && step.row ? { row: step.row } : {}), ...(accept ? { accept_dialog: true } : {}) },
         quotable(step.name) ? parts.join(' and ') : undefined,
+        step.note,
       );
       if (accept) notes.push(`${n}단계: 확인 창 "${agreed[0].message}"에 확인을 누르도록 적었습니다 ("accept_dialog").`);
       if (said) notes.push(`${n}단계: 알림 창의 접수 번호 같은 값을 결과에 남기려면 \`- 기록: 이름 = dialog_text("정규식")\` 줄을 더하세요.`);
@@ -215,11 +286,13 @@ export function draftSkill(meta: DraftMeta, start: DraftStart, steps: AuthorStep
     if (vague(`칸에 값을 ${verb}.`, step)) continue;
     let value = step.value;
     if (step.variable) {
-      const name = `v${++vars}`;
+      const name = paramName(step.param?.name);
       value = `{${name}}`;
+      const description = step.param?.description?.trim();
       inputs.push(
         `  - name: ${name}`,
         `    label: ${q(step.name)}`,
+        ...(description ? [`    description: ${q(description)}`] : []),
         ...(step.kind === 'select'
           ? ['    type: enum', `    values: [${step.options.map(q).join(', ')}]`]
           : [`    type: ${step.numeric ? 'number' : step.multiline ? 'text' : 'string'}`]),
@@ -231,6 +304,7 @@ export function draftSkill(meta: DraftMeta, start: DraftStart, steps: AuthorStep
       `${step.kind === 'type' ? 'type으로' : 'select로'} "${step.name}"${step.kind === 'type' ? '을(를)' : '에서 값을'} ${verb}. args는 다음을 그대로 쓴다.`,
       { ref: step.name, [key]: value },
       quotable(step.name) && quotable(value) ? `value(${q(step.name)}) == ${q(value)}` : undefined,
+      step.note,
     );
   }
 
@@ -241,13 +315,20 @@ export function draftSkill(meta: DraftMeta, start: DraftStart, steps: AuthorStep
       'did("write_excel")',
     );
   }
-  const summary =
+  const done =
     datasets.length > 0
       ? `${datasets.map((d, i) => `표${i + 1} {rows.${d}}행`).join(', ')}을 저장했습니다. 파일: ${meta.name}.xlsx`
       : filled.length > 0
         ? `${filled.map((d) => `{rows.${d}}행`).join(', ')}을 표에 입력하고 ${meta.name}을(를) 마쳤습니다.`
         : `${meta.name}을(를) 마쳤습니다.`;
-  push('finish로 결과를 보고한다. args는 다음을 그대로 쓴다.', { summary });
+  if (closing) {
+    push(closing.text.trim().replace(/\s*\n\s*/g, ' '), null, undefined, closing.note);
+    notes.push(`${n}단계: 마지막 단계를 말로 적어, 모델이 정리해 보고하며 끝냅니다.${summaries.length ? ` 앞에서 정리한 내용은 {out.${summaries[0]}}처럼 보고에 넣을 수 있습니다.` : ''}`);
+  } else {
+    // 정리한 내용이 있으면 보고 아래에 붙인다.
+    const summary = [done, ...summaries.map((r) => `{out.${r}}`)].join('\n');
+    push('finish로 결과를 보고한다. args는 다음을 그대로 쓴다.', { summary });
+  }
 
   const risk = submitSteps.length > 0 ? 'R3' : 'R1';
   if (risk === 'R3') notes.push('저장·상신 버튼이 있어 R3로 선언했습니다. 넣으면 안 되는 값이 있으면 policy.yaml에 규칙을 적으세요.');

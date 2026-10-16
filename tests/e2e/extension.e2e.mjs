@@ -537,6 +537,91 @@ try {
     await out.waitFor({ timeout: RUN_TIMEOUT });
     assert.match(await out.innerText(), /모델 API에 닿지 못했습니다[\s\S]*http:\/\/127\.0\.0\.1:4173\/\*에 접근할 권한이 없습니다/);
     await panel.locator('#grant-llm').waitFor();
+    await panel.screenshot({ path: join(ROOT, 'test-results/panel-settings.png'), fullPage: true });
+  });
+
+  await scenario('배치: 설정과 화면 점검은 실행 화면을 밀어내지 않고 따로 열리며, 적던 요청은 그대로 남음', async (openPages) => {
+    const { panel } = await openPages('/wip.html');
+    await panel.fill('#request', '8라인 재공 확인해줘');
+    await panel.click('#open-settings');
+    await panel.locator('#settings').waitFor();
+    assert.equal(await panel.locator('#request').isVisible(), false, '설정 화면에 요청 칸이 함께 보임');
+    // 저장하지 않고 돌아가면 고친 값은 버리고, 적던 요청은 남는다.
+    await panel.fill('#skills-url', 'http://example.invalid/index.json');
+    await panel.click('#sheet-back');
+    assert.equal(await panel.inputValue('#request'), '8라인 재공 확인해줘');
+    await panel.click('#open-settings');
+    assert.equal(await panel.inputValue('#skills-url'), '');
+    // 설정에서 화면 점검으로 바로 넘어가고, Esc로 닫는다.
+    await panel.click('#open-inspect');
+    await panel.locator('#inspect-verdict').waitFor({ timeout: RUN_TIMEOUT });
+    assert.equal(await panel.locator('#settings').count(), 0);
+    await panel.keyboard.press('Escape');
+    await panel.locator('#request').waitFor();
+    await panel.screenshot({ path: join(ROOT, 'test-results/panel-run.png') });
+  });
+
+  await scenario('스킬 만들기: 녹화 중에 매개변수 이름·설명, 목적, 말로 단계, 화면 정리를 넣고 다른 검색어로 실행', async (openPages) => {
+    const { target, panel } = await openPages('/wip.html');
+    await panel.click('#tab-author');
+    await panel.fill('#a-id', 'wip-find');
+    await panel.fill('#a-name', '재공 찾아 정리');
+    await panel.fill('#a-desc', '제품코드로 재공을 검색해 공정별로 정리한다');
+    await panel.fill('#a-owner', '생산관리');
+    await panel.click('#rec-start');
+    await panel.locator('#rec').waitFor();
+
+    await target.bringToFront();
+    await target.selectOption('#line', '7라인');
+    await target.fill('#product', 'DR5');
+    await target.click('#query');
+    await target.locator('#total').filter({ hasText: '총' }).waitFor();
+    await panel.bringToFront();
+    await panel.locator('#rec[data-count="3"]').waitFor();
+
+    // 라인은 고정, 제품코드는 매번 입력받는 검색어로 이름과 설명을 붙인다.
+    await panel.locator('[data-variable="0"]').uncheck();
+    await panel.fill('[data-param-name="1"]', 'keyword');
+    await panel.fill('[data-param-desc="1"]', '제품코드 검색창에 넣을 값');
+    // 조회 버튼에 목적을 단다.
+    await panel.click('[data-note-open="2"]');
+    await panel.fill('[data-note="2"]', '검색 결과를 띄운다');
+    await panel.locator('[data-note="2"]').press('Enter');
+    // 말로 적은 단계를 넣었다가 뺀다 (모의 모델은 말로 적은 단계를 수행하지 못한다).
+    await panel.click('#rec-goal');
+    await panel.fill('#goal-text', 'HOLD인 Lot이 있으면 첫 번째 것의 공정을 확인한다');
+    await panel.click('#goal-add');
+    assert.match(await panel.locator('.rec-list').innerText(), /말로 적은 단계: HOLD인 Lot이 있으면/);
+    await panel.locator('.rec-list li[data-step="3"]').getByText('빼기').click();
+    // 결과 표를 끝 페이지까지 읽어 정리하는 단계를 넣는다.
+    await panel.click('#rec-sum');
+    await panel.selectOption('#sum-source', '재공 목록');
+    assert.ok(await panel.locator('#sum-all').isChecked());
+    await panel.fill('#sum-text', '공정별 건수를 정리한다');
+    await panel.click('#sum-add');
+    assert.match(await panel.locator('.rec-list').innerText(), /"재공 목록" 표 \("다음" 버튼으로 끝 페이지까지\) 정리: 공정별 건수를 정리한다/);
+    await panel.screenshot({ path: join(ROOT, 'test-results/panel-author-flex.png'), fullPage: true });
+    await panel.click('#rec-stop');
+
+    const source = await panel.locator('#draft-src').inputValue();
+    assert.match(source, /- name: keyword\n {4}label: "제품코드"\n {4}description: "제품코드 검색창에 넣을 값"/);
+    assert.match(source, /- 목적: 검색 결과를 띄운다/);
+    assert.match(source, /"source":"sum1","name":"report1"/);
+    assert.match(source, /\{out\.report1\}/);
+    assert.notEqual(await panel.locator('#lint').getAttribute('data-grade'), 'F');
+    await panel.click('#draft-save');
+
+    await panel.click('#tab-run');
+    await panel.selectOption('#skill', 'wip-find');
+    assert.match(await panel.locator('label', { has: panel.locator('[data-input=keyword]') }).innerText(), /제품코드 검색창에 넣을 값/);
+    await panel.fill('[data-input=keyword]', 'NV2-1T');
+    const r = await run(panel);
+    const want = generateWip('7라인').filter((row) => row[1].includes('NV2-1T')).length;
+    check(r, () => {
+      assert.equal(r.status, 'done');
+      assert.match(r.text, new RegExp(`- ${want}행`));
+    });
+    return `${r.sec}초`;
   });
 
   await scenario('스킬 만들기: 한 번 해 보이면 초안이 나오고, 시험 실행을 통과하면 배포 요청 가능', async (openPages) => {

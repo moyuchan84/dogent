@@ -24,7 +24,7 @@ const brief = (r: RunRecord): RunBrief => ({
  * 실행 기록. 이 PC에서 돌린 실행을 다시 열어 보고, 스킬별로 얼마나 성공하는지 본다.
  * 기록은 이 PC의 브라우저에만 있고 최근 50건까지 남는다.
  */
-export function History(props: { names: Record<string, string> }) {
+export function History(props: { names: Record<string, string>; onExport: () => void }) {
   const [runs, setRuns] = useState<RunRecord[]>([]);
   const [open, setOpen] = useState<string | null>(null);
   useEffect(() => {
@@ -87,7 +87,12 @@ export function History(props: { names: Record<string, string> }) {
       </section>
 
       <section className="card">
-        <h2>최근 실행 {runs.length}건</h2>
+        <div className="card-head">
+          <h2>최근 실행 {runs.length}건</h2>
+          <button className="ghost" id="export-log" onClick={props.onExport} title="실행 기록을 JSON으로 저장">
+            기록 내보내기
+          </button>
+        </div>
         <ul className="runs">
           {recent.map((r) => {
             const verdict = runVerdict(r.result);

@@ -89,8 +89,9 @@ export function App() {
   const isDraft = (id: string) => draftSkills.some((d) => d.id === id);
   const reloadDrafts = () => loadDrafts().then(setDrafts);
   const [settings, setSettings] = useState<LlmSettings | null>(null);
-  const [showSettings, setShowSettings] = useState(false);
-  const [showInspect, setShowInspect] = useState(false);
+  // 설정과 화면 점검은 실행 화면 위에 끼워 넣지 않고 그 자리를 대신하는 화면으로 연다.
+  // 실행 화면은 숨기기만 해서, 적던 요청과 진행 중인 실행·녹화가 그대로 남는다.
+  const [sheet, setSheet] = useState<null | 'settings' | 'inspect'>(null);
   const [llmTest, setLlmTest] = useState('');
   // 연결 시험에서 권한이 막혀 있던 모델 API 주소. 버튼으로 다시 요청한다.
   const [llmGrant, setLlmGrant] = useState<string | null>(null);
@@ -188,6 +189,18 @@ export function App() {
   useEffect(() => {
     logEnd.current?.scrollIntoView({ block: 'end' });
   }, [events, result, question, approval]);
+  // 실행이 사람을 기다리면(승인, 질문, 로그인) 설정을 보고 있어도 진행 화면으로 돌아온다.
+  const waiting = approval !== null || question !== null || (running && events.at(-1)?.type === 'login_wait');
+  useEffect(() => {
+    if (waiting) setSheet(null);
+  }, [waiting]);
+  // Esc로 설정·화면 점검을 닫는다.
+  useEffect(() => {
+    if (!sheet) return;
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && closeSheet();
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
 
   async function plan() {
     if (!settings || !request.trim()) return;
@@ -380,205 +393,260 @@ export function App() {
     download(`dogent-log-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(runs, null, 2), 'application/json');
   }
 
+  function closeSheet() {
+    if (sheet === 'settings') void loadSettings().then(setSettings);
+    setLlmTest('');
+    setSheet(null);
+  }
+
+  function toggleSheet(next: 'settings' | 'inspect') {
+    if (sheet === next) return closeSheet();
+    if (sheet === 'settings') void loadSettings().then(setSettings);
+    setSheet(next);
+  }
+
   if (!settings) return null;
 
   return (
     <div className="app">
-      <header>
-        <h1 title="Dogent: Do-Agent, 업무를 대신 하는 에이전트">
-          <img className="logo" src="/icon/dogent.svg" alt="" width={22} height={22} />
-          Dogent
-        </h1>
-        <div className="header-actions">
-          <button className="ghost" onClick={exportLog} title="실행 기록을 JSON으로 저장">
-            기록 내보내기
-          </button>
-          <button className="ghost" id="open-inspect" disabled={running} onClick={() => setShowInspect((v) => !v)} title="지금 화면을 Dogent가 읽을 수 있는지 점검">
-            화면 점검
-          </button>
-          <button className="ghost" id="open-settings" onClick={() => setShowSettings((v) => !v)}>
-            설정
-          </button>
-        </div>
-      </header>
-
-      {showInspect && !running && <Inspect onClose={() => setShowInspect(false)} />}
-
-      {showSettings && (
-        <section className="card">
-          <h2>모델 설정</h2>
-          <p className="hint" id="build-mode">
-            이 확장은 <b>{import.meta.env.MODE === 'production' ? '기본' : import.meta.env.MODE}</b> 설정으로 빌드되었습니다. 비워 두거나
-            바꾸지 않은 칸은 빌드에 넣은 값을 씁니다.
-          </p>
-          <label>
-            API 주소
-            <input
-              value={settings.baseUrl}
-              onChange={(e) => setSettings({ ...settings, baseUrl: e.target.value })}
-              placeholder="https://.../v1"
-            />
-          </label>
-          <label>
-            모델 이름
-            <input value={settings.model} onChange={(e) => setSettings({ ...settings, model: e.target.value })} />
-          </label>
-          <label>
-            API 키
-            <input
-              type="password"
-              value={settings.apiKey}
-              placeholder={hasBuiltInKey ? '비워 두면 배포에 포함된 공용 키를 씁니다' : ''}
-              onChange={(e) => setSettings({ ...settings, apiKey: e.target.value })}
-            />
-          </label>
-          {builtInHeaders && (
-            <p className="hint" id="llm-headers">
-              이 배포는 사내 게이트웨이용 헤더로 부릅니다: {Object.keys(builtInHeaders).join(', ')}
-            </p>
+      <header className="topbar">
+        <div className="topbar-row">
+          <h1 title="Dogent: Do-Agent, 업무를 대신 하는 에이전트">
+            <img className="logo" src="/icon/dogent.svg" alt="" width={22} height={22} />
+            Dogent
+          </h1>
+          {running && sheet && (
+            <button className="chip running" id="back-to-run" onClick={closeSheet} title="진행 화면으로 돌아갑니다">
+              실행 중 · 보기
+            </button>
           )}
-          <label>
-            시스템 이름 (Send-System-Name)
-            <input
-              id="llm-system-name"
-              value={settings.systemName ?? ''}
-              placeholder="사내 게이트웨이에 등록한 이름"
-              onChange={(e) => setSettings({ ...settings, systemName: e.target.value.trim() })}
-            />
-          </label>
-          {placeholders.has('userId') && (
-            <label>
-              사용자 ID <span className="req">*</span>
-              <input
-                id="llm-user-id"
-                value={settings.userId ?? ''}
-                placeholder="사내 SSO ID"
-                onChange={(e) => setSettings({ ...settings, userId: e.target.value.trim() })}
-              />
-            </label>
-          )}
-          {placeholders.has('userType') && (
-            <label>
-              사용자 유형 <span className="req">*</span>
-              <input
-                id="llm-user-type"
-                value={settings.userType ?? ''}
-                placeholder="API 제공 측에서 안내한 값"
-                onChange={(e) => setSettings({ ...settings, userType: e.target.value.trim() })}
-              />
-            </label>
-          )}
-          <label className="check">
-            <input
-              type="checkbox"
-              checked={settings.jsonMode}
-              onChange={(e) => setSettings({ ...settings, jsonMode: e.target.checked })}
-            />
-            JSON 출력 모드 사용 (API가 response_format을 지원할 때)
-          </label>
-          <label>
-            제한 시간 배율
-            <input
-              type="number"
-              min={1}
-              value={settings.timeoutScale}
-              onChange={(e) => setSettings({ ...settings, timeoutScale: Number(e.target.value) || 1 })}
-            />
-          </label>
-          <label className="check">
-            <input
-              type="checkbox"
-              checked={settings.skillDirect}
-              onChange={(e) => setSettings({ ...settings, skillDirect: e.target.checked })}
-            />
-            스킬에 인자가 적힌 단계는 모델 없이 바로 실행 (빠름)
-          </label>
-          <label className="check">
-            <input
-              type="checkbox"
-              checked={settings.pathCache}
-              onChange={(e) => setSettings({ ...settings, pathCache: e.target.checked })}
-            />
-            모델이 찾아 성공한 경로를 기억해 다음 실행에서 다시 사용
-          </label>
-          <button className="ghost" onClick={() => void clearPaths()}>
-            기억한 경로 지우기
-          </button>
-          <p className="hint">기본은 응답 60초, 스킬별 전체 제한 시간입니다. 느린 로컬 모델이면 배율을 올리세요.</p>
-          <p className="hint">API 주소를 여기서 바꾸면 그 호스트가 빌드의 허용 목록에 있어야 닿습니다. 새 주소는 환경 파일에 적고 다시 빌드하세요.</p>
-          <Sites />
-          <Connect />
-          <label>
-            공유 스킬 저장소 (index.json 주소)
-            <input
-              id="skills-url"
-              value={settings.skillsUrl}
-              onChange={(e) => setSettings({ ...settings, skillsUrl: e.target.value.trim() })}
-              placeholder="비워 두면 확장에 든 스킬만 씁니다"
-            />
-          </label>
-          <label className="check">
-            <input
-              id="skills-login"
-              type="checkbox"
-              checked={settings.skillsWithLogin ?? false}
-              onChange={(e) => setSettings({ ...settings, skillsWithLogin: e.target.checked })}
-            />
-            브라우저 로그인으로 읽기 (사내 GitHub처럼 로그인해야 보이는 저장소)
-          </label>
-          <div className="row wrap">
-            <button id="test-llm" className="secondary" disabled={llmTest === '시험하는 중…'} onClick={() => void testLlm()}>
-              연결 시험
+          <div className="header-actions">
+            <button
+              className={`ghost${sheet === 'inspect' ? ' on' : ''}`}
+              id="open-inspect"
+              disabled={running}
+              onClick={() => toggleSheet('inspect')}
+              title="지금 화면을 Dogent가 읽을 수 있는지 점검"
+            >
+              화면 점검
+            </button>
+            <button className={`ghost${sheet === 'settings' ? ' on' : ''}`} id="open-settings" onClick={() => toggleSheet('settings')} title="모델, 사이트, 연결, 공유 스킬 설정">
+              설정
             </button>
           </div>
-          {llmGrant && (
-            <div className="row">
-              <button id="grant-llm" onClick={() => void grantLlm()}>
-                이 주소 접근 허용
-              </button>
-            </div>
-          )}
-          {llmTest && (
-            <div id="llm-test" className={`notice ${llmTest.startsWith('연결됨') ? 'ok' : llmTest.startsWith('시험하는') ? '' : 'error'}`}>
-              {llmTest}
-            </div>
-          )}
-          <button
-            className="ghost"
-            id="reset-settings"
-            onClick={async () => {
-              setSettings(await resetSettings());
-              setLlmTest('');
-            }}
-          >
-            빌드 기본값으로 되돌리기
-          </button>
-          <button
-            id="save-settings"
-            onClick={async () => {
-              await saveSettings(settings);
-              void syncShared(settings.skillsUrl, settings.skillsWithLogin);
-              setShowSettings(false);
-            }}
-          >
-            저장
-          </button>
-        </section>
+        </div>
+        {sheet ? (
+          <div className="sheet-head">
+            <button className="ghost back" id="sheet-back" onClick={closeSheet}>
+              ← 돌아가기
+            </button>
+            <b>{sheet === 'settings' ? '설정' : '화면 점검'}</b>
+          </div>
+        ) : (
+          <nav className="tabs">
+            <button id="tab-run" className={tab === 'run' ? 'on' : ''} onClick={() => setTab('run')}>
+              실행
+            </button>
+            <button id="tab-author" className={tab === 'author' ? 'on' : ''} disabled={running} onClick={() => setTab('author')}>
+              스킬 만들기
+            </button>
+            <button id="tab-history" className={tab === 'history' ? 'on' : ''} disabled={running} onClick={() => setTab('history')}>
+              기록
+            </button>
+          </nav>
+        )}
+      </header>
+
+      {sheet === 'inspect' && !running && (
+        <div className="sheet">
+          <Inspect />
+        </div>
       )}
 
-      <nav className="tabs">
-        <button id="tab-run" className={tab === 'run' ? 'on' : ''} onClick={() => setTab('run')}>
-          실행
-        </button>
-        <button id="tab-author" className={tab === 'author' ? 'on' : ''} disabled={running} onClick={() => setTab('author')}>
-          스킬 만들기
-        </button>
-        <button id="tab-history" className={tab === 'history' ? 'on' : ''} disabled={running} onClick={() => setTab('history')}>
-          기록
-        </button>
-      </nav>
+      {sheet === 'settings' && (
+        <div className="sheet" id="settings">
+          <section className="card">
+            <h2>모델 연결</h2>
+            <p className="hint" id="build-mode">
+              이 확장은 <b>{import.meta.env.MODE === 'production' ? '기본' : import.meta.env.MODE}</b> 설정으로 빌드되었습니다. 비워 두거나
+              바꾸지 않은 칸은 빌드에 넣은 값을 씁니다.
+            </p>
+            <label>
+              API 주소
+              <input
+                value={settings.baseUrl}
+                onChange={(e) => setSettings({ ...settings, baseUrl: e.target.value })}
+                placeholder="https://.../v1"
+              />
+            </label>
+            <label>
+              모델 이름
+              <input value={settings.model} onChange={(e) => setSettings({ ...settings, model: e.target.value })} />
+            </label>
+            <label>
+              API 키
+              <input
+                type="password"
+                value={settings.apiKey}
+                placeholder={hasBuiltInKey ? '비워 두면 배포에 포함된 공용 키를 씁니다' : ''}
+                onChange={(e) => setSettings({ ...settings, apiKey: e.target.value })}
+              />
+            </label>
+            {builtInHeaders && (
+              <p className="hint" id="llm-headers">
+                이 배포는 사내 게이트웨이용 헤더로 부릅니다: {Object.keys(builtInHeaders).join(', ')}
+              </p>
+            )}
+            <label>
+              시스템 이름 (Send-System-Name)
+              <input
+                id="llm-system-name"
+                value={settings.systemName ?? ''}
+                placeholder="사내 게이트웨이에 등록한 이름"
+                onChange={(e) => setSettings({ ...settings, systemName: e.target.value.trim() })}
+              />
+            </label>
+            {placeholders.has('userId') && (
+              <label>
+                사용자 ID <span className="req">*</span>
+                <input
+                  id="llm-user-id"
+                  value={settings.userId ?? ''}
+                  placeholder="사내 SSO ID"
+                  onChange={(e) => setSettings({ ...settings, userId: e.target.value.trim() })}
+                />
+              </label>
+            )}
+            {placeholders.has('userType') && (
+              <label>
+                사용자 유형 <span className="req">*</span>
+                <input
+                  id="llm-user-type"
+                  value={settings.userType ?? ''}
+                  placeholder="API 제공 측에서 안내한 값"
+                  onChange={(e) => setSettings({ ...settings, userType: e.target.value.trim() })}
+                />
+              </label>
+            )}
+            <p className="hint">API 주소를 여기서 바꾸면 그 호스트가 빌드의 허용 목록에 있어야 닿습니다. 새 주소는 환경 파일에 적고 다시 빌드하세요.</p>
+            <div className="row wrap">
+              <button id="test-llm" className="secondary" disabled={llmTest === '시험하는 중…'} onClick={() => void testLlm()}>
+                연결 시험
+              </button>
+              {llmGrant && (
+                <button id="grant-llm" onClick={() => void grantLlm()}>
+                  이 주소 접근 허용
+                </button>
+              )}
+            </div>
+            {llmTest && (
+              <div id="llm-test" className={`notice ${llmTest.startsWith('연결됨') ? 'ok' : llmTest.startsWith('시험하는') ? '' : 'error'}`}>
+                {llmTest}
+              </div>
+            )}
+          </section>
 
-      {tab === 'history' && <History names={Object.fromEntries([...skills.map((s) => [s.id, s.name]), [FREE_SKILL_ID, '자유 요청']])} />}
+          <section className="card">
+            <Sites />
+          </section>
+
+          <section className="card">
+            <h2>공유 스킬</h2>
+            <label>
+              공유 스킬 저장소 (index.json 주소)
+              <input
+                id="skills-url"
+                value={settings.skillsUrl}
+                onChange={(e) => setSettings({ ...settings, skillsUrl: e.target.value.trim() })}
+                placeholder="비워 두면 확장에 든 스킬만 씁니다"
+              />
+            </label>
+            <label className="check">
+              <input
+                id="skills-login"
+                type="checkbox"
+                checked={settings.skillsWithLogin ?? false}
+                onChange={(e) => setSettings({ ...settings, skillsWithLogin: e.target.checked })}
+              />
+              브라우저 로그인으로 읽기 (사내 GitHub처럼 로그인해야 보이는 저장소)
+            </label>
+          </section>
+
+          <section className="card">
+            <h2>실행 방식</h2>
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={settings.skillDirect}
+                onChange={(e) => setSettings({ ...settings, skillDirect: e.target.checked })}
+              />
+              스킬에 인자가 적힌 단계는 모델 없이 바로 실행 (빠름)
+            </label>
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={settings.pathCache}
+                onChange={(e) => setSettings({ ...settings, pathCache: e.target.checked })}
+              />
+              모델이 찾아 성공한 경로를 기억해 다음 실행에서 다시 사용
+            </label>
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={settings.jsonMode}
+                onChange={(e) => setSettings({ ...settings, jsonMode: e.target.checked })}
+              />
+              JSON 출력 모드 사용 (API가 response_format을 지원할 때)
+            </label>
+            <label>
+              제한 시간 배율
+              <input
+                type="number"
+                min={1}
+                value={settings.timeoutScale}
+                onChange={(e) => setSettings({ ...settings, timeoutScale: Number(e.target.value) || 1 })}
+              />
+            </label>
+            <p className="hint">기본은 응답 60초, 스킬별 전체 제한 시간입니다. 느린 로컬 모델이면 배율을 올리세요.</p>
+            <button className="ghost" onClick={() => void clearPaths()}>
+              기억한 경로 지우기
+            </button>
+          </section>
+
+          <section className="card">
+            <Connect />
+          </section>
+
+          <div className="savebar">
+            <button
+              className="ghost"
+              id="reset-settings"
+              onClick={async () => {
+                setSettings(await resetSettings());
+                setLlmTest('');
+              }}
+            >
+              빌드 기본값으로 되돌리기
+            </button>
+            <button className="secondary" onClick={closeSheet}>
+              취소
+            </button>
+            <button
+              id="save-settings"
+              onClick={async () => {
+                await saveSettings(settings);
+                void syncShared(settings.skillsUrl, settings.skillsWithLogin);
+                setSheet(null);
+              }}
+            >
+              저장
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="main" hidden={sheet !== null}>
+      {tab === 'history' && <History names={Object.fromEntries([...skills.map((s) => [s.id, s.name]), [FREE_SKILL_ID, '자유 요청']])} onExport={exportLog} />}
 
       {tab === 'author' && <Author bundledIds={bundled.map((s) => s.id)} drafts={drafts} onChange={reloadDrafts} llm={() => new OpenAiCompatClient(effectiveSettings(settings), undefined, 2048)} />}
 
@@ -951,6 +1019,7 @@ export function App() {
         </section>
       )}
       </>)}
+      </div>
     </div>
   );
 }

@@ -11,7 +11,7 @@ const LEVEL_LABEL = { fail: '막힘', warn: '확인', ok: '정상', info: '참�
  * 화면 점검. 사내 화면을 처음 다룰 때, 녹화하기 전에 에이전트가 그 화면을 읽을 수 있는지 본다.
  * 결과는 보고서로 받아 개발 담당에게 보낼 수 있고, 화면 글자와 주소를 가릴 수 있다.
  */
-export function Inspect({ onClose }: { onClose: () => void }) {
+export function Inspect() {
   const [site, setSite] = useState<SiteInspection | null>(null);
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState('');
@@ -66,7 +66,6 @@ export function Inspect({ onClose }: { onClose: () => void }) {
 
   return (
     <section className="card" id="inspect">
-      <h2>화면 점검</h2>
       <p className="hint">
         지금 탭의 화면을 Dogent가 읽을 수 있는지 봅니다. 사내 화면에서 스킬을 녹화하기 전에 먼저 돌려 보세요. 화면을
         바꾸지 않습니다.
@@ -126,9 +125,6 @@ export function Inspect({ onClose }: { onClose: () => void }) {
             </button>
           </>
         )}
-        <button className="ghost" onClick={onClose}>
-          닫기
-        </button>
       </div>
     </section>
   );
