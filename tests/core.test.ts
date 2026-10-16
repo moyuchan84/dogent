@@ -158,6 +158,29 @@ describe('actions', () => {
     expect(parseAction('{"tool": "click", ')).toMatchObject({ ok: false });
   });
 
+  it('작은 모델이 흔히 내는 모양 차이는 다시 묻지 않고 받는다', () => {
+    const click = { ok: true, action: { tool: 'click', args: { ref: 4 } } };
+    // 설명 글에 { } 가 먼저 나옴
+    expect(parseAction('{조회} 버튼을 누릅니다.\n{"thought":"조회","tool":"click","args":{"ref":4}}')).toMatchObject(click);
+    // 끝의 쉼표
+    expect(parseAction('{"tool":"click","args":{"ref":4,},}')).toMatchObject(click);
+    // thought 안의 날 줄바꿈
+    expect(parseAction('{"thought":"라인을 고른 뒤\n조회를 누른다","tool":"click","args":{"ref":4}}')).toMatchObject({
+      ok: true,
+      action: { thought: '라인을 고른 뒤\n조회를 누른다', tool: 'click' },
+    });
+    // args 없이 바로 적은 인자, args를 글자로 준 경우, 도구 이름의 대소문자·괄호
+    expect(parseAction('{"tool":"click","ref":4}')).toMatchObject(click);
+    expect(parseAction('{"tool":"click","args":"{\\"ref\\":4}"}')).toMatchObject(click);
+    expect(parseAction('{"tool":" Click() ","args":{"ref":4}}')).toMatchObject(click);
+  });
+
+  it('다시 물어야 할 때는 무엇이 문제인지 알려 준다', () => {
+    expect(parseAction('{"thought":"길게 설명하다가 끊긴 응답… ","tool":"cli')).toMatchObject({ ok: false, error: expect.stringMatching(/중간에 끊겼습니다/) });
+    expect(parseAction('조회 버튼을 누르면 됩니다')).toMatchObject({ ok: false, error: 'JSON 객체가 없습니다' });
+    expect(parseAction("{'tool': 'click'}")).toMatchObject({ ok: false, error: expect.stringMatching(/JSON 문법 오류/) });
+  });
+
   it('이름이나 대괄호로 적힌 ref를 현재 화면의 번호로 바꾼다', () => {
     const snap: PageSnapshot = {
       url: 'http://localhost:4173/wip.html',

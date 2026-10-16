@@ -77,8 +77,10 @@ export function describeEvent(e: RunEvent): string | null {
       return `\n  로그인이 필요합니다: ${e.url}\n  브라우저의 그 탭에서 직접 로그인해 주세요. 로그인되면 이어서 진행합니다 (Dogent는 비밀번호를 입력하지 않습니다).\n`;
     case 'login_done':
       return '  로그인됨, 이어서 진행';
-    case 'llm_retry':
-      return '  모델 응답 형식 오류, 다시 요청';
+    case 'llm_retry': {
+      const said = e.raw ? `\n      모델 응답: ${clip(e.raw.replace(/\s+/g, ' '), 110)}` : '';
+      return `  모델 응답 형식 오류, 다시 요청: ${clip(e.reason.split('\n')[0], 120)}${said}`;
+    }
     case 'blocked':
       return `  막힘: ${e.tool} — ${e.reason}`;
     default:

@@ -233,7 +233,8 @@ export interface PathStore {
 
 export type RunEvent =
   | { type: 'observe'; n: number; url: string; title: string }
-  | { type: 'llm_retry'; n: number; reason: string }
+  /** raw는 형식에 맞지 않았던 모델 응답의 앞부분이다. 왜 다시 물었는지 기록에서 볼 수 있게 남긴다. */
+  | { type: 'llm_retry'; n: number; reason: string; raw?: string }
   | { type: 'blocked'; n: number; tool: string; reason: string }
   | { type: 'action'; entry: HistoryEntry }
   | { type: 'step_done'; step: number }
