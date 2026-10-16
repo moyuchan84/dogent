@@ -31,7 +31,8 @@
     "client:build:home": "node client/build.mjs --mode home",
     "client:build:company": "node client/build.mjs --mode company",
     "client": "node client/dist/dogent.mjs",
-    "e2e:client": "node tests/e2e/client.e2e.mjs"
+    "e2e:client": "node tests/e2e/client.e2e.mjs",
+    "guide:bundle": "node tools/guide-bundle.mjs"
   },
   "dependencies": {
     "exceljs": "^4.4.0",
