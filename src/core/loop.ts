@@ -105,6 +105,8 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps, memo: PathM
   // 로그인을 기다린 시간. 스킬의 제한 시간에서 뺀다.
   let waited = 0;
   const history: HistoryEntry[] = [];
+  /** 동작마다 하기 직전 화면의 지문. 같은 동작을 되풀이해도 화면이 바뀌고 있으면 막힌 것이 아니다. */
+  const screens: string[] = [];
   const savedFiles: string[] = [];
   const body = fillTemplate(skill, inputs);
   const steps = extractSteps(body);
@@ -561,6 +563,7 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps, memo: PathM
         ...targetsOf(action.args as Record<string, unknown>, snap),
       };
       history.push(entry);
+      screens.push(screenPrint(snap));
       emit({ type: 'action', entry });
 
       if (outcome.ok) didTools.add(action.tool);
@@ -579,9 +582,18 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps, memo: PathM
             : `처음 오류: ${firstFailure} / 마지막 오류: ${outcome.result}`;
         return end('aborted', `동작이 ${MAX_STRIKES}번 연속 실패했습니다. ${cause}`);
       }
-      const last3 = history.slice(-3).map((h) => `${h.tool}${JSON.stringify(h.args)}`);
-      if (action.tool !== 'next_step' && last3.length === 3 && last3.every((s) => s === last3[0])) {
-        return end('aborted', `같은 동작(${action.tool})을 3번 반복해 중단했습니다`);
+      // 막힘: 한 단계 안에서 같은 동작을 세 번 했는데 그동안 화면이 그대로다.
+      // "행 추가"를 여러 번 누르거나 다음 페이지로 넘기는 것처럼 화면이 바뀌면 되풀이해도 괜찮다.
+      // 녹화한 스킬에서 같은 버튼을 이어 누르는 단계들은 단계가 달라 해당하지 않는다.
+      const last3 = history.slice(-3);
+      const key = (h: HistoryEntry) => `${h.step}|${h.tool}${JSON.stringify(h.args)}`;
+      if (
+        action.tool !== 'next_step' &&
+        last3.length === 3 &&
+        last3.every((h) => key(h) === key(last3[0])) &&
+        screens.slice(-3).every((s) => s === screens.at(-1))
+      ) {
+        return end('aborted', `같은 동작(${action.tool})을 3번 했지만 화면이 바뀌지 않아 중단했습니다`);
       }
     }
     return end('aborted', `최대 동작 수 ${skill.limits.max_steps}회를 넘었습니다`);
@@ -603,4 +615,13 @@ function targetsOf(args: Record<string, unknown>, snap: PageSnapshot): { targets
     targets[key] = { role: el.role, name: el.name, dup: same > 1, ...(el.row ? { row: el.row } : {}), ...(options ? { options } : {}) };
   }
   return Object.keys(targets).length ? { targets } : {};
+}
+
+/** 화면의 지문. 주소와 읽은 화면 글이 같으면 같은 화면으로 본다. */
+function screenPrint(snap: PageSnapshot): string {
+  const text = `${snap.url}
+${renderSnapshot(snap)}`;
+  let h = 5381;
+  for (let i = 0; i < text.length; i++) h = ((h * 33) ^ text.charCodeAt(i)) >>> 0;
+  return `${text.length}:${h.toString(36)}`;
 }

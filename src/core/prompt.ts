@@ -119,13 +119,13 @@ export function buildTurnMessages(p: {
     const last = p.history.at(-1);
     const prev = p.history.at(-2);
     const repeated =
-      last && prev && last.ok && prev.ok && last.tool === prev.tool && JSON.stringify(last.args) === JSON.stringify(prev.args);
+      last && prev && last.ok && prev.ok && last.tool === prev.tool && JSON.stringify(last.args) === JSON.stringify(prev.args) && p.changes.length === 0;
     changes = [
       '',
       '## 직전 동작 뒤 화면에 새로 보이는 것',
       p.changes.length > 0 ? p.changes.map((c) => `<page>${c}</page>`).join('\n') : '(달라진 것이 없습니다)',
       ...(repeated
-        ? ['', '같은 동작을 두 번 연속으로 했습니다. 한 번 더 하면 실행이 중단됩니다. 목적을 이뤘으면 다음으로 넘어가거나 finish로 끝내세요.']
+        ? ['', '같은 동작을 두 번 연속으로 했는데 화면이 바뀌지 않았습니다. 한 번 더 해도 바뀌지 않으면 실행이 중단됩니다. 목적을 이뤘으면 다음으로 넘어가거나 finish로 끝내세요.']
         : []),
       '',
     ].join('\n');
