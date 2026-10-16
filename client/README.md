@@ -68,6 +68,20 @@ pnpm client sync                              # 팀 스킬 저장소 git pull
 
 실행 중 Ctrl+C는 멈춤, 한 번 더 누르면 끝냅니다. 결과 엑셀은 기본으로 내려받기 폴더에 저장합니다 (`config outputDir`로 바꿈).
 
+## 브라우저가 여럿일 때
+
+크롬과 엣지 둘 다 확장을 연결해 두면 둘 다 붙습니다.
+
+```bash
+pnpm client browsers                    # 연결된 브라우저 (6초 기다렸다가 보여 줌)
+pnpm client tabs --browser 크롬          # 이번만 그 브라우저
+pnpm client config browser edge         # 늘 그 브라우저
+```
+
+- 같은 종류가 둘이면 확장의 클라이언트 연결 → **이 브라우저 이름**에 이름을 붙입니다.
+- 번호는 실행마다 다시 매겨지므로 명령에는 이름을 씁니다. 대화 모드에서는 `browser 2`도 됩니다.
+- 한 번 고른 브라우저는 실행 중에 바뀌지 않습니다.
+
 ## 엑셀 (오피스 도구)
 
 `pnpm office:build`로 `office/dist/dogent-office.exe`를 만들어 두면 클라이언트가 찾아 씁니다. 자세한 것은 [office/README.md](../office/README.md).
