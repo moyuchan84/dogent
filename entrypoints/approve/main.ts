@@ -28,6 +28,24 @@ async function show() {
   }
   const fields = el('dl');
   for (const f of request.fields) fields.append(el('div', {}, el('dt', {}, f.name), el('dd', {}, f.value || '(비어 있음)')));
+  // 표에 채운 값이 있으면 앞부분을 보여 준다 (Dogent 클라이언트가 스킬을 실행할 때).
+  const tables = request.tables.map((t) =>
+    el(
+      'div',
+      { className: 'approval-table' },
+      el('p', {}, el('b', {}, t.name), ` · ${t.rowCount}행`),
+      el(
+        'div',
+        { className: 'tablewrap' },
+        el(
+          'table',
+          {},
+          el('thead', {}, el('tr', {}, ...t.columns.map((c) => el('th', {}, c)))),
+          el('tbody', {}, ...t.preview.map((r) => el('tr', {}, ...r.map((c) => el('td', {}, c))))),
+        ),
+      ),
+    ),
+  );
   const approve = el('button', { id: 'approve', textContent: `승인하고 ${request.button}` });
   const decline = el('button', { id: 'decline', className: 'secondary', textContent: '취소' });
   approve.onclick = () => void decide(true);
@@ -41,6 +59,7 @@ async function show() {
       el('p', { className: 'hint' }, `${request.skill} · ${request.url}`),
       el('p', { className: 'hint' }, '화면에서 다시 읽은 현재 값입니다. 승인하면 실제로 제출됩니다.'),
       fields,
+      ...tables,
       el('div', { className: 'row' }, decline, approve),
     ),
   );

@@ -145,8 +145,19 @@ pnpm build && pnpm e2e   # 빌드된 확장을 실제 Chromium에 올려 실행 
 
 ## 구조
 
+폴더는 실행되는 곳별로 나뉩니다. 확장과 클라이언트는 `src/core`(엔진)만 함께 씁니다.
+
+| 폴더 | 무엇 | 어디서 도나 |
+|---|---|---|
+| `entrypoints/`, `src/ext/`, `src/page/` | 크롬 확장 (사이드 패널, 브라우저 도구, 승인 창) | 브라우저 |
+| `client/` | Dogent 클라이언트 (터미널). [client/README.md](client/README.md) | PC (Node) |
+| `bridge/` | 클라이언트·Claude Code ↔ 확장을 잇는 MCP 브리지 | PC (Node) |
+| `src/core/` | 엔진: 스킬, 실행 루프, 검사, 정책, 엑셀 | 양쪽이 함께 씀 |
+| `skills/`, `templates/` | 기본 스킬, 팀 스킬 저장소 틀 | |
+| `mock-site/`, `tools/`, `tests/` | 모의 사이트·모의 모델, 시험 | 개발 |
+
 ```
-src/core/      에이전트 코어. 브라우저·확장 API에 의존하지 않는다 (Phase 3에서 데스크탑 클라이언트로 그대로 옮김)
+src/core/      에이전트 코어. 브라우저·확장 API에 의존하지 않는다 (확장과 클라이언트가 함께 씀)
   skill.ts       SKILL.md 파싱, 입력 검증
   loop.ts        관찰 → 판단 → 검사 → 실행 반복, 중단 조건
   actions.ts     도구별 인자 스키마, 모델 응답 검증
@@ -159,12 +170,17 @@ src/core/      에이전트 코어. 브라우저·확장 API에 의존하지 않
   author.ts      녹화한 조작 → 스킬 초안
   polish.ts      초안의 글을 모델로 다듬기 (동작이 바뀌는 제안은 버림)
   lint.ts        스킬 품질 검사 (오류·경고, 등급)
+  from-run.ts    잘 된 자유 요청 → 스킬 단계
+  browser-tools.ts  확장이 MCP로 내놓는 브라우저 도구의 실행부
+  mcp-browser.ts    클라이언트 쪽 BrowserPort (MCP로 확장에 맡김)
 src/page/      페이지 안에서 도는 부분. 화면을 요소 목록으로 읽고 ref로 조작한다
 src/ext/       chrome.* 를 쓰는 어댑터 (탭 제어, 설정·실행 기록 저장, 스킬 번들)
 entrypoints/   확장 진입점 (사이드 패널, 백그라운드, 페이지 에이전트)
 skills/        스킬 문서. 형식은 docs/05-skill-spec.md
 mock-site/     개발·테스트용 모의 재공 조회 사이트
 tools/         모의 모델 서버
+client/        Dogent 클라이언트 (터미널). client/README.md
+bridge/        MCP 브리지, native host, 설치
 ```
 
 ## 들어 있는 것과 없는 것

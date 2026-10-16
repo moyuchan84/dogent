@@ -7,6 +7,13 @@
 // - 로그인 화면을 만나면 snapshot이 알려 준다. 비밀번호는 입력할 수 없다. wait_for_login으로 사람이 로그인하기를 기다린다.
 // - ref는 마지막 snapshot의 [번호]다. 화면이 바뀌면 snapshot을 다시 읽는다.
 
+/**
+ * Dogent 클라이언트 전용 도구. 확장의 화면 조작 단위(BrowserPort)를 그대로 내놓아, 클라이언트가 스킬 실행 루프(src/core)를
+ * 바꾸지 않고 쓰게 한다. 결과는 JSON이다. 도구 목록(tools/list)에는 넣지 않는다.
+ * 통제(조작할 사이트, 저장·상신 승인)는 다른 도구와 똑같이 확장이 지킨다.
+ */
+export const PORT_TOOL = 'dogent_port';
+
 const ref = { type: 'integer', minimum: 0, description: '마지막 snapshot에서 [ ] 안의 요소 번호' };
 const tabId = { type: 'integer', description: '탭 번호 (tabs_list). 없으면 지금 대상 탭' };
 
