@@ -1,5 +1,5 @@
 import { browser, type Browser } from 'wxt/browser';
-import { dogentConfig } from '@/dogent.config';
+import { allSites } from './sites';
 import type { SiteInspection } from '../core/inspect';
 import { mergeFrames } from '../core/snapshot';
 import type {
@@ -208,7 +208,7 @@ export class ChromeBrowser implements BrowserPort {
           {
             id: HOOK_SCRIPT_ID,
             js: ['dialog-hook.js'],
-            matches: dogentConfig.sitePermissions,
+            matches: await allSites(),
             runAt: 'document_start',
             world: 'MAIN',
             allFrames: true,

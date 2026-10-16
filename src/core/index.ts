@@ -20,3 +20,4 @@ export * from './snapshot';
 export * from './stats';
 export * from './transform';
 export * from './inspect';
+export * from './sites';

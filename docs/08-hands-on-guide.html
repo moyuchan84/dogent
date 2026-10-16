@@ -546,12 +546,12 @@ pnpm build          <span class="c"># 그다음 chrome://extensions 에서 새�
           <h3><span class="num">1</span>회사 설정 파일 채우기</h3>
 <pre><code>copy .env.company.example .env.company.local
 notepad .env.company.local</code></pre>
-          <p>API 제공 측에서 받은 값 세 개와 사용자 유형, 업무 시스템 주소를 채웁니다.</p>
+          <p>API 제공 측에서 받은 값 세 개와 사용자 유형을 채웁니다. 업무 시스템 주소는 나중에 패널에서 더하면 되므로 비워 둬도 됩니다.</p>
 <pre><code>WXT_LLM_BASE_URL=(api_base_url)      <span class="c"># /chat/completions 앞까지</span>
 WXT_LLM_API_KEY=(credential_key)     <span class="c"># 헤더 틀의 {key}</span>
 WXT_LLM_MODEL=(model)
 WXT_LLM_USER_TYPE=(user_type)        <span class="c"># 헤더 틀의 {userType}</span>
-WXT_SITE_PERMISSIONS=https://(업무 시스템 호스트)/*</code></pre>
+WXT_SITE_PERMISSIONS=                <span class="c"># 비워 둬도 됨. 패널에서 더함</span></code></pre>
           <p>요청 헤더 틀은 예시 파일에 이미 들어 있어 고칠 것이 없습니다. 필수 헤더인 <code>Send-System-Name</code>은 <code>WXT_LLM_SYSTEM_NAME</code>(기본 <code>RFGo</code>)으로 채워지고, 틀이 없거나 틀에서 빠져도 늘 붙습니다.</p>
 <pre><code>WXT_LLM_SYSTEM_NAME=RFGo
 WXT_LLM_HEADERS='{"x-dep-ticket":"{key}","Send-System-Name":"{systemName}",
@@ -646,7 +646,7 @@ pnpm ollama:proxy   <span class="c"># 터미널 2</span></code></pre>
           <p>실제 업무 화면을 열고(로그인까지 마친 상태) 패널 위쪽의 <b>화면 점검</b>을 누릅니다. 화면을 바꾸지 않고 읽기만 해서, 녹화하기 전에 막히는 곳을 알려 줍니다.</p>
           <div class="tbl"><table>
             <tr><th>표시</th><th>뜻</th></tr>
-            <tr><td><span class="tag r3">막힘</span></td><td>허용 목록 밖 화면, 읽지 못한 iframe, 로그인 화면. 조치에 적힌 대로 <code>sitePermissions</code>를 고치고 다시 빌드</td></tr>
+            <tr><td><span class="tag r3">막힘</span></td><td>조작할 사이트 목록에 없는 화면, 읽지 못한 iframe, 로그인 화면. 목록에 없으면 <b>이 사이트 허용</b>을 누르고 크롬이 묻는 창에서 허용 (다시 빌드할 필요 없음)</td></tr>
             <tr><td><span class="tag" style="background:var(--warn-soft);color:var(--warn)">확인</span></td><td>그림(canvas)으로 그린 그리드, 웹 컴포넌트 안 요소, 머리글 없는 표, 이름 없는 요소. 되긴 하지만 해당 부분은 시험 실행으로 꼭 확인</td></tr>
             <tr><td><span class="tag r1">정상</span></td><td>읽은 표(행·열 수, 입력 칸 여부)와 요소 수</td></tr>
           </table></div>

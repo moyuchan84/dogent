@@ -102,9 +102,9 @@ export function diagnose(site: SiteInspection, mask: Masking = plainMasking()): 
     findings.push({
       level: 'fail',
       title: '이 화면은 Dogent가 읽을 수 없습니다',
-      detail: o ? `${mask.url(site.url)} 은(는) 허용 목록(sitePermissions)에 없습니다.` : '브라우저 내부 화면이나 새 탭은 읽지 않습니다.',
+      detail: o ? `${mask.url(site.url)} 은(는) 조작할 사이트 목록에 없습니다.` : '브라우저 내부 화면이나 새 탭은 읽지 않습니다.',
       fix: o
-        ? `dogent.config.ts의 sitePermissions에 ${mask.hidden ? '이 호스트' : permissionLine(o)}를 넣고 pnpm build 후 확장을 새로고침하세요.`
+        ? `아래 "이 사이트 허용"을 누르거나, 설정 → 조작할 사이트에 ${mask.hidden ? '이 호스트' : permissionLine(o)}를 추가하세요.`
         : '업무 화면을 연 탭에서 다시 점검하세요.',
     });
     return { verdict: 'blocked', findings };
@@ -126,8 +126,8 @@ export function diagnose(site: SiteInspection, mask: Masking = plainMasking()): 
       title: `읽지 못한 iframe ${missing.length}개`,
       detail: `화면 안에 들어 있는 ${missing.map(mask.url).join(', ')} 은(는) 허용 목록 밖이라 안을 읽지 못했습니다. 업무 화면이 이 안에 있으면 조작할 수 없습니다.`,
       fix: !mask.hidden
-        ? `sitePermissions에 ${missing.map(permissionLine).join(', ')}를 더하고 다시 빌드하세요.`
-        : 'sitePermissions에 이 호스트들을 더하고 다시 빌드하세요.',
+        ? `아래 "이 사이트 허용"을 누르거나, 설정 → 조작할 사이트에 ${missing.map(permissionLine).join(', ')}를 추가하세요.`
+        : '아래 "이 사이트 허용"을 누르거나, 설정 → 조작할 사이트에 이 호스트들을 추가하세요.',
     });
   }
 
