@@ -3,6 +3,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { LlmSettings } from '../../src/core';
 import { dogentConfig } from '../../dogent.config';
+import { findOfficeExe } from './office';
 
 /**
  * 클라이언트 설정.
@@ -19,6 +20,10 @@ export interface UserConfig {
   outputDir?: string;
   /** 확장과 잇는 WebSocket 포트 */
   bridgePort?: number;
+  /** 오피스 도구(dogent-office.exe) 경로. 없으면 클라이언트 옆이나 저장소의 office/dist에서 찾는다 */
+  officeExe?: string;
+  /** 결과 엑셀을 Excel로 다시 저장한다. 문서 보안(NASCA) 규정상 Excel로 저장해야 할 때 켠다 */
+  saveThroughExcel?: boolean;
 }
 
 export interface ClientConfig {
@@ -28,6 +33,8 @@ export interface ClientConfig {
   teamSkills?: string;
   outputDir: string;
   bridgePort?: number;
+  officeExe?: string;
+  saveThroughExcel: boolean;
   /** 사용자 설정 파일 경로 */
   file: string;
 }
@@ -56,6 +63,8 @@ export function loadConfig(): ClientConfig {
     teamSkills: user.teamSkills,
     outputDir: user.outputDir ?? join(homedir(), 'Downloads'),
     bridgePort: user.bridgePort,
+    officeExe: user.officeExe,
+    saveThroughExcel: user.saveThroughExcel === true,
     file,
   };
 }
@@ -89,7 +98,8 @@ export function describeConfig(c: ClientConfig): string {
     `사용자 ID      ${c.llm.userId ?? ''}`,
     `개인 스킬      ${c.personalSkills}`,
     `팀 스킬        ${c.teamSkills ?? '(설정 안 함: dogent config teamSkills <폴더>)'}`,
-    `결과 저장      ${c.outputDir}`,
+    `결과 저장      ${c.outputDir}${c.saveThroughExcel ? ' (Excel로 저장)' : ''}`,
+    `오피스 도구    ${findOfficeExe(c.officeExe) ?? '(없음: pnpm office:build)'}`,
     `설정 파일      ${c.file}`,
   ].join('\n');
 }

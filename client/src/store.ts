@@ -1,4 +1,4 @@
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type { FilePort, PathStore, RunEvent, RunResult, SkillInputs, SkillPaths } from '../../src/core';
 
@@ -42,8 +42,11 @@ export function filePathStore(home: string): PathStore {
   };
 }
 
-/** 결과 엑셀을 폴더에 저장한다. 같은 이름이 있으면 (1), (2)를 붙인다. */
-export function folderFiles(dir: string, saved: string[]): FilePort {
+/**
+ * 결과 엑셀을 폴더에 저장한다. 같은 이름이 있으면 (1), (2)를 붙인다.
+ * throughExcel을 주면 임시 파일을 Excel로 열어 그 이름으로 다시 저장한다 (문서 보안 규정상 Excel로 저장해야 할 때).
+ */
+export function folderFiles(dir: string, saved: string[], throughExcel?: (temp: string, target: string) => Promise<void>): FilePort {
   return {
     async save(filename, data) {
       mkdirSync(dir, { recursive: true });
@@ -51,7 +54,15 @@ export function folderFiles(dir: string, saved: string[]): FilePort {
       const [base, ext] = dot > 0 ? [filename.slice(0, dot), filename.slice(dot)] : [filename, ''];
       let path = join(dir, filename);
       for (let i = 1; existsSync(path); i++) path = join(dir, `${base} (${i})${ext}`);
-      writeFileSync(path, Buffer.from(data));
+      if (throughExcel && ext.toLowerCase() === '.xlsx') {
+        const temp = join(dir, `.dogent-${Date.now()}${ext}`);
+        writeFileSync(temp, Buffer.from(data));
+        try {
+          await throughExcel(temp, path);
+        } finally {
+          rmSync(temp, { force: true });
+        }
+      } else writeFileSync(path, Buffer.from(data));
       saved.push(path);
     },
   };

@@ -19,6 +19,7 @@ import {
 } from '../../src/core';
 import { openBridge, loadToken, type Bridge } from './bridge';
 import { describeConfig, loadConfig, setConfig, type ClientConfig } from './config';
+import { Office, findOfficeExe } from './office';
 import { saveRunAsSkill } from './save-skill';
 import { loadSkills, type SkillEntry } from './skills';
 import { appendRun, filePathStore, folderFiles } from './store';
@@ -36,6 +37,9 @@ const HELP = `Dogent 클라이언트 ${__DOGENT_BUILD__.version} (${__DOGENT_BUI
   dogent check <SKILL.md>         스킬 품질 검사
   dogent sync                     팀 스킬 저장소를 git pull로 받는다
   dogent tabs                     브라우저 탭 목록
+  dogent excel <파일>             Excel로 열어 시트와 앞부분을 보여 준다 (문서 보안 문서 확인)
+  dogent excel docs               사용자의 Excel에 열린 문서 (문서 공유망에서 연 문서 등)
+  dogent excel resave <원본> <새 경로>   Excel로 다시 저장 (문서 보안이 다시 암호화하는지 확인)
   dogent token                    확장의 "클라이언트 연결"에 넣을 토큰
   dogent config [키 값]            설정 보기 / 바꾸기 (예: dogent config llm.userId sso123)
 
@@ -69,6 +73,7 @@ function parseArgs(argv: string[]): { args: string[]; flags: Flags } {
 
 class Client {
   private bridge: Bridge | null = null;
+  private office: Office | null = null;
   private skills: SkillEntry[] = [];
   private abort: AbortController | null = null;
 
@@ -95,6 +100,67 @@ class Client {
 
   private llm() {
     return new OpenAiCompatClient(this.cfg.llm);
+  }
+
+  /** 오피스 도구를 처음 쓸 때 띄운다. */
+  async officeTool(): Promise<Office> {
+    if (this.office) return this.office;
+    const exe = findOfficeExe(this.cfg.officeExe);
+    if (!exe) throw new Error('오피스 도구(dogent-office.exe)가 없습니다. pnpm office:build로 만들거나 dogent config officeExe <경로>로 알려 주세요');
+    this.office = await Office.start(exe);
+    return this.office;
+  }
+
+  /**
+   * 파일 입력의 엑셀을 읽는다. 먼저 파일을 직접 읽고, 안 되면(문서 보안이 걸린 파일 등) 사용자의 Excel로 연다.
+   */
+  private async readInputFile(path: string): Promise<{ columns: string[]; rows: (string | number)[][] }> {
+    try {
+      const data = readFileSync(path);
+      return await readTable(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer, basename(path));
+    } catch (direct) {
+      if (!/\.(xlsx|xlsm|xls|csv)$/i.test(path) || !findOfficeExe(this.cfg.officeExe)) throw direct;
+      this.term.print(`  ${basename(path)}: 파일을 직접 읽지 못해(${(direct as Error).message}) Excel로 엽니다. 문서 보안이 걸린 파일일 수 있습니다`);
+      return (await this.officeTool()).readTable(path);
+    }
+  }
+
+  /** dogent excel …: 오피스 도구 확인용 */
+  async excel(args: string[]): Promise<boolean> {
+    const office = await this.officeTool();
+    const [sub, ...rest] = args;
+    if (sub === 'docs') {
+      // 문서 공유망(EDM)의 읽기·편집으로 연 문서처럼 사용자의 Excel에 열린 문서
+      const r = await office.userWorkbooks();
+      if (r.length === 0) this.term.print('사용자의 Excel에 열린 문서가 없습니다');
+      for (const b of r) this.term.print(`  ${b.name}${b.read_only ? ' (읽기 전용)' : ''}\n    ${b.full_name}`);
+      return true;
+    }
+    if (sub === 'resave') {
+      if (rest.length < 2) {
+        this.term.print('dogent excel resave <원본> <저장할 경로>');
+        return false;
+      }
+      const saved = await office.resave(rest[0], rest[1]);
+      this.term.print(`Excel로 다시 저장했습니다: ${saved}\n문서 보안(NASCA)이 이 파일을 다시 암호화했는지 탐색기에서 확인하세요 (아이콘, 속성, 다른 PC에서 열어 보기)`);
+      return true;
+    }
+    const path = sub;
+    if (!path) {
+      this.term.print('dogent excel <파일> | dogent excel docs | dogent excel resave <원본> <저장할 경로>');
+      return false;
+    }
+    const { workbook, sheets } = await office.open(path);
+    try {
+      for (const s of sheets) this.term.print(`  시트 ${s.name}: ${s.range} (${s.rows}행 × ${s.columns}열)`);
+      const t = await office.read(workbook, { maxRows: 5 });
+      this.term.print(`\n${t.sheet} 앞부분 (전체 ${t.total_rows}행)`);
+      this.term.print(`  ${t.columns.join(' | ')}`);
+      for (const r of t.rows) this.term.print(`  ${r.join(' | ')}`);
+    } finally {
+      await office.close(workbook).catch(() => {});
+    }
+    return true;
   }
 
   /** 확장과 이어지기를 기다린다. */
@@ -156,8 +222,7 @@ class Client {
     for (const spec of skill.inputs) {
       const path = filePaths[spec.name];
       if (spec.type !== 'file' || !spec.dataset || !path) continue;
-      const data = readFileSync(path);
-      const table = await readTable(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer, basename(path));
+      const table = await this.readInputFile(path);
       datasets.set(spec.dataset, table.columns, table.rows);
     }
     const target = await bridge.browser.target();
@@ -182,7 +247,11 @@ class Client {
         dryRun: !isFree && skill.risk === 'R3' && this.flags.dryRun,
         direct: this.cfg.llm.skillDirect,
         paths: this.cfg.llm.pathCache && !isFree ? filePathStore(this.cfg.home) : undefined,
-        files: folderFiles(this.cfg.outputDir, saved),
+        files: folderFiles(
+          this.cfg.outputDir,
+          saved,
+          this.cfg.saveThroughExcel ? async (temp, target) => void (await (await this.officeTool()).resave(temp, target)) : undefined,
+        ),
         ui: {
           ask: async (q) => (await this.term.ask(`\n  질문: ${q}\n  답: `)) ?? '',
           // 승인은 확장의 승인 창에서 받는다. 어떤 클라이언트가 붙어도 확장이 지키는 통제다 (docs/09 D6).
@@ -287,7 +356,8 @@ class Client {
     }
   }
 
-  close(): void {
+  async close(): Promise<void> {
+    await this.office?.shutdown().catch(() => {});
     this.bridge?.close();
   }
 }
@@ -329,8 +399,7 @@ async function main(): Promise<number> {
   process.on('SIGINT', () => {
     if (client.interrupt()) term.print('\n멈추는 중… (한 번 더 누르면 끝냅니다)');
     else {
-      client.close();
-      process.exit(130);
+      void client.close().finally(() => process.exit(130));
     }
   });
   try {
@@ -338,6 +407,7 @@ async function main(): Promise<number> {
       client.listSkills();
       return 0;
     }
+    if (cmd === 'excel') return (await client.excel(rest)) ? 0 : 1;
     if (cmd === 'tabs') {
       await client.tabs();
       return 0;
@@ -350,7 +420,7 @@ async function main(): Promise<number> {
     term.print(`오류: ${(e as Error).message}`);
     return 1;
   } finally {
-    client.close();
+    await client.close();
   }
 }
 
