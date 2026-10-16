@@ -25,7 +25,7 @@ export default defineConfig({
     return {
       name: 'Dogent',
       description: '스킬(업무 절차서)을 따라 사내 웹 시스템을 조작하는 업무 에이전트',
-      permissions: ['sidePanel', 'scripting', 'storage', 'tabs', 'downloads'],
+      permissions: ['sidePanel', 'scripting', 'storage', 'tabs', 'downloads', 'alarms', 'nativeMessaging'],
       host_permissions: [...new Set([...sites, ...dogentConfig.llmPermissions, ...llmHost, ...skillsHost])],
       optional_host_permissions: scope,
       // 아이콘 원본은 public/icon/dogent.svg. PNG는 그것을 크기별로 그린 것이다 (Do-Agent: D 위의 클릭하는 포인터).

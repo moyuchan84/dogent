@@ -34,6 +34,7 @@ import { BatchView } from './Batch';
 import { History } from './History';
 import { Inspect } from './Inspect';
 import { Sites } from './Sites';
+import { Connect } from './Connect';
 import { hostAccess } from '@/src/ext/sites';
 import { download, targetTab } from './util';
 
@@ -506,6 +507,7 @@ export function App() {
           <p className="hint">기본은 응답 60초, 스킬별 전체 제한 시간입니다. 느린 로컬 모델이면 배율을 올리세요.</p>
           <p className="hint">API 주소를 여기서 바꾸면 그 호스트가 빌드의 허용 목록에 있어야 닿습니다. 새 주소는 환경 파일에 적고 다시 빌드하세요.</p>
           <Sites />
+          <Connect />
           <label>
             공유 스킬 저장소 (index.json 주소)
             <input

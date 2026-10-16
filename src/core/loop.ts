@@ -2,6 +2,7 @@ import { directParts, parseAction, type Action } from './actions';
 import { capture, evalCheck, stepCaptures, stepCheck, stripCheckLines, type Clause } from './check';
 import { DatasetStore } from './dataset';
 import { buildWorkbook, readDownloadedTable } from './excel';
+import { extractPages } from './pages';
 import { PathMemo } from './paths';
 import { SUBMIT_PATTERN, checkAction, findElement, hostAllowed } from './policy';
 import { buildTurnMessages } from './prompt';
@@ -56,7 +57,6 @@ export interface RunDeps {
 
 const MAX_FORMAT_RETRIES = 2;
 const MAX_STRIKES = 3;
-const MAX_PAGES = 500;
 /** 로그인을 기다리는 동안 화면을 다시 읽는 간격 */
 const LOGIN_POLL_MS = 1500;
 
@@ -303,32 +303,20 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps, memo: PathM
           : { ok: false, result: `${action.args.timeout_sec}초 안에 나타나지 않음` };
       }
       case 'extract_table': {
-        const table = await browser.extractTable(action.args.ref);
-        const ds = datasets.put(action.args.dataset, table, action.args.append);
-        if (action.args.next_ref === undefined) {
-          return {
-            ok: true,
-            result: `${table.rows.length}행 추출, "${ds.name}" 누적 ${ds.rows.length}행`,
-          };
-        }
-        // 페이지 넘김은 판단이 필요 없는 반복이라 모델을 거치지 않고 여기서 끝까지 돈다.
-        // ref는 화면이 바뀌면 새로 매겨지므로 표와 버튼을 역할·이름으로 다시 찾는다.
-        const tableEl = findElement(snap, action.args.ref)!;
-        const nextEl = findElement(snap, action.args.next_ref)!;
-        const again = (s: PageSnapshot, like: ElementItem) =>
-          s.items.find((i): i is ElementItem => i.kind === 'el' && i.role === like.role && i.name === like.name);
-        let pages = 1;
-        for (let s = snap; pages < MAX_PAGES; pages++) {
-          const next = again(s, nextEl);
-          if (!next || next.disabled) break;
-          const clicked = await browser.click(next.ref);
-          if (!clicked.ok) throw new Error(`"${nextEl.name}" 클릭 실패: ${clicked.message}`);
-          s = await browser.snapshot();
-          const t = again(s, tableEl);
-          if (!t) throw new Error(`${pages + 1}페이지에서 표 "${tableEl.name}"을(를) 찾지 못했습니다`);
-          datasets.put(action.args.dataset, await browser.extractTable(t.ref), true);
-        }
-        return { ok: true, result: `${pages}페이지 추출, "${ds.name}" 누적 ${ds.rows.length}행` };
+        const { dataset, append } = action.args;
+        let firstRows = 0;
+        const pages = await extractPages(browser, snap, action.args.ref, action.args.next_ref, (table, first) => {
+          if (first) firstRows = table.rows.length;
+          datasets.put(dataset, table, first ? append : true);
+        });
+        const ds = datasets.get(dataset);
+        return {
+          ok: true,
+          result:
+            action.args.next_ref === undefined
+              ? `${firstRows}행 추출, "${ds.name}" 누적 ${ds.rows.length}행`
+              : `${pages}페이지 추출, "${ds.name}" 누적 ${ds.rows.length}행`,
+        };
       }
       case 'download_table': {
         if (!browser.download) return { ok: false, result: '이 환경에서는 파일 내려받기를 쓸 수 없습니다. extract_table로 표를 추출하세요' };

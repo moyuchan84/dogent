@@ -451,6 +451,24 @@ export class ChromeBrowser implements BrowserPort {
     return (/^https?:/.test(url) && decodeURIComponent(new URL(url).pathname.split('/').pop() ?? '')) || '내려받은 파일';
   }
 
+  /** 화면에 보이는 글. ref를 주면 그 요소만 읽는다. 프레임이 여럿이면 프레임마다 이어 붙인다. */
+  async readText(ref?: number): Promise<string> {
+    await this.follow();
+    await this.waitLoaded();
+    if (ref !== undefined) {
+      const target = this.refs.get(ref);
+      if (!target) throw new Error(`ref ${ref}를 찾을 수 없습니다. 화면을 다시 읽은 뒤 번호를 고르세요`);
+      const [res] = await this.run<string>('readText', [target.localRef], target.frame);
+      if (!res) throw new Error('화면을 읽지 못했습니다');
+      if (!res.reply.ok) throw new Error(res.reply.error);
+      return res.reply.value;
+    }
+    const frames = await this.run<string>('readText', []);
+    return frames
+      .flatMap((r) => (r.reply.ok && r.reply.value ? [r.reply.value] : []))
+      .join('\n\n---\n\n');
+  }
+
   async waitFor(text: string, timeoutMs: number): Promise<boolean> {
     const deadline = Date.now() + timeoutMs;
     for (;;) {

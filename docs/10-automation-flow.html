@@ -231,7 +231,7 @@ footer { margin-top: 40px; font-size: 13px; color: var(--muted); }
     <p class="sub">지금의 확장 단독 버전으로 회사에서 쓰면서, 구조를 하나씩 나눠 갑니다.</p>
     <ol class="road">
       <li><span class="n">지금</span><b>확장 단독</b><span>사이드 패널 안에서 판단·조작. 녹화, 엑셀 입력, 승인, 화면 점검, 사내 Gemma 연결까지 사용 가능</span></li>
-      <li class="cur"><span class="n">1단계 · 진행 중</span><b>확장 = 브라우저 도구</b><span>브리지, MCP 도구, Native Messaging·WebSocket, 승인 창. Claude Code에 붙여 시험</span></li>
+      <li class="cur"><span class="n">1단계 · 구현됨</span><b>확장 = 브라우저 도구</b><span>브리지, MCP 도구, Native Messaging·WebSocket, 승인 창. Claude Code에 붙여 시험</span></li>
       <li><span class="n">2단계</span><b>Dogent 클라이언트</b><span>터미널 프로그램. Gemma, 스킬 폴더, 목표 단계, 잘 된 실행을 스킬로</span></li>
       <li><span class="n">3단계</span><b>오피스 도구 (C#)</b><span>Excel COM으로 NASCA 문서 열기·읽기·쓰기·저장</span></li>
       <li><span class="n">4단계</span><b>데스크탑 화면</b><span>Electron. 현업이 터미널 없이 사용. 패널은 승인·진행 표시</span></li>
@@ -256,7 +256,7 @@ const NODES = {
   skills: { x: 470, y: 40,  w: 300, h: 64,  t: '팀 스킬 저장소', s: '사내 GitHub Enterprise · PR · CI', st: 'now',
     does: ['검토를 거친 스킬을 모두에게 배포', 'PR마다 품질 검사(B등급 이상)', 'CODEOWNERS 승인'],
     not: ['프로그램을 다시 배포하지 않아도 된다'], dec: ['D8'], now: '틀은 templates/dogent-skills에 있습니다.' },
-  bridge: { x: 470, y: 235, w: 130, h: 70,  t: '브리지', s: 'MCP 중계', st: 'wip',
+  bridge: { x: 470, y: 235, w: 130, h: 70,  t: '브리지', s: 'MCP 중계', st: 'now',
     does: ['MCP 요청을 확장에 전달', 'Native Messaging과 WebSocket을 한곳에서 받음', '토큰으로 서로 확인'],
     not: ['판단하지 않는다', '상태를 갖지 않는다'], dec: ['D2', 'D3'] },
   ext:    { x: 645, y: 210, w: 160, h: 120, t: '크롬 확장', s: '브라우저 도구 · 안전장치', st: 'now',

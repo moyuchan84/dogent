@@ -21,3 +21,5 @@ export * from './stats';
 export * from './transform';
 export * from './inspect';
 export * from './sites';
+export * from './pages';
+export * from './browser-tools';

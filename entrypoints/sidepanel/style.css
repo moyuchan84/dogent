@@ -605,3 +605,17 @@ textarea.code {
 .notice.login-wait p {
   margin: 4px 0 0;
 }
+
+/* 클라이언트 연결 */
+.connect h3 {
+  font-size: 13px;
+  margin: 14px 0 6px;
+}
+.chip.bridge-connected {
+  background: var(--ok-soft);
+  color: inherit;
+}
+.chip.bridge-error {
+  background: var(--risk-soft);
+  color: var(--risk);
+}

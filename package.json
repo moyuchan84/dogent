@@ -22,12 +22,17 @@
     "skill:index": "node tools/skill-index.mjs",
     "skill:lint": "vitest run tests/author.test.ts -t 번들된",
     "skill:bundle": "node tools/skill-bundle.mjs",
-    "skill:check": "node templates/dogent-skills/tools/skill-check.mjs skills"
+    "skill:check": "node templates/dogent-skills/tools/skill-check.mjs skills",
+    "bridge": "node bridge/hub.mjs",
+    "bridge:token": "node bridge/hub.mjs --token",
+    "bridge:install": "node bridge/install.mjs",
+    "e2e:bridge": "node tests/e2e/bridge.e2e.mjs"
   },
   "dependencies": {
     "exceljs": "^4.4.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
+    "ws": "8.18.3",
     "yaml": "^2.9.1",
     "zod": "^4.6.7"
   },
@@ -36,6 +41,7 @@
     "@types/node": "^26.6.5",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
+    "@types/ws": "8.18.1",
     "@wxt-dev/module-react": "^1.2.2",
     "jsdom": "^30.1.2",
     "playwright": "^1.64.0",
