@@ -1,0 +1,33 @@
+# 스킬 품질 검사. PR과 main 반영 때 돈다.
+#
+# GitHub Enterprise Server에서는 GitHub가 제공하는 러너가 없으므로 사내 러너(self-hosted)에서 돈다.
+# 러너에는 Node 20 이상만 있으면 된다. npm 설치는 하지 않는다 (검사기는 tools/skill-check.mjs 한 파일).
+# 러너 라벨이 다르면 runs-on을 사내 규칙에 맞게 바꾼다.
+name: skills
+
+on:
+  pull_request:
+    paths: ['skills/**', 'tools/**', '.github/workflows/skills.yml']
+  push:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: [self-hosted]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Node 버전
+        run: node --version
+
+      - name: 품질 검사 (B등급 이상)
+        run: node tools/skill-check.mjs skills --min-grade B
+
+      - name: 목록 파일이 최신인지
+        run: |
+          node tools/skill-index.mjs skills
+          if ! git diff --quiet -- skills/index.json; then
+            echo "::error file=skills/index.json::skills/index.json 이 스킬과 맞지 않습니다. node tools/skill-index.mjs skills 를 실행해 함께 올리세요"
+            git diff -- skills/index.json
+            exit 1
+          fi

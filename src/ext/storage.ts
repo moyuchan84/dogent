@@ -19,6 +19,7 @@ const BUILT_IN = {
   apiKey: env.WXT_LLM_API_KEY ?? '',
   model: env.WXT_LLM_MODEL ?? '',
   skillsUrl: env.WXT_SKILLS_URL ?? '',
+  skillsWithLogin: env.WXT_SKILLS_WITH_LOGIN ? env.WXT_SKILLS_WITH_LOGIN.trim().toLowerCase() === 'true' : undefined,
   jsonMode: env.WXT_LLM_JSON_MODE ? env.WXT_LLM_JSON_MODE.trim().toLowerCase() === 'true' : undefined,
   timeoutScale: Number(env.WXT_LLM_TIMEOUT_SCALE) || undefined,
   // 사내 게이트웨이처럼 Authorization이 아닌 헤더로 키와 사용자를 받는 API용. wxt.config.ts가 빌드할 때 형식을 검사한다.
@@ -49,6 +50,7 @@ function buildDefaults(): LlmSettings {
   if (BUILT_IN.userId) d.userId = BUILT_IN.userId;
   if (BUILT_IN.userType) d.userType = BUILT_IN.userType;
   if (BUILT_IN.systemName) d.systemName = BUILT_IN.systemName;
+  if (BUILT_IN.skillsWithLogin !== undefined) d.skillsWithLogin = BUILT_IN.skillsWithLogin;
   return d;
 }
 

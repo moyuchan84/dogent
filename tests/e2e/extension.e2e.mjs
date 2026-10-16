@@ -1006,6 +1006,32 @@ limits:
     }
   });
 
+  await scenario('공유 스킬: 로그인해야 보이는 저장소는 브라우저 로그인으로 읽음', async (openPages) => {
+    const { target, panel } = await openPages('/wip.html');
+    const save = async (url, withLogin) => {
+      await panel.click('#open-settings');
+      await panel.fill('#skills-url', url);
+      if ((await panel.locator('#skills-login').isChecked()) !== withLogin) await panel.click('#skills-login');
+      await panel.click('#save-settings');
+    };
+    const status = () => panel.locator('body').innerText();
+    try {
+      // 로그인 정보를 보내지 않으면 로그인 화면이 오고, 무엇을 켜야 하는지 알려 준다.
+      await save(`${SITE}/private/index.json`, false);
+      await panel.getByText('"브라우저 로그인으로 읽기"를 켜세요').waitFor({ timeout: 10_000 });
+      // 켜도 브라우저가 로그인하지 않았으면 로그인하라고 알려 준다.
+      await save(`${SITE}/private/index.json`, true);
+      await panel.getByText('브라우저에서 저장소 사이트에 먼저 로그인하세요').waitFor({ timeout: 10_000 });
+      // 브라우저에서 로그인하면(SameSite=Lax 세션 쿠키) 그 세션으로 받아 온다.
+      await target.goto(`${SITE}/private-login`);
+      await panel.click('#sync-skills');
+      await panel.locator('#skill option[value=wip-shared]').waitFor({ state: 'attached', timeout: 10_000 });
+      assert.match(await status(), /공유 스킬 1개/);
+    } finally {
+      await save('', false);
+    }
+  });
+
   await scenario('로그인 화면이면 중단', async (openPages) => {
     const { panel } = await openPages('/login.html');
     await panel.selectOption('#skill', 'wip-check');

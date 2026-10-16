@@ -15,6 +15,11 @@ export interface LlmSettings {
   /** 공유 스킬 저장소의 목록 파일(index.json) 주소. 비어 있으면 확장에 든 스킬만 쓴다. */
   skillsUrl: string;
   /**
+   * 공유 스킬 저장소를 브라우저의 로그인으로 읽는다. 사내 GitHub처럼 로그인해야 보이는 저장소일 때 켠다.
+   * 끄면 로그인 정보를 보내지 않으므로 저장소가 로그인 없이 읽혀야 한다.
+   */
+  skillsWithLogin?: boolean;
+  /**
    * 요청 헤더의 틀. 주면 Authorization 대신 이 헤더들을 보낸다. 값의 자리표시자는 부를 때마다 채운다.
    * {key} API 키, {userId} 사용자 ID, {userType} 사용자 유형, {systemName} 시스템 이름, {uuid} 요청마다 새로 만든 UUID.
    * 배포 빌드(.env.company.local 등의 WXT_LLM_HEADERS)에서만 들어오고 브라우저 저장소에는 남기지 않는다.

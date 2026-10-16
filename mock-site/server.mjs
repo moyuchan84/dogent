@@ -93,6 +93,19 @@ export function createMockSite() {
       res.end(JSON.stringify({ columns: COLUMNS, rows }));
       return;
     }
+    // 로그인해야 보이는 저장소(사내 GitHub의 비공개 저장소처럼). 세션 쿠키가 없으면 로그인 화면으로 보낸다.
+    if (url.pathname === '/private-login') {
+      res.writeHead(200, { 'Set-Cookie': 'ghe_session=1; Path=/; SameSite=Lax', 'Content-Type': 'text/html; charset=utf-8' });
+      res.end('<h1>로그인됨</h1>');
+      return;
+    }
+    if (url.pathname.startsWith('/private/')) {
+      if (!/(^|;\s*)ghe_session=1/.test(req.headers.cookie ?? '')) {
+        res.writeHead(302, { Location: '/login.html' }).end();
+        return;
+      }
+      url.pathname = url.pathname.replace('/private/', '/shared/');
+    }
     // 공유 스킬 저장소. 번들에 없는 스킬 하나와, 목록의 해시와 내용이 다른 스킬 하나를 내준다.
     if (url.pathname.startsWith('/shared/')) {
       const shared = (await readFile(join(SKILLS, 'wip-download/SKILL.md'), 'utf8'))
