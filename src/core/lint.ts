@@ -7,12 +7,13 @@ import { parseSkill, type Skill } from './skill';
  * 스킬 품질 검사. 누가 쓰든 같은 기준으로 스킬을 보기 위한 규칙 모음이다.
  *
  * - 오류(error): 실행이 안 되거나 통제를 벗어날 수 있는 문제. 하나라도 있으면 배포할 수 없다.
- * - 경고(warn): 실행은 되지만 모델 판단에 기대거나 결과 확인이 약해 재현성이 떨어지는 부분.
+ * - 경고(warn): 실행은 되지만 결과 확인이 약하거나 통제가 빠져 재현성이 떨어지는 부분.
+ * - 안내(info): 등급에 들어가지 않는 참고. 목표만 적힌 단계(모델이 화면을 보고 수행)가 그렇다.
  *
  * 패널의 스킬 만들기 화면, `pnpm skill:lint`, CI가 모두 이 함수를 쓴다.
  */
 export interface Finding {
-  level: 'error' | 'warn';
+  level: 'error' | 'warn' | 'info';
   /** 규칙 번호. docs/06-skill-authoring.md의 표와 같다. */
   rule: string;
   /** 문제가 있는 단계 번호. 스킬 전체에 대한 것이면 없다. */
@@ -38,7 +39,7 @@ const REF_KEYS = ['ref', 'next_ref', 'add_ref'];
 
 function report(findings: Finding[], direct: { count: number; total: number }, skill?: Skill): LintReport {
   const errors = findings.filter((f) => f.level === 'error').length;
-  const warns = findings.length - errors;
+  const warns = findings.filter((f) => f.level === 'warn').length;
   const grade: Grade = errors > 0 ? 'F' : warns === 0 ? 'A' : warns <= 2 ? 'B' : 'C';
   return {
     grade,
@@ -61,6 +62,7 @@ export function lintSkill(source: string, policySource?: string): LintReport {
   const findings: Finding[] = [];
   const error = (rule: string, message: string, step?: number) => findings.push({ level: 'error', rule, step, message });
   const warn = (rule: string, message: string, step?: number) => findings.push({ level: 'warn', rule, step, message });
+  const info = (rule: string, message: string, step?: number) => findings.push({ level: 'info', rule, step, message });
 
   const inputs = new Map(skill.inputs.map((i) => [i.name, i]));
   const usedInputs = new Set<string>();
@@ -102,7 +104,8 @@ export function lintSkill(source: string, policySource?: string): LintReport {
     let args: Record<string, any> | undefined;
 
     if (!parts) {
-      warn('W02', '도구와 인자가 적혀 있지 않아 모델이 동작을 정합니다. "도구로 ..." 형식과 `{...}` 인자로 적으세요', n);
+      // 목표만 적힌 단계는 모델이 화면을 보고 수행한다. 화면이나 값이 달라져도 맞춰 가므로 유연하지만, 매번 모델을 부른다.
+      info('I01', '목표 단계: 모델이 화면을 보고 수행합니다. 늘 같은 동작이면 녹화한 빠른 경로("도구로 ..." + `{...}` 인자)를 붙이면 빨라집니다', n);
     } else {
       tool = parts.tool;
       try {
@@ -143,16 +146,22 @@ export function lintSkill(source: string, policySource?: string): LintReport {
       if (tool === 'write_excel') for (const s of args.sheets) needDataset(s.dataset, n);
       if (tool === 'extract_table' || tool === 'download_table') datasets.add(args.dataset);
       if (tool === 'transform') datasets.add(args.target);
+      if (tool === 'summarize') {
+        if (args.source !== 'page') needDataset(args.source, n);
+        outputs.add(args.name ?? 'summary');
+      }
     }
 
+    // 마지막 목표 단계("정리해 보고한다")는 모델이 finish로 보고하며 끝낸다.
+    const closingGoal = last && !parts;
     if (!check) {
-      if (!(tool === 'finish' && last)) {
+      if (!(tool === 'finish' && last) && !closingGoal) {
         warn('W01', '검사 식이 없어 단계가 끝났는지를 모델이 판단합니다. "- 검사:" 줄을 추가하세요', n);
       }
     } else if (tool === 'click' && check.every((c) => c.kind === 'did')) {
       warn('W03', '누른 뒤 화면에 무엇이 보여야 하는지가 없습니다. 검사에 text("...") 같은 결과 조건을 더하세요', n);
     }
-    if (last && tool !== 'finish') {
+    if (last && tool !== 'finish' && !closingGoal) {
       warn('W05', '마지막 단계가 finish가 아닙니다. 결과 보고 문구를 스킬에 적어 두세요', n);
     }
     for (const c of stepCaptures(text)) outputs.add(c.name);

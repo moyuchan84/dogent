@@ -222,6 +222,10 @@ export class JsdomBrowser implements BrowserPort {
     return { filename: `재공_${line}.xlsx`, url: href, data: buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer };
   }
 
+  async readText(ref?: number) {
+    return this.agent.readText(ref === undefined ? undefined : this.local(ref));
+  }
+
   async waitFor(text: string, timeoutMs: number) {
     const deadline = Date.now() + timeoutMs;
     while (!this.agent.hasText(text)) {

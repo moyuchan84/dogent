@@ -10,7 +10,9 @@ JSON 객체 하나로만 답합니다.
 
 - 맞는 스킬이 없으면 skill_id를 null로 둡니다.
 - 요청에 없는 입력값은 넣지 않습니다. 추측하지 않습니다.
-- 입력값은 사용자가 쓴 표현을 단위까지 그대로 씁니다. 예: "7라인 재공"이면 "7라인" (숫자 7만 쓰지 않습니다).`;
+- 입력값은 사용자가 쓴 표현을 단위까지 그대로 씁니다. 예: "7라인 재공"이면 "7라인" (숫자 7만 쓰지 않습니다).
+- 입력의 설명을 보고 요청의 어느 부분이 그 값인지 고릅니다. 예: 설명이 "검색창에 넣을 값"이면 "P8-DR5 검색해서 정리해줘"에서 "P8-DR5".
+- 선택값(enum)은 보기 중 하나를 그대로 씁니다.`;
 
 const Plan = z.object({
   skill_id: z.string().nullable(),
@@ -29,9 +31,18 @@ export async function planRequest(
   const catalog = skills
     .map((s) => {
       const inputs = s.inputs
-        .map((i) => `${i.name}(${i.label ?? i.name}, ${i.type}${i.required ? ', 필수' : ''})`)
-        .join(', ');
-      return `- ${s.id}: ${s.name} — ${s.description}\n  입력: ${inputs || '없음'}`;
+        .filter((i) => i.type !== 'file')
+        .map((i) => {
+          const notes = [
+            i.type,
+            ...(i.required ? ['필수'] : []),
+            ...(i.default !== undefined ? [`기본값 ${i.default}`] : []),
+            ...(i.type === 'enum' && i.values ? [`보기: ${i.values.join(' | ')}`] : []),
+          ].join(', ');
+          return `    - ${i.name} (${i.label ?? i.name}, ${notes})${i.description ? `: ${i.description}` : ''}`;
+        })
+        .join('\n');
+      return `- ${s.id}: ${s.name} — ${s.description}\n  입력:\n${inputs || '    (없음)'}`;
     })
     .join('\n');
   const text = await llm.complete(

@@ -692,6 +692,7 @@ export function App() {
                 onChange={(e) => setForm({ ...form, [i.name]: e.target.value })}
               />
             )}
+            {i.description && <span className="input-desc">{i.description}</span>}
           </label>
         ))}
         {isFree && (

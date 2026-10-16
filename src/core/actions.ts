@@ -51,6 +51,17 @@ export const TOOL_ARGS = {
     filename: z.string().min(1),
     sheets: z.array(z.object({ name: z.string().min(1), dataset: z.string().min(1) })).min(1),
   }),
+  /** 화면(ref를 주면 그 요소)에 보이는 글을 읽는다. 게시글·공지처럼 글 내용이 필요할 때 쓴다. */
+  read_text: z.object({ ref: ref.optional() }),
+  /**
+   * 화면의 글(source "page")이나 데이터셋을 지시대로 정리해 기록 값 name에 남긴다. 뒤 단계에서 {out.name}으로 쓴다.
+   * 정리할 자료를 모델에 보낸다. 데이터셋은 앞부분 행만 보내므로, 많으면 transform으로 먼저 줄인다.
+   */
+  summarize: z.object({
+    instruction: z.string().min(1),
+    source: z.string().min(1).default('page'),
+    name: z.string().regex(/^[a-z_][a-z0-9_]*$/).default('summary'),
+  }),
   ask_user: z.object({ question: z.string().min(1) }),
   finish: z.object({ summary: z.string().min(1) }),
   abort: z.object({ reason: z.string().min(1) }),
@@ -60,7 +71,7 @@ export type ToolName = keyof typeof TOOL_ARGS;
 
 /** 모델 없이 실행할 수 있는 단계의 첫머리. 예: "select로 ...", "click으로 ..." */
 const DIRECT_STEP =
-  /^(navigate|click|close_tab|type|select|extract_table|download_table|fill_table|transform|write_excel|finish)(?:으로|로)\s/;
+  /^(navigate|click|close_tab|type|select|extract_table|download_table|fill_table|transform|write_excel|read_text|summarize|finish)(?:으로|로)\s/;
 
 /**
  * 단계가 "도구로 ..."로 시작하고 `{...}` 인자가 적혀 있으면 그 도구 이름과 인자 원문을 돌려준다.

@@ -33,7 +33,8 @@ for (const entry of readdirSync(dir, { withFileTypes: true })) {
   const policyFile = join(dir, entry.name, 'policy.yaml');
   const report = lintSkill(readFileSync(file, 'utf8'), existsSync(policyFile) ? readFileSync(policyFile, 'utf8') : undefined);
   const id = report.skill?.id ?? '(읽지 못함)';
-  const lines = report.findings.map((f) => `${f.level === 'error' ? '오류' : '경고'} ${f.rule}${f.step ? ` · ${f.step}단계` : ''}: ${f.message}`);
+  const LEVEL = { error: '오류', warn: '경고', info: '안내' } as const;
+  const lines = report.findings.map((f) => `${LEVEL[f.level]} ${f.rule}${f.step ? ` · ${f.step}단계` : ''}: ${f.message}`);
   let grade = report.grade;
   // 폴더 이름과 id가 다르면 목록과 실제 스킬이 어긋나고, 같은 id가 둘이면 어느 쪽이 쓰일지 알 수 없다.
   if (report.skill && report.skill.id !== entry.name) {
@@ -49,7 +50,7 @@ for (const entry of readdirSync(dir, { withFileTypes: true })) {
   rows.push({ folder: rel, id, grade, ok, lines });
   if (inGitHub) {
     for (const f of report.findings) {
-      console.log(`::${f.level === 'error' ? 'error' : 'warning'} file=${join(args[0] ?? 'skills', rel).replace(/\\/g, '/')},title=${f.rule}::${f.message}`);
+      console.log(`::${f.level === 'error' ? 'error' : f.level === 'warn' ? 'warning' : 'notice'} file=${join(args[0] ?? 'skills', rel).replace(/\\/g, '/')},title=${f.rule}::${f.message}`);
     }
   }
 }

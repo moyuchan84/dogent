@@ -196,6 +196,25 @@ try {
     });
   }
 
+  await scenario('유연한 스킬: "○○ 검색해서 정리해줘"를 해석해 검색하고 정리한 보고', async (openPages) => {
+    const { panel } = await openPages('/wip.html');
+    await panel.fill('#request', 'NV2-1T 검색해서 정체가 긴 Lot 위주로 정리해줘');
+    await panel.click('#plan');
+    await panel.locator('[data-input=keyword]').and(panel.locator('[value="NV2-1T"]')).waitFor({ timeout: RUN_TIMEOUT });
+    assert.equal(await panel.locator('#skill').inputValue(), 'wip-search');
+    assert.equal(await panel.locator('[data-input=focus]').inputValue(), '정체가 긴 Lot');
+    // 입력 칸 아래에 매개변수 설명이 보인다.
+    assert.match(await panel.locator('label', { has: panel.locator('[data-input=keyword]') }).innerText(), /제품코드 검색창에 넣을 값/);
+    const r = await run(panel);
+    const want = generateWip('7라인').filter((row) => row[1].includes('NV2-1T')).length;
+    check(r, () => {
+      assert.equal(r.status, 'done');
+      assert.match(r.text, new RegExp(`'NV2-1T' 검색 결과 ${want}건 \\(7라인\\)`));
+      assert.match(r.text, /기준: 제품코드 'NV2-1T' 검색 결과의 공정별 집계다\. '정체가 긴 Lot'을\(를\) 중심으로/);
+    });
+    return `${r.sec}초`;
+  });
+
   await scenario('iframe 안의 업무 화면 + 공정 조건', async (openPages) => {
     const { target, panel } = await openPages('/portal.html');
     await panel.selectOption('#skill', 'wip-check');
@@ -817,7 +836,8 @@ limits:
     assert.ok(await panel.locator('#draft-save').isDisabled());
 
     await panel.setInputFiles('#import-skill', good);
-    await panel.locator('#lint[data-grade="B"]').waitFor();
+    // 1단계처럼 목표만 적힌 단계는 등급을 깎지 않고 안내만 한다.
+    await panel.locator('#lint[data-grade="A"]').waitFor();
     assert.equal(await panel.locator('#draft-src').inputValue(), source);
     assert.match(await panel.locator('.app').innerText(), /"SKILL\.md" 파일에서 가져왔습니다/);
     assert.equal(await panel.locator('#overwrite-warning').count(), 0);

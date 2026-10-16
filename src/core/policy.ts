@@ -77,6 +77,16 @@ export function checkAction(action: Action, snap: PageSnapshot, skill: Skill): V
           reason: `${action.args.url} 은(는) 이 스킬의 허용 도메인(${skill.domains.join(', ')})이 아닙니다`,
         };
   }
+  // 화면의 글을 읽는 동작도 허용 도메인 안에서만 한다.
+  if (action.tool === 'read_text' || (action.tool === 'summarize' && action.args.source === 'page')) {
+    if (!hostAllowed(snap.url, skill.domains)) {
+      return { ok: false, reason: `현재 페이지(${snap.url})는 허용 도메인 밖이라 글을 읽지 않습니다` };
+    }
+    if (action.tool === 'read_text' && action.args.ref !== undefined && !findElement(snap, action.args.ref)) {
+      return { ok: false, reason: `ref ${action.args.ref} 이(가) 현재 화면에 없습니다` };
+    }
+    return { ok: true };
+  }
   if (
     action.tool !== 'click' &&
     action.tool !== 'type' &&

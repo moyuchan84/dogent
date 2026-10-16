@@ -8,6 +8,11 @@ export type Risk = (typeof RISK_LEVELS)[number];
 const InputSpec = z.object({
   name: z.string().regex(/^[a-z][a-z0-9_]*$/),
   label: z.string().optional(),
+  /**
+   * 이 값이 무엇인지 한두 문장. 요청을 해석할 때 모델이 요청에서 이 값을 뽑는 데 쓰고, 입력 폼에도 보인다.
+   * 예: "검색창에 넣을 값. Lot ID나 제품코드 일부"
+   */
+  description: z.string().optional(),
   type: z.enum(['string', 'number', 'text', 'enum', 'ip', 'port', 'file']).default('string'),
   required: z.boolean().default(false),
   default: z.union([z.string(), z.number()]).optional(),
