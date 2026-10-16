@@ -30,16 +30,28 @@ const GRADE_LABEL: Record<LintReport['grade'], string> = {
 };
 /** 가져올 수 있는 SKILL.md의 최대 크기. 스킬은 보통 몇 KB다. */
 const MAX_IMPORT_BYTES = 200_000;
+/** 화면 정리를 처음 열 때의 지시 */
+const DEFAULT_SUMMARY = '이 화면의 주요 내용을 다섯 줄 이내로 정리한다';
 /** 녹화 중 새로 열린 화면에도 녹화를 거는 주기 */
 const REARM_MS = 500;
 
 function describeStep(s: AuthorStep): string {
+  const text = describeAction(s);
+  return s.note ? `${text} · 목적: ${s.note}` : text;
+}
+
+function describeAction(s: AuthorStep): string {
+  if (s.kind === 'goal') return `말로 적은 단계: ${s.text}`;
+  if (s.kind === 'summarize') {
+    const what = s.source === 'page' ? '화면의 글' : `"${s.source.table}" 표${s.source.next ? ` ("${s.source.next}" 버튼으로 끝 페이지까지)` : ''}`;
+    return `${what} 정리: ${s.instruction}`;
+  }
   if (s.kind === 'click') {
     const shown = (s.dialogs ?? []).map((d) => (d.kind === 'alert' ? `알림 "${d.message}"` : `"${d.message}"에 ${d.accepted ? '확인' : '취소'}`));
     return `"${s.name || '(이름 없음)'}"${s.row ? ` (${s.row} 행)` : ''} 누름${s.expect ? ` → "${s.expect}" 나타남` : ''}${shown.length ? ` → ${shown.join(', ')}` : ''}`;
   }
   if (s.kind === 'fill') return '"' + s.name + '" 표에 엑셀 채우기 (' + s.columns.join(', ') + ')' + (s.add ? ', 모자라면 "' + s.add + '"' : '');
-  if (s.kind === 'extract') return `"${s.name}" 표 읽기${s.next ? ` ("${s.next}"로 끝 페이지까지)` : ''}`;
+  if (s.kind === 'extract') return `"${s.name}" 표 읽기${s.next ? ` ("${s.next}" 버튼으로 끝 페이지까지)` : ''}`;
   return `"${s.name || '(이름 없음)'}"에 ${s.kind === 'type' ? '입력' : '선택'}: ${s.value}`;
 }
 
@@ -81,6 +93,16 @@ export function Author(props: { bundledIds: string[]; drafts: DraftSkill[]; onCh
   const [seen, setSeen] = useState<PageDialog[]>([]);
   const [paging, setPaging] = useState<{ table: string; buttons: string[] } | null>(null);
   const [source, setSource] = useState('');
+  // 목적을 적고 있는 조작의 번호
+  const [noteOpen, setNoteOpen] = useState<number | null>(null);
+  // 녹화 중에 끼워 넣는 단계: 말로 적은 단계, 화면 정리
+  const [adder, setAdder] = useState<null | 'goal' | 'summarize'>(null);
+  const [goalText, setGoalText] = useState('');
+  const [sumText, setSumText] = useState(DEFAULT_SUMMARY);
+  const [sumSource, setSumSource] = useState('page');
+  const [sumTables, setSumTables] = useState<string[]>([]);
+  const [sumNext, setSumNext] = useState<string | null>(null);
+  const [sumAll, setSumAll] = useState(true);
   const [notes, setNotes] = useState<string[]>([]);
   const [notice, setNotice] = useState('');
   // 모델로 다듬은 결과와, 되돌릴 때 쓸 다듬기 전 원문
@@ -199,6 +221,39 @@ export function Author(props: { bundledIds: string[]; drafts: DraftSkill[]; onCh
     }
   }
 
+  /** 녹화한 조작 하나를 고친다 (입력받기, 이름, 설명, 목적). */
+  function update(i: number, patch: Partial<AuthorStep> & Record<string, unknown>) {
+    setSteps(steps.map((x, j) => (j === i ? ({ ...x, ...patch } as AuthorStep) : x)));
+  }
+
+  function addGoal() {
+    if (!goalText.trim()) return;
+    setSteps([...steps, { kind: 'goal', text: goalText.trim() }]);
+    setGoalText('');
+    setAdder(null);
+  }
+
+  /** 화면 정리: 지금 화면의 표를 골라 정리하거나, 화면의 글을 정리한다. */
+  async function openSummarize() {
+    const s = session.current;
+    if (!s) return;
+    const snap = await s.browser.snapshot();
+    s.last = snap;
+    setSumTables(snap.items.flatMap((i) => (i.kind === 'el' && i.role === 'table' ? [i.name] : [])));
+    setSumNext(nextButtons(snap)[0] ?? null);
+    setSumSource('page');
+    setTables(null);
+    setAdder('summarize');
+  }
+
+  function addSummarize() {
+    if (!sumText.trim()) return;
+    const source = sumSource === 'page' ? ('page' as const) : { table: sumSource, ...(sumNext && sumAll ? { next: sumNext } : {}) };
+    setSteps([...steps, { kind: 'summarize', instruction: sumText.trim(), source }]);
+    setSumText(DEFAULT_SUMMARY);
+    setAdder(null);
+  }
+
   async function stopRecording() {
     const s = session.current;
     if (!s) return;
@@ -290,36 +345,124 @@ export function Author(props: { bundledIds: string[]; drafts: DraftSkill[]; onCh
             <ol className="rec-list">
               <li className="minor">시작 화면: {session.current?.start.heading ?? session.current?.start.url}</li>
               {steps.map((s, i) => (
-                <li key={i}>
+                <li key={i} data-step={i}>
                   <span>{describeStep(withDialogs(steps, seen)[i])}</span>
                   {(s.kind === 'type' || s.kind === 'select') && (
                     <label className="check">
-                      <input
-                        type="checkbox"
-                        data-variable={i}
-                        checked={s.variable}
-                        onChange={(e) => setSteps(steps.map((x, j) => (j === i ? ({ ...x, variable: e.target.checked } as AuthorStep) : x)))}
-                      />
+                      <input type="checkbox" data-variable={i} checked={s.variable} onChange={(e) => update(i, { variable: e.target.checked })} />
                       실행할 때마다 입력받기
                     </label>
                   )}
-                  <button className="ghost" title="이 조작을 뺀다" onClick={() => setSteps(steps.filter((_, j) => j !== i))}>
-                    빼기
-                  </button>
+                  {(s.kind === 'type' || s.kind === 'select') && s.variable && (
+                    <div className="param">
+                      <input
+                        data-param-name={i}
+                        value={s.param?.name ?? ''}
+                        placeholder="이름 (영문, 예: keyword)"
+                        onChange={(e) => update(i, { param: { ...s.param, name: e.target.value.trim() } })}
+                      />
+                      <input
+                        data-param-desc={i}
+                        value={s.param?.description ?? ''}
+                        placeholder="설명 (예: 검색창에 넣을 값)"
+                        onChange={(e) => update(i, { param: { ...s.param, description: e.target.value } })}
+                      />
+                    </div>
+                  )}
+                  {noteOpen === i && (
+                    <input
+                      className="note-input"
+                      data-note={i}
+                      autoFocus
+                      value={s.note ?? ''}
+                      placeholder="이 조작의 목적 (예: 검색 결과를 띄운다)"
+                      onChange={(e) => update(i, { note: e.target.value })}
+                      onKeyDown={(e) => e.key === 'Enter' && setNoteOpen(null)}
+                      onBlur={() => setNoteOpen(null)}
+                    />
+                  )}
+                  <span className="rec-actions">
+                    {s.kind !== 'goal' && (
+                      <button className="ghost" data-note-open={i} title="이 조작이 무엇을 하려는 것인지 적습니다" onClick={() => setNoteOpen(noteOpen === i ? null : i)}>
+                        목적
+                      </button>
+                    )}
+                    <button className="ghost" title="이 조작을 뺀다" onClick={() => setSteps(steps.filter((_, j) => j !== i))}>
+                      빼기
+                    </button>
+                  </span>
                 </li>
               ))}
             </ol>
-            <div className="row">
-              <button id="rec-table" className="secondary" onClick={() => findTables('extract')}>
+            <div className="row wrap">
+              <button id="rec-table" className="secondary" onClick={() => (setAdder(null), findTables('extract'))}>
                 화면의 표 읽기 추가
               </button>
-              <button id="rec-fill" className="secondary" title="실행할 때 받은 엑셀 파일의 행을 화면의 표에 채웁니다" onClick={() => findTables('fill')}>
+              <button id="rec-fill" className="secondary" title="실행할 때 받은 엑셀 파일의 행을 화면의 표에 채웁니다" onClick={() => (setAdder(null), findTables('fill'))}>
                 엑셀로 표 채우기 추가
+              </button>
+              <button id="rec-goal" className="secondary" title="클릭 대신 할 일을 문장으로 넣습니다. 실행할 때 모델이 화면을 보고 수행합니다" onClick={() => (setTables(null), setAdder(adder === 'goal' ? null : 'goal'))}>
+                말로 단계 추가
+              </button>
+              <button id="rec-sum" className="secondary" title="지금 화면의 글이나 표를 정리해 결과 보고에 넣습니다" onClick={() => void openSummarize()}>
+                화면 정리 추가
               </button>
               <button id="rec-stop" onClick={stopRecording}>
                 녹화 끝
               </button>
             </div>
+            {adder === 'goal' && (
+              <div className="adder" id="goal-form">
+                <textarea
+                  id="goal-text"
+                  rows={2}
+                  value={goalText}
+                  placeholder="예: 결과 중 상태가 HOLD인 Lot을 열어 사유를 확인한다. 마지막에 넣으면 그 단계가 결과를 정리해 보고합니다"
+                  onChange={(e) => setGoalText(e.target.value)}
+                />
+                <div className="row">
+                  <button id="goal-add" disabled={!goalText.trim()} onClick={addGoal}>
+                    단계로 넣기
+                  </button>
+                  <button className="ghost" onClick={() => setAdder(null)}>
+                    취소
+                  </button>
+                </div>
+              </div>
+            )}
+            {adder === 'summarize' && (
+              <div className="adder" id="sum-form">
+                <label>
+                  무엇을 정리할까요?
+                  <select id="sum-source" value={sumSource} onChange={(e) => setSumSource(e.target.value)}>
+                    <option value="page">화면의 글</option>
+                    {sumTables.map((t) => (
+                      <option key={t} value={t}>
+                        "{t}" 표
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {sumSource !== 'page' && sumNext && (
+                  <label className="check">
+                    <input id="sum-all" type="checkbox" checked={sumAll} onChange={(e) => setSumAll(e.target.checked)} />"{sumNext}" 버튼으로 끝 페이지까지 읽어서 정리
+                  </label>
+                )}
+                <label>
+                  정리 기준
+                  <textarea id="sum-text" rows={2} value={sumText} onChange={(e) => setSumText(e.target.value)} />
+                </label>
+                <p className="hint">정리할 자료(화면 글 12,000자, 표 앞 200행까지)를 사내 모델에 보냅니다. 정리 기준에 {'{'}입력 이름{'}'}을 쓰면 실행할 때 값이 들어갑니다.</p>
+                <div className="row">
+                  <button id="sum-add" disabled={!sumText.trim()} onClick={addSummarize}>
+                    정리 단계로 넣기
+                  </button>
+                  <button className="ghost" onClick={() => setAdder(null)}>
+                    취소
+                  </button>
+                </div>
+              </div>
+            )}
             {tables &&
               (tables.length === 0 ? (
                 <p className="hint">이 화면에서 읽을 수 있는 표를 찾지 못했습니다.</p>
