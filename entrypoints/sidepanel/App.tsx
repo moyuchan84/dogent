@@ -23,6 +23,9 @@ import {
   type LlmSettings,
   type RunEvent,
   type RunResult,
+  type HistoryEntry,
+  type RunAsSkill,
+  stepsFromRun,
   type Skill,
 } from '@/src/core';
 import { ChromeBrowser } from '@/src/ext/browser';
@@ -146,6 +149,9 @@ export function App() {
   const [running, setRunning] = useState(false);
   const [events, setEvents] = useState<RunEvent[]>([]);
   const [result, setResult] = useState<RunResult | null>(null);
+  // 끝까지 잘 된 자유 요청. "이 실행을 스킬로 저장"으로 스킬 만들기에 넘긴다.
+  const [lastFree, setLastFree] = useState<{ request: string; tabUrl: string; entries: HistoryEntry[] } | null>(null);
+  const [seed, setSeed] = useState<RunAsSkill | null>(null);
   const [previews, setPreviews] = useState<Dataset[]>([]);
   const [question, setQuestion] = useState<{ text: string; answer: (a: string) => void } | null>(null);
   const [answer, setAnswer] = useState('');
@@ -300,6 +306,7 @@ export function App() {
     setEvents([]);
     setResult(null);
     setPreviews([]);
+    setLastFree(null);
 
     const abort = new AbortController();
     abortRef.current = abort;
@@ -371,6 +378,9 @@ export function App() {
     setApproval(null);
     setResult(res);
     setPreviews(datasets.list());
+    if (isFree && res.status === 'done') {
+      setLastFree({ request: String(values.request ?? ''), tabUrl, entries: collected.flatMap((e) => (e.type === 'action' ? [e.entry] : [])) });
+    }
     // 초안이 끝까지 돌면 시험 실행 통과로 기록한다. 배포 요청의 조건 중 하나다.
     if (isDraft(skill.id) && (res.status === 'done' || res.status === 'dryrun')) {
       await markTrial(skill.id, res.status);
@@ -648,7 +658,7 @@ export function App() {
       <div className="main" hidden={sheet !== null}>
       {tab === 'history' && <History names={Object.fromEntries([...skills.map((s) => [s.id, s.name]), [FREE_SKILL_ID, '자유 요청']])} onExport={exportLog} />}
 
-      {tab === 'author' && <Author bundledIds={bundled.map((s) => s.id)} drafts={drafts} onChange={reloadDrafts} llm={() => new OpenAiCompatClient(effectiveSettings(settings), undefined, 2048)} />}
+      {tab === 'author' && <Author bundledIds={bundled.map((s) => s.id)} drafts={drafts} onChange={reloadDrafts} llm={() => new OpenAiCompatClient(effectiveSettings(settings), undefined, 2048)} seed={seed} onSeedTaken={() => setSeed(null)} />}
 
       {skillErrors.map((e) => (
         <p key={e} className="notice error">
@@ -984,6 +994,21 @@ export function App() {
               </div>
               <p>{result.message}</p>
               {result.files.length > 0 && <p className="hint">저장한 파일: {result.files.join(', ')}</p>}
+              {lastFree && !running && (
+                <div className="row wrap">
+                  <button
+                    id="save-as-skill"
+                    className="secondary"
+                    title="방금 한 동작을 스킬 초안으로 옮깁니다. 요청에 나온 값은 실행할 때마다 받는 값으로 제안합니다"
+                    onClick={() => {
+                      setSeed(stepsFromRun(lastFree));
+                      setTab('author');
+                    }}
+                  >
+                    이 실행을 스킬로 저장
+                  </button>
+                </div>
+              )}
             </div>
           )}
 

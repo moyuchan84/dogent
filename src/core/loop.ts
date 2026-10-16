@@ -4,13 +4,14 @@ import { DatasetStore } from './dataset';
 import { buildWorkbook, readDownloadedTable } from './excel';
 import { extractPages } from './pages';
 import { PathMemo } from './paths';
-import { SUBMIT_PATTERN, checkAction, findElement, hostAllowed } from './policy';
+import { SUBMIT_PATTERN, checkAction, findElement, hostAllowed, optionsOf } from './policy';
 import { buildSummarizeMessages, buildTurnMessages } from './prompt';
 import { checkInputRules, extractSteps, fillTemplate, fillValue, type Skill, type SkillInputs } from './skill';
 import { renderSnapshot } from './snapshot';
 import { transform } from './transform';
 import type {
   ActResult,
+  ActionTarget,
   ApprovalRequest,
   BrowserPort,
   ConfirmPolicy,
@@ -557,6 +558,7 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps, memo: PathM
         ok: outcome.ok,
         result: outcome.result,
         by,
+        ...targetsOf(action.args as Record<string, unknown>, snap),
       };
       history.push(entry);
       emit({ type: 'action', entry });
@@ -587,4 +589,18 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps, memo: PathM
     if (signal?.aborted) return end('stopped', '사용자가 중지했습니다');
     return end('error', (e as Error).message);
   }
+}
+
+/** 동작이 가리킨 요소의 이름을 남긴다. 실행을 스킬로 저장할 때 번호 대신 이 이름을 쓴다. */
+function targetsOf(args: Record<string, unknown>, snap: PageSnapshot): { targets?: Record<string, ActionTarget> } {
+  const targets: Record<string, ActionTarget> = {};
+  for (const key of ['ref', 'next_ref', 'add_ref']) {
+    if (typeof args[key] !== 'number') continue;
+    const el = findElement(snap, args[key] as number);
+    if (!el || !el.name.trim()) continue;
+    const same = snap.items.filter((i) => i.kind === 'el' && i.role === el.role && i.name === el.name).length;
+    const options = optionsOf(el);
+    targets[key] = { role: el.role, name: el.name, dup: same > 1, ...(el.row ? { row: el.row } : {}), ...(options ? { options } : {}) };
+  }
+  return Object.keys(targets).length ? { targets } : {};
 }

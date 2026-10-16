@@ -466,6 +466,56 @@ try {
     return `${r.sec}초`;
   });
 
+  await scenario('자유 요청 → 스킬로 저장: 잘 된 실행을 초안으로 옮기고, 요청에 나온 값을 매개변수로 받아 다른 라인으로 실행', async (openPages) => {
+    const { target, panel } = await openPages('/wip.html');
+    await panel.selectOption('#skill', 'free');
+    await panel.fill('[data-input=request]', '8라인을 선택하고 조회해서 총 몇 건인지 알려줘');
+    const r = await run(panel);
+    check(r, () => assert.equal(r.status, 'done'));
+
+    // 결과 아래 버튼으로 스킬 만들기에 넘긴다. 녹화 목록처럼 단계가 보이고, 요청에 나온 "8라인"은 매개변수로 제안된다.
+    await panel.click('#save-as-skill');
+    const rec = panel.locator('#rec[data-state=review]');
+    await rec.waitFor();
+    const list = await rec.innerText();
+    assert.match(list, /"라인"에 선택: 8라인/);
+    assert.match(list, /"조회" 누름/);
+    assert.match(list, /다음 요청에 답한다: \{line\}을 선택하고 조회해서 총 몇 건인지 알려줘/);
+    assert.equal(await panel.inputValue('[data-param-name="0"]'), 'line');
+    assert.equal(await panel.inputValue('#a-desc'), '8라인을 선택하고 조회해서 총 몇 건인지 알려줘');
+    // 이름을 바꾸면 마지막 단계의 자리표시자도 따라 바뀐다.
+    await panel.fill('[data-param-name="0"]', 'fab_line');
+    await panel.fill('[data-param-desc="0"]', '조회할 라인 (예: 7라인)');
+    await panel.locator('#a-id').click();
+    assert.match(await rec.innerText(), /\{fab_line\}을 선택하고/);
+    await panel.screenshot({ path: join(ROOT, 'test-results/panel-run-to-skill.png'), fullPage: true });
+
+    await panel.fill('#a-id', 'wip-count-run');
+    await panel.fill('#a-name', '라인 재공 건수');
+    await panel.fill('#a-owner', '생산관리');
+    await panel.click('#review-draft');
+    await panel.locator('#lint').waitFor();
+    const source = await panel.inputValue('#draft-src');
+    assert.match(source, /name: fab_line/);
+    assert.match(source, /`\{"ref":"라인","value":"\{fab_line\}"\}`/);
+    assert.notEqual(await panel.locator('#lint').getAttribute('data-grade'), 'F', await panel.locator('#lint').innerText());
+    await panel.click('#draft-save');
+
+    // 저장한 초안을 다른 라인으로 실행한다.
+    await target.reload();
+    await panel.click('#tab-run');
+    await panel.selectOption('#skill', 'wip-count-run');
+    await panel.selectOption('[data-input=fab_line]', '7라인').catch(() => panel.fill('[data-input=fab_line]', '7라인'));
+    const again = await run(panel);
+    const want = generateWip('7라인').length;
+    check(again, () => {
+      assert.equal(again.status, 'done');
+      assert.match(again.text, new RegExp(`총 ${want}건`));
+    });
+    assert.equal(await target.locator('#line').inputValue(), '7라인');
+    return `${r.sec}초 → 스킬 ${again.sec}초`;
+  });
+
   await scenario('자유 요청: 쓰기를 허용하지 않으면 저장 버튼을 누르지 않음', async (openPages) => {
     const { target, panel } = await openPages('/wip.html');
     await panel.selectOption('#skill', 'free');
