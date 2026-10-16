@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <title>Dogent (Do-Agent)</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2667e0"/>
+      <stop offset="1" stop-color="#1544a3"/>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="120" height="120" rx="28" fill="url(#bg)"/>
+  <!-- D: 업무 화면(문서) -->
+  <path fill="#fff" fill-rule="evenodd"
+        d="M28 24h28a40 40 0 0 1 0 80H28z M44 40h12a24 24 0 0 1 0 48H44z"/>
+  <!-- 클릭하는 포인터: 대신 해 주는 에이전트 -->
+  <path d="M64 56 L64 112 L77 99 L86 118 L96 113.5 L87 95 L105 95 Z"
+        fill="#ffc93c" stroke="#10306f" stroke-width="6" stroke-linejoin="round"/>
+</svg>

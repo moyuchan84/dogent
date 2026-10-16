@@ -53,7 +53,8 @@ a { color: var(--accent); }
   padding-right: max(16px, env(safe-area-inset-right, 0px));
 }
 nav.toc { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 24px); align-self: start; font-size: 14px; }
-nav.toc .brand { font-weight: 700; font-size: 17px; margin-bottom: 14px; }
+nav.toc .brand { font-weight: 700; font-size: 17px; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+nav.toc .brand svg { flex: none; }
 nav.toc ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
 nav.toc a { display: block; padding: 5px 10px; border-radius: 6px; color: var(--muted); text-decoration: none; }
 nav.toc a:hover, nav.toc a:focus-visible { background: var(--accent-soft); color: var(--accent); outline: none; }
@@ -146,7 +147,7 @@ footer { margin-top: 64px; color: var(--muted); font-size: 13px; }
 
 <div class="wrap">
   <nav class="toc" aria-label="목차">
-    <div class="brand">Dogent 따라하기</div>
+    <div class="brand"><svg width="26" height="26" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"> <defs> <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"> <stop offset="0" stop-color="#2667e0"/> <stop offset="1" stop-color="#1544a3"/> </linearGradient> </defs> <rect x="4" y="4" width="120" height="120" rx="28" fill="url(#bg)"/>  <path fill="#fff" fill-rule="evenodd" d="M28 24h28a40 40 0 0 1 0 80H28z M44 40h12a24 24 0 0 1 0 48H44z"/>  <path d="M64 56 L64 112 L77 99 L86 118 L96 113.5 L87 95 L105 95 Z" fill="#ffc93c" stroke="#10306f" stroke-width="6" stroke-linejoin="round"/> </svg> <span>Dogent 따라하기</span></div>
     <ol>
       <li class="grp">준비</li>
       <li><a href="#setup">1. 설치와 빌드</a></li>
@@ -173,7 +174,7 @@ footer { margin-top: 64px; color: var(--muted); font-size: 13px; }
       <div class="route">
         <div><b>① 준비</b><span>설치 · 빌드 · 확장 로드 (10분)</span></div>
         <div><b>② 모의 환경</b><span>A~E 시나리오 따라하기 (20분)</span></div>
-        <div><b>③ 사내 연결</b><span>.env.local · 허용 사이트 · 다시 빌드</span></div>
+        <div><b>③ 사내 연결</b><span>.env.company.local 하나 · build:company</span></div>
         <div><b>④ 내 시나리오</b><span>녹화 → 품질 검사 → 시험 실행</span></div>
       </div>
     </header>
@@ -206,7 +207,7 @@ pnpm test           <span class="c"># 168개 통과면 정상 (약 1분)</span><
           <ol>
             <li>주소창에 <code>chrome://extensions</code></li>
             <li>오른쪽 위 <b>개발자 모드</b> 켜기</li>
-            <li><b>압축해제된 확장 프로그램 로드</b> → 저장소의 <code>.output/chrome-mv3</code> 폴더 선택</li>
+            <li><b>압축해제된 확장 프로그램 로드</b> → 저장소의 <code>.output/chrome-mv3</code> 폴더 선택 (집·회사 설정으로 빌드했으면 <code>-home</code>·<code>-company</code>가 붙은 폴더)</li>
             <li>툴바의 퍼즐 아이콘에서 Dogent를 고정해 두면 편합니다</li>
           </ol>
           <div class="note warn"><b>개발자 모드가 회색으로 막혀 있으면</b> 회사 Chrome 정책입니다. IT에 확장 로드 예외를 요청해야 합니다.</div>
@@ -527,52 +528,118 @@ pnpm build          <span class="c"># 그다음 chrome://extensions 에서 새�
     <!-- 사내 -->
     <section class="part" id="company">
       <h2>3. 사내 Gemma와 업무 시스템에 연결</h2>
-      <p class="lead">모의 환경에서 흐름을 확인했으면 모델과 대상 사이트만 바꿉니다. 바꾼 뒤에는 반드시 다시 빌드하고 확장을 새로고침합니다.</p>
+      <p class="lead">집과 회사는 <b>설정 파일 하나만</b> 다릅니다. 코드와 명령은 같아서, 집에서 개발한 것을 받아 회사에서 설정 파일만 두고 빌드하면 됩니다. 설정 파일(<code>*.local</code>)은 Git에 올라가지 않습니다.</p>
+      <div class="step wide">
+        <div class="text">
+          <div class="tbl"><table>
+            <tr><th></th><th>집 (로컬 Ollama)</th><th>회사 (사내 Gemma)</th></tr>
+            <tr><td>설정 파일</td><td><code>.env.home.local</code><br>← <code>.env.home.example</code> 복사</td><td><code>.env.company.local</code><br>← <code>.env.company.example</code> 복사</td></tr>
+            <tr><td>빌드</td><td><code>pnpm build:home</code></td><td><code>pnpm build:company</code></td></tr>
+            <tr><td>로드할 폴더</td><td><code>.output/chrome-mv3-home</code></td><td><code>.output/chrome-mv3-company</code></td></tr>
+            <tr><td>모델 호출</td><td>Ollama 중계 서버(<code>pnpm ollama:proxy</code>)</td><td>사내 게이트웨이, 헤더로 키·사용자 전달</td></tr>
+          </table></div>
+          <div class="note ok">빌드하면 터미널에 <b>빌드 설정</b> 요약이 찍힙니다. 모델 주소, 모델 이름, 요청 헤더 이름, 사이트, 로드할 폴더를 보고 맞는지 확인한 뒤 로드하세요. 키 값은 찍지 않습니다.</div>
+        </div>
+      </div>
       <div class="step">
         <div class="text">
-          <h3><span class="num">1</span>모델 접속 정보: <code>.env.local</code></h3>
-<pre><code><span class="c"># .env.example 을 복사</span>
-copy .env.example .env.local
-
-WXT_LLM_BASE_URL=https://(사내 Gemma 주소)/v1
-WXT_LLM_API_KEY=(공용 키)
-WXT_LLM_MODEL=(모델 이름)</code></pre>
-          <div class="note risk"><b>.env.local과 빌드 결과물에는 키가 그대로 들어갑니다.</b> Git에 올리지 말고, 확장 파일은 사내에서만 나눠 주세요.</div>
-          <h3 style="margin-top:18px"><span class="num">2</span>조작할 사이트: <code>dogent.config.ts</code></h3>
-<pre><code>sitePermissions: [
-  'http://localhost:4173/*',          <span class="c">// 모의 사이트 (연습용으로 남겨 둬도 됨)</span>
-  'https://(사내 업무 시스템)/*',
-],</code></pre>
-          <p>여기 없는 사이트는 에이전트가 아예 읽거나 조작하지 못합니다. 업무가 iframe·팝업으로 다른 호스트를 열면 그 호스트도 넣습니다.</p>
-          <h3 style="margin-top:18px"><span class="num">3</span>다시 빌드하고 설정 확인</h3>
-<pre><code>pnpm build          <span class="c"># → chrome://extensions 에서 Dogent 새로고침</span></code></pre>
-          <p>패널 → <b>설정</b>에서 확인할 것:</p>
-          <ul>
-            <li><b>JSON 출력 모드</b>: 사내 API가 <code>response_format</code>을 지원하면 켜기 (형식 오류가 줄어듦)</li>
-            <li><b>제한 시간 배율</b>: 응답이 60초를 넘기면 2~3으로</li>
-            <li>API 키 칸을 비워 두면 빌드에 들어간 공용 키를 씁니다</li>
-          </ul>
+          <h3><span class="num">1</span>회사 설정 파일 채우기</h3>
+<pre><code>copy .env.company.example .env.company.local
+notepad .env.company.local</code></pre>
+          <p>API 제공 측에서 받은 값 세 개와 사용자 유형, 업무 시스템 주소를 채웁니다.</p>
+<pre><code>WXT_LLM_BASE_URL=(api_base_url)      <span class="c"># /chat/completions 앞까지</span>
+WXT_LLM_API_KEY=(credential_key)     <span class="c"># 헤더 틀의 {key}</span>
+WXT_LLM_MODEL=(model)
+WXT_LLM_USER_TYPE=(user_type)        <span class="c"># 헤더 틀의 {userType}</span>
+WXT_SITE_PERMISSIONS=https://(업무 시스템 호스트)/*</code></pre>
+          <p>요청 헤더 틀은 예시 파일에 이미 들어 있습니다. <code>send-system-name</code> 값만 등록한 시스템 이름으로 바꿉니다.</p>
+<pre><code>WXT_LLM_HEADERS='{"x-dep-ticket":"{key}","send-system-name":"Dogent",
+  "user-id":"{userId}","user-type":"{userType}",
+  "prompt-msg-id":"{uuid}","completion-msg-id":"{uuid}",
+  "accept":"application/json","content-type":"application/json"}'
+<span class="c"># 실제 파일에서는 한 줄로 적습니다</span></code></pre>
+          <div class="tbl"><table>
+            <tr><th>자리표시자</th><th>들어가는 값</th></tr>
+            <tr><td><code>{key}</code></td><td>WXT_LLM_API_KEY (credential_key)</td></tr>
+            <tr><td><code>{userId}</code></td><td>사용자 ID(사내 SSO ID). 사람마다 달라서 패널 설정에서 각자 입력</td></tr>
+            <tr><td><code>{userType}</code></td><td>WXT_LLM_USER_TYPE</td></tr>
+            <tr><td><code>{uuid}</code></td><td>요청마다 새로 만든 UUID (메시지 ID)</td></tr>
+          </table></div>
+          <p>헤더 틀이 있으면 <code>Authorization: Bearer</code>는 보내지 않습니다. 틀의 형식이 틀리면 빌드가 멈추고 어디가 틀렸는지 알려 줍니다.</p>
+          <div class="note risk"><b>.env.company.local과 빌드 결과물에는 키가 그대로 들어갑니다.</b> Git·메일·메신저로 옮기지 말고, 회사 PC에서 직접 만드세요.</div>
         </div>
         <div class="shots">
           <figure>
-            <div class="frame panel"><img src="guide-img/03-panel-settings.png" alt="패널 설정 화면: API 주소, 모델 이름, JSON 출력 모드, 제한 시간 배율" loading="lazy"></div>
-            <figcaption>패널 → 설정</figcaption>
+            <div class="frame panel"><img src="guide-img/25-settings-company.png" alt="회사 빌드의 설정 화면: 빌드 이름, 헤더 이름, 사용자 ID, 사용자 유형, 연결 시험 결과" loading="lazy"></div>
+            <figcaption>회사 빌드의 설정 화면 (집에서 모의 게이트웨이로 리허설한 모습)</figcaption>
+          </figure>
+        </div>
+      </div>
+      <div class="step">
+        <div class="text">
+          <h3><span class="num">2</span>빌드하고 로드</h3>
+<pre><code>pnpm build:company</code></pre>
+<pre><code>빌드 설정: company
+  모델 API   https://(api_base_url)
+  모델 이름  (model)
+  API 키     있음 (빌드에 포함)
+  요청 헤더  x-dep-ticket, send-system-name, user-id, user-type,
+             prompt-msg-id, completion-msg-id, accept, content-type
+  사이트     http://localhost:4173/*, https://(업무 시스템)/*
+  확장 폴더  .output/chrome-mv3-company  ← 이 폴더를 로드</code></pre>
+          <p><code>chrome://extensions</code>에서 <b>.output/chrome-mv3-company</b>를 로드합니다. 기본 빌드(<code>.output/chrome-mv3</code>)와 폴더가 다릅니다.</p>
+          <h3 style="margin-top:18px"><span class="num">3</span>사용자 ID 넣고 연결 시험</h3>
+          <ol>
+            <li>사이드 패널 → <b>설정</b>. 맨 위에 "<b>company</b> 설정으로 빌드되었습니다"가 보이는지 확인</li>
+            <li><b>사용자 ID</b>에 사내 SSO ID 입력 (사용자 유형은 빌드 값이 채워져 있음)</li>
+            <li><b>연결 시험</b> → 초록색 "연결됨 · 모델 답: …"이 나오면 <b>저장</b></li>
+          </ol>
+          <div class="tbl"><table>
+            <tr><th>연결 시험 결과</th><th>할 일</th></tr>
+            <tr><td>필요한 값이 비어 있습니다: 사용자 ID</td><td>사용자 ID 칸 채우기</td></tr>
+            <tr><td>모델 API 오류 401 / 403</td><td>credential_key, 사용자 ID·유형, send-system-name 값 확인</td></tr>
+            <tr><td>모델 API 오류 404</td><td>WXT_LLM_BASE_URL을 <code>/chat/completions</code> 앞까지만 적었는지</td></tr>
+            <tr><td>모델 API에 닿지 못했습니다</td><td>주소, 다시 빌드했는지, 사내망·프록시·인증서</td></tr>
+            <tr><td>choices[0].message.content가 없습니다</td><td>응답 형식이 OpenAI 호환이 아님 → <code>src/core/llm.ts</code> 수정 필요 (응답 모양을 개발 담당에게)</td></tr>
+          </table></div>
+          <p>설정 화면에서 바꾼 값만 브라우저에 저장되고, 바꾸지 않은 칸은 빌드 값을 따릅니다. 꼬였으면 <b>빌드 기본값으로 되돌리기</b>를 누릅니다.</p>
+        </div>
+        <div class="shots">
+          <div class="note warn" style="margin:0"><b>집에서 회사 빌드를 리허설하려면</b><br>
+            <code>.env.company.local</code>의 주소를 <code>http://localhost:4174/v1</code>로 두고 빌드한 뒤, 모의 모델을 헤더 검사 모드로 띄웁니다. 헤더가 빠지면 401로 거절하고 받은 헤더를 터미널에 찍습니다.</div>
+<pre><code><span class="c"># PowerShell</span>
+$env:MOCK_LLM_REQUIRE_HEADERS='x-dep-ticket,user-id,user-type,prompt-msg-id,completion-msg-id'
+pnpm mock:llm</code></pre>
+        </div>
+      </div>
+      <div class="step">
+        <div class="text">
+          <h3><span class="num">4</span>집 설정 (Ollama)</h3>
+<pre><code>copy .env.home.example .env.home.local
+pnpm build:home     <span class="c"># → .output/chrome-mv3-home 로드</span>
+pnpm mock:site      <span class="c"># 터미널 1</span>
+pnpm ollama:proxy   <span class="c"># 터미널 2</span></code></pre>
+          <p>모델 이름(<code>WXT_LLM_MODEL=gemma3:12b</code>), JSON 출력 모드, 제한 시간 배율이 파일에 들어 있어 패널 설정을 건드릴 필요가 없습니다.</p>
+        </div>
+        <div class="shots">
+          <figure>
+            <div class="frame panel"><img src="guide-img/03-panel-settings.png" alt="기본 빌드의 설정 화면" loading="lazy"></div>
+            <figcaption>기본 빌드(<code>pnpm build</code>)의 설정 화면</figcaption>
           </figure>
         </div>
       </div>
       <div class="step wide">
         <div class="text">
-          <h3><span class="num">4</span>모델 연결 확인</h3>
+          <h3><span class="num">5</span>모델이 제대로 판단하는지</h3>
           <ol>
-            <li><b>해석</b>: 모의 사이트(<code>wip.html</code>)를 그대로 두고 "7라인 재공 확인해줘" → <b>해석</b>. 라인 칸에 7라인이 채워지면 사내 Gemma 연결 성공입니다.</li>
+            <li><b>해석</b>: 모의 사이트(<code>wip.html</code>)에서 "7라인 재공 확인해줘" → <b>해석</b>. 라인 칸에 7라인이 채워지면 됩니다.</li>
             <li><b>자유 요청</b>: 스킬에서 자유 요청을 고르고 "8라인을 선택하고 조회해서 총 몇 건인지 알려줘". 모델이 화면을 보고 직접 판단해 조작하는지 확인합니다.</li>
           </ol>
-          <p>사내 API가 OpenAI 호환 <code>/chat/completions</code> 형식이 아니면 <code>src/core/llm.ts</code>만 고치면 됩니다.</p>
         </div>
       </div>
       <div class="step" id="inspect">
         <div class="text">
-          <h3><span class="num">5</span>사내 화면에서 <b>화면 점검</b></h3>
+          <h3><span class="num">6</span>사내 화면에서 <b>화면 점검</b></h3>
           <p>실제 업무 화면을 열고(로그인까지 마친 상태) 패널 위쪽의 <b>화면 점검</b>을 누릅니다. 화면을 바꾸지 않고 읽기만 해서, 녹화하기 전에 막히는 곳을 알려 줍니다.</p>
           <div class="tbl"><table>
             <tr><th>표시</th><th>뜻</th></tr>
@@ -632,11 +699,11 @@ WXT_LLM_MODEL=(모델 이름)</code></pre>
             <tr><th>증상</th><th>원인과 조치</th></tr>
             <tr><td>패널 상단에 스킬 형식 오류</td><td>SKILL.md 형식이 틀림. <code>pnpm skill:lint</code>로 어느 줄인지 확인</td></tr>
             <tr><td>"허용되지 않은 사이트" / 아무 동작도 안 함</td><td><b>화면 점검</b>을 눌러 막힘 항목을 봄. 대개 <code>sitePermissions</code>에 그 주소(또는 iframe 주소)가 없음. 넣고 다시 빌드, 확장 새로고침</td></tr>
-            <tr><td>해석을 눌러도 응답이 없거나 시간 초과</td><td>API 주소·키·모델 이름 확인. 느리면 설정의 제한 시간 배율을 올림. API 호스트는 <code>.env.local</code>의 주소면 자동 허용</td></tr>
+            <tr><td>해석을 눌러도 응답이 없거나 시간 초과</td><td>설정의 <b>연결 시험</b>으로 원인 확인. 느리면 제한 시간 배율(또는 WXT_LLM_TIMEOUT_SCALE)을 올림</td></tr>
             <tr><td>모델 응답 형식 오류가 반복</td><td>JSON 출력 모드를 켜 봄 (API가 지원할 때)</td></tr>
             <tr><td>로그인 화면 감지로 중단</td><td>세션이 끊김. 다시 로그인 후 실행</td></tr>
             <tr><td>표에 값이 안 들어감</td><td>입력 칸 없는 그리드일 수 있음. 붙여넣기로 자동 전환되며, 그리드가 값을 거르면 입력 후 대조에서 멈춤. 기록 내보내기로 확인</td></tr>
-            <tr><td>코드를 고쳤는데 반영이 안 됨</td><td><code>pnpm build</code> 후 <code>chrome://extensions</code>에서 새로고침, 패널을 닫았다 다시 열기</td></tr>
+            <tr><td>코드를 고쳤는데 반영이 안 됨</td><td>쓰는 빌드(<code>build:home</code> / <code>build:company</code>)로 다시 빌드했는지, 로드한 폴더가 그 빌드의 폴더인지 확인. <code>chrome://extensions</code>에서 새로고침, 패널을 닫았다 다시 열기</td></tr>
           </table></div>
         </div>
       </div>

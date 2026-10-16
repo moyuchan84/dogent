@@ -6,7 +6,10 @@
   "scripts": {
     "dev": "wxt",
     "build": "wxt build",
+    "build:home": "wxt build --mode home",
+    "build:company": "wxt build --mode company",
     "zip": "wxt zip",
+    "zip:company": "wxt zip --mode company",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "mock:site": "node mock-site/server.mjs",

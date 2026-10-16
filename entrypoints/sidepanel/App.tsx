@@ -5,6 +5,7 @@ import {
   FREE_SKILL_ID,
   buildFreeSkill,
   OpenAiCompatClient,
+  headerPlaceholders,
   parseSkill,
   planRequest,
   readTable,
@@ -27,7 +28,7 @@ import {
 import { ChromeBrowser } from '@/src/ext/browser';
 import { loadShared, refreshShared, type SharedState } from '@/src/ext/shared';
 import { loadBundledSkills } from '@/src/ext/skills';
-import { appendRun, clearPaths, effectiveSettings, hasBuiltInKey, loadDrafts, loadRuns, loadSettings, markTrial, pathStore, saveSettings, type DraftSkill } from '@/src/ext/storage';
+import { appendRun, builtInHeaders, resetSettings, clearPaths, effectiveSettings, hasBuiltInKey, loadDrafts, loadRuns, loadSettings, markTrial, pathStore, saveSettings, type DraftSkill } from '@/src/ext/storage';
 import { Author } from './Author';
 import { BatchView } from './Batch';
 import { History } from './History';
@@ -84,6 +85,23 @@ export function App() {
   const [settings, setSettings] = useState<LlmSettings | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showInspect, setShowInspect] = useState(false);
+  const [llmTest, setLlmTest] = useState('');
+  const placeholders = useMemo(() => headerPlaceholders(builtInHeaders), []);
+
+  /** 지금 설정 화면의 값으로 모델을 한 번 불러 본다. 저장하지 않아도 된다. */
+  async function testLlm() {
+    if (!settings) return;
+    setLlmTest('시험하는 중…');
+    const started = Date.now();
+    try {
+      const reply = await new OpenAiCompatClient(effectiveSettings(settings), undefined, 16).complete([
+        { role: 'user', content: '연결 확인입니다. "ok"라고만 답하세요.' },
+      ]);
+      setLlmTest(`연결됨 (${((Date.now() - started) / 1000).toFixed(1)}초) · 모델 답: ${reply.trim().slice(0, 60)}`);
+    } catch (e) {
+      setLlmTest((e as Error).message);
+    }
+  }
   const [skillId, setSkillId] = useState(FREE_SKILL_ID);
   const [form, setForm] = useState<Record<string, string>>({});
   const [request, setRequest] = useState('');
@@ -328,7 +346,10 @@ export function App() {
   return (
     <div className="app">
       <header>
-        <h1>Dogent</h1>
+        <h1 title="Dogent: Do-Agent, 업무를 대신 하는 에이전트">
+          <img className="logo" src="/icon/dogent.svg" alt="" width={22} height={22} />
+          Dogent
+        </h1>
         <div className="header-actions">
           <button className="ghost" onClick={exportLog} title="실행 기록을 JSON으로 저장">
             기록 내보내기
@@ -347,6 +368,10 @@ export function App() {
       {showSettings && (
         <section className="card">
           <h2>모델 설정</h2>
+          <p className="hint" id="build-mode">
+            이 확장은 <b>{import.meta.env.MODE === 'production' ? '기본' : import.meta.env.MODE}</b> 설정으로 빌드되었습니다. 비워 두거나
+            바꾸지 않은 칸은 빌드에 넣은 값을 씁니다.
+          </p>
           <label>
             API 주소
             <input
@@ -368,6 +393,33 @@ export function App() {
               onChange={(e) => setSettings({ ...settings, apiKey: e.target.value })}
             />
           </label>
+          {builtInHeaders && (
+            <p className="hint" id="llm-headers">
+              이 배포는 사내 게이트웨이용 헤더로 부릅니다: {Object.keys(builtInHeaders).join(', ')}
+            </p>
+          )}
+          {placeholders.has('userId') && (
+            <label>
+              사용자 ID <span className="req">*</span>
+              <input
+                id="llm-user-id"
+                value={settings.userId ?? ''}
+                placeholder="사내 SSO ID"
+                onChange={(e) => setSettings({ ...settings, userId: e.target.value.trim() })}
+              />
+            </label>
+          )}
+          {placeholders.has('userType') && (
+            <label>
+              사용자 유형 <span className="req">*</span>
+              <input
+                id="llm-user-type"
+                value={settings.userType ?? ''}
+                placeholder="API 제공 측에서 안내한 값"
+                onChange={(e) => setSettings({ ...settings, userType: e.target.value.trim() })}
+              />
+            </label>
+          )}
           <label className="check">
             <input
               type="checkbox"
@@ -405,7 +457,7 @@ export function App() {
             기억한 경로 지우기
           </button>
           <p className="hint">기본은 응답 60초, 스킬별 전체 제한 시간입니다. 느린 로컬 모델이면 배율을 올리세요.</p>
-          <p className="hint">API 주소의 호스트는 dogent.config.ts의 llmPermissions에도 있어야 합니다.</p>
+          <p className="hint">API 주소를 여기서 바꾸면 그 호스트가 빌드의 허용 목록에 있어야 닿습니다. 새 주소는 환경 파일에 적고 다시 빌드하세요.</p>
           <label>
             공유 스킬 저장소 (index.json 주소)
             <input
@@ -415,6 +467,26 @@ export function App() {
               placeholder="비워 두면 확장에 든 스킬만 씁니다"
             />
           </label>
+          <div className="row wrap">
+            <button id="test-llm" className="secondary" disabled={llmTest === '시험하는 중…'} onClick={() => void testLlm()}>
+              연결 시험
+            </button>
+          </div>
+          {llmTest && (
+            <div id="llm-test" className={`notice ${llmTest.startsWith('연결됨') ? 'ok' : llmTest.startsWith('시험하는') ? '' : 'error'}`}>
+              {llmTest}
+            </div>
+          )}
+          <button
+            className="ghost"
+            id="reset-settings"
+            onClick={async () => {
+              setSettings(await resetSettings());
+              setLlmTest('');
+            }}
+          >
+            빌드 기본값으로 되돌리기
+          </button>
           <button
             id="save-settings"
             onClick={async () => {
