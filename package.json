@@ -26,7 +26,12 @@
     "bridge": "node bridge/hub.mjs",
     "bridge:token": "node bridge/hub.mjs --token",
     "bridge:install": "node bridge/install.mjs",
-    "e2e:bridge": "node tests/e2e/bridge.e2e.mjs"
+    "e2e:bridge": "node tests/e2e/bridge.e2e.mjs",
+    "client:build": "node client/build.mjs",
+    "client:build:home": "node client/build.mjs --mode home",
+    "client:build:company": "node client/build.mjs --mode company",
+    "client": "node client/dist/dogent.mjs",
+    "e2e:client": "node tests/e2e/client.e2e.mjs"
   },
   "dependencies": {
     "exceljs": "^4.4.0",

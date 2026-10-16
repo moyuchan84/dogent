@@ -21,7 +21,7 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { WebSocketServer } from 'ws';
 import { DEFAULT_PORT, acceptAuth, lineReader, pipePath, randomNonce } from './protocol.mjs';
-import { TOOLS } from './tools.mjs';
+import { PORT_TOOL, TOOLS } from './tools.mjs';
 
 const VERSION = '0.1.0';
 /** 승인 창이나 로그인을 기다리는 도구가 있어 넉넉히 둔다. */
@@ -200,7 +200,7 @@ export function createHub({ token, port = DEFAULT_PORT, pipe = pipePath(userInfo
         return reply({ tools: TOOLS });
       case 'tools/call': {
         const name = req.params?.name;
-        if (!TOOLS.some((t) => t.name === name)) return fail(-32602, `모르는 도구: ${name}`);
+        if (name !== PORT_TOOL && !TOOLS.some((t) => t.name === name)) return fail(-32602, `모르는 도구: ${name}`);
         try {
           const text = await callTool(name, req.params?.arguments ?? {});
           return reply({ content: [{ type: 'text', text }] });
@@ -225,7 +225,8 @@ export function createHub({ token, port = DEFAULT_PORT, pipe = pipePath(userInfo
   };
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+// 다른 프로그램(Dogent 클라이언트)에 묶여 들어가면 이 부분은 돌지 않는다.
+if (process.argv[1] && /hub\.mjs$/.test(process.argv[1]) && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const token = loadToken();
   if (process.argv.includes('--token')) {
     console.log(token);

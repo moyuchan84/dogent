@@ -58,11 +58,139 @@ function tableJson(t: { columns: string[]; rows: unknown[][] }, maxRows: number,
   return JSON.stringify({ columns: t.columns, total_rows: t.rows.length, ...extra, rows: t.rows.slice(0, maxRows) }, null, 1);
 }
 
+/** ArrayBuffer → base64. 확장(브라우저)과 Node 모두에서 돈다. */
+function toBase64(data: ArrayBuffer): string {
+  const bytes = new Uint8Array(data);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+
 export class BrowserTools {
   private current: number | null = null;
   private snaps = new Map<number, PageSnapshot>();
+  /**
+   * 한 번 쓰는 승인. Dogent 클라이언트는 저장·상신 직전에 확장의 승인 창으로 사람에게 묻고(port approve),
+   * 승인받으면 바로 다음의 그 버튼 누름에만 이 승인을 쓴다. 승인 창이 두 번 뜨지 않게 한다.
+   */
+  private granted: { tab: number; button: string } | null = null;
 
   constructor(private host: ToolHost) {}
+
+  private approvalOf(snap: PageSnapshot, button: string, skill: string): ApprovalRequest {
+    return {
+      skill,
+      button,
+      url: snap.url,
+      fields: snap.items.flatMap((i) => (i.kind === 'el' && FIELD_ROLES.has(i.role) ? [{ name: i.name, value: i.value ?? '' }] : [])),
+      tables: [],
+    };
+  }
+
+  /**
+   * Dogent 클라이언트용 (dogent_port). BrowserPort의 메서드를 그대로 부른다. 클라이언트의 McpBrowser가 쓴다.
+   * 다른 도구와 같은 통제를 지킨다: 사이트 목록 밖으로 이동·내려받기 금지, 저장·상신은 사람의 승인.
+   */
+  async port(method: string, args: unknown[]): Promise<unknown> {
+    const tab = await this.target();
+    const port = this.host.port(tab);
+    const n = (i: number) => {
+      const v = Number(args[i]);
+      if (!Number.isFinite(v)) throw new Error(`${method}: ${i + 1}번째 인자는 숫자여야 합니다`);
+      return v;
+    };
+    const t = (await this.host.tabs()).find((x) => x.id === tab);
+    const allowed = !!t && siteAllowed(t.url, await this.host.sites());
+    if (method === 'target') return { id: tab, url: t?.url ?? '', title: t?.title ?? '', allowed };
+    // 조작할 사이트 목록 밖의 탭은 읽지도 조작하지도 않는다. 화면 읽기는 주소만 담은 빈 화면을 돌려주고(요소가 없어 누를 것도 없다),
+    // 이동은 가는 곳을 따로 검사하므로 빈 탭에서 스킬을 시작할 수 있다.
+    if (!allowed && method === 'snapshot') {
+      const blank: PageSnapshot = { url: t?.url ?? '', title: '(조작할 사이트 목록 밖의 화면)', hasPassword: false, items: [] };
+      this.snaps.set(tab, blank);
+      return blank;
+    }
+    if (!allowed && method !== 'navigate' && method !== 'setActive') {
+      throw new Error(`지금 탭(${t?.url ?? tab})은 조작할 사이트 목록에 없습니다. 업무 화면 탭을 앞에 두거나, 브라우저의 Dogent 설정 → 조작할 사이트에서 더하세요`);
+    }
+    switch (method) {
+      case 'snapshot': {
+        const snap = await port.snapshot();
+        this.snaps.set(tab, snap);
+        return snap;
+      }
+      case 'navigate': {
+        const url = String(args[0] ?? '');
+        await this.allowed(url);
+        this.snaps.delete(tab);
+        return port.navigate(url);
+      }
+      case 'approve': {
+        const request = args[0] as ApprovalRequest;
+        if (!request?.button) throw new Error('approve: 승인할 내용이 없습니다');
+        const ok = await this.host.approve(request, tab);
+        this.granted = ok ? { tab, button: request.button } : null;
+        return ok;
+      }
+      case 'click': {
+        const snap = this.lastSnap(tab);
+        const ref = n(0);
+        const el = findElement(snap, ref);
+        if (!el) return { ok: false, message: `[${ref}] 요소가 마지막 화면에 없습니다` };
+        const asked = args[1] as ConfirmPolicy | undefined;
+        // 확인 창에서 확인을 누르더라도 저장·상신을 묻는 창은 승인받은 경우에만 확인한다.
+        let confirm: ConfirmPolicy | undefined = asked?.accept ? { accept: true, unless: asked.unless ?? SUBMIT_PATTERN.source } : undefined;
+        if (SUBMIT_PATTERN.test(el.name)) {
+          const grant = this.granted;
+          this.granted = null;
+          if (!(grant && grant.tab === tab && grant.button === el.name)) {
+            if (!(await this.host.approve(this.approvalOf(snap, el.name, 'Dogent 클라이언트의 요청'), tab))) {
+              return { ok: false, message: `사용자가 "${el.name}"을(를) 승인하지 않았습니다. 누르지 않았습니다`, declined: true };
+            }
+          }
+          confirm = { accept: true };
+        }
+        this.snaps.delete(tab);
+        return port.click(ref, confirm);
+      }
+      case 'closeTab':
+        this.snaps.delete(tab);
+        return port.closeTab ? port.closeTab() : { ok: false, message: '이 환경에서는 창을 닫을 수 없습니다' };
+      case 'type':
+        this.lastSnap(tab);
+        return port.type(n(0), String(args[1] ?? ''));
+      case 'select':
+        this.lastSnap(tab);
+        return port.select(n(0), String(args[1] ?? ''));
+      case 'waitFor':
+        return port.waitFor(String(args[0] ?? ''), Math.min(60_000, n(1)));
+      case 'extractTable':
+        this.lastSnap(tab);
+        return port.extractTable(n(0));
+      case 'fillTable': {
+        this.lastSnap(tab);
+        const addRef = args[3] === undefined || args[3] === null ? undefined : n(3);
+        return port.fillTable(n(0), (args[1] as unknown[]).map(String), (args[2] as unknown[][]).map((r) => r.map((c) => String(c ?? ''))), addRef);
+      }
+      case 'download': {
+        this.lastSnap(tab);
+        if (!port.download) throw new Error('이 환경에서는 내려받기를 쓸 수 없습니다');
+        const sites = await this.host.sites();
+        const file = await port.download(n(0), Math.min(120_000, n(1)), (url) => url.startsWith('data:') || siteAllowed(url.replace(/^blob:/, ''), sites));
+        return { filename: file.filename, url: file.url, base64: toBase64(file.data) };
+      }
+      case 'setActive':
+        await port.setActive?.(args[0] === true);
+        return true;
+      case 'readText': {
+        if (!port.readText) throw new Error('이 환경에서는 화면 글을 읽을 수 없습니다');
+        const ref = args[0] === undefined || args[0] === null ? undefined : n(0);
+        if (ref !== undefined) this.lastSnap(tab);
+        return port.readText(ref);
+      }
+      default:
+        throw new Error(`모르는 동작: ${method}`);
+    }
+  }
 
   private async target(tabId?: unknown): Promise<number> {
     if (tabId !== undefined && tabId !== null && tabId !== '') {
@@ -92,6 +220,8 @@ export class BrowserTools {
   /** 도구 하나를 실행하고 클라이언트에게 돌려줄 글을 만든다. 실패는 던진다. */
   async call(name: string, args: Args = {}): Promise<string> {
     switch (name) {
+      case 'dogent_port':
+        return JSON.stringify((await this.port(str(args, 'method'), Array.isArray(args.args) ? args.args : [])) ?? null);
       case 'tabs_list': {
         const [tabs, sites] = await Promise.all([this.host.tabs(), this.host.sites()]);
         const current = this.current ?? (await this.host.activeTab());
@@ -139,13 +269,7 @@ export class BrowserTools {
         const port = this.host.port(tab);
         let confirm: ConfirmPolicy | undefined = args.accept_dialog === true ? { accept: true, unless: SUBMIT_PATTERN.source } : undefined;
         if (SUBMIT_PATTERN.test(el.name)) {
-          const request: ApprovalRequest = {
-            skill: '외부 클라이언트의 요청',
-            button: el.name,
-            url: snap.url,
-            fields: snap.items.flatMap((i) => (i.kind === 'el' && FIELD_ROLES.has(i.role) ? [{ name: i.name, value: i.value ?? '' }] : [])),
-            tables: [],
-          };
+          const request = this.approvalOf(snap, el.name, '외부 클라이언트의 요청');
           if (!(await this.host.approve(request, tab))) throw new Error(`사용자가 "${el.name}"을(를) 승인하지 않았습니다. 누르지 않았습니다`);
           confirm = { accept: true };
         }
