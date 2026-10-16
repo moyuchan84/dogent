@@ -1,6 +1,6 @@
 import { browser } from 'wxt/browser';
 import { dogentConfig } from '@/dogent.config';
-import { ANY_SITE, covers, sitePattern } from '../core/sites';
+import { ANY_SITE, covers, originPattern, sitePattern } from '../core/sites';
 
 /**
  * 사용자가 설정에서 더할 수 있는 사이트의 범위. 빌드 환경 파일의 WXT_SITE_SCOPE (쉼표로 여러 개).
@@ -49,4 +49,14 @@ export async function requestSites(inputs: string[]): Promise<string[]> {
 
 export async function removeSite(pattern: string): Promise<void> {
   await browser.permissions.remove({ origins: [pattern] });
+}
+
+/**
+ * 확장이 그 주소에 접근할 권한을 지금 갖고 있는지. 매니페스트에 있어도 사용자가 사이트 액세스를 줄였거나
+ * 회사 정책이 막으면 false다. 그러면 확장의 요청도 웹페이지처럼 CORS 검사를 받아 "닿지 못함"으로 실패한다.
+ */
+export async function hostAccess(url: string): Promise<{ pattern: string; granted: boolean } | null> {
+  const pattern = originPattern(url);
+  if (!pattern) return null;
+  return { pattern, granted: await browser.permissions.contains({ origins: [pattern] }).catch(() => false) };
 }
