@@ -1,6 +1,7 @@
 # 09. 클라이언트·확장 분리 구조 (결정 기록)
 
 > 문서 상태: v0.2 (2026-10-16) · 결정됨 (D1~D9), 1단계 구현 중
+> 그림으로 보기: [10-automation-flow.html](10-automation-flow.html) (구성도 위에서 시나리오를 단계별로 따라감)
 > 관련: [03-architecture.md](03-architecture.md)의 "전체 구성"과 "기술 스택"을 이 문서가 대체한다. [04-roadmap.md](04-roadmap.md) Phase 3의 데스크탑 클라이언트 항목을 구체화한다.
 
 ## 1. 결정 요약
