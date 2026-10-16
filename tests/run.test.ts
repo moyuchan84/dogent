@@ -95,6 +95,66 @@ describe('재공 확인 스킬 (모의 사이트 + 모의 모델)', () => {
     expect(result.message).toContain('로그인');
     expect(llm.calls).toBe(0);
   });
+
+  it('로그인을 기다리게 하면, 사람이 로그인한 뒤 그 자리에서 이어 간다', async () => {
+    const browser = await JsdomBrowser.open('/login.html');
+    const events: RunEvent[] = [];
+    const files = memoryFiles();
+    const result = await runSkill(
+      wipSkill(),
+      { line: '7라인', hold_hours: 24 },
+      {
+        llm: mockLlm,
+        browser,
+        ui,
+        files,
+        loginWaitMs: 10_000,
+        onEvent(e) {
+          events.push(e);
+          // 사람이 로그인 화면에서 로그인하면 업무 화면으로 넘어간다.
+          if (e.type === 'login_wait') setTimeout(() => void browser.navigate('http://localhost:4173/wip.html'), 200);
+        },
+      },
+    );
+    expect(result.status, result.message).toBe('done');
+    expect(result.files).toEqual(['재공확인_7라인.xlsx']);
+    expect(events.find((e) => e.type === 'login_wait')).toMatchObject({ url: 'http://localhost:4173/login.html', timeoutSec: 10 });
+    expect(events.some((e) => e.type === 'login_done')).toBe(true);
+    // 로그인을 기다리는 동안 에이전트는 아무 동작도 하지 않았다 (비밀번호 칸을 건드리지 않음).
+    const from = events.findIndex((e) => e.type === 'login_wait');
+    const to = events.findIndex((e) => e.type === 'login_done');
+    expect(events.slice(from, to).some((e) => e.type === 'action')).toBe(false);
+  });
+
+  it('정해진 시간 안에 로그인하지 않으면 로그인이 필요하다고 끝낸다', async () => {
+    const result = await runSkill(
+      wipSkill(),
+      { line: '7라인', hold_hours: 24 },
+      { llm: mockLlm, browser: await JsdomBrowser.open('/login.html'), ui, files: memoryFiles(), loginWaitMs: 300 },
+    );
+    expect(result).toMatchObject({ status: 'aborted', cause: 'login' });
+    expect(result.message).toMatch(/로그인이 필요합니다.*로그인하지 않아 멈췄습니다/);
+  });
+
+  it('로그인을 기다리는 중에 중지하면 바로 멈춘다', async () => {
+    const abort = new AbortController();
+    const started = Date.now();
+    const result = await runSkill(
+      wipSkill(),
+      { line: '7라인', hold_hours: 24 },
+      {
+        llm: mockLlm,
+        browser: await JsdomBrowser.open('/login.html'),
+        ui,
+        files: memoryFiles(),
+        loginWaitMs: 60_000,
+        signal: abort.signal,
+        onEvent: (e) => e.type === 'login_wait' && setTimeout(() => abort.abort(), 100),
+      },
+    );
+    expect(result.status).toBe('stopped');
+    expect(Date.now() - started).toBeLessThan(5_000);
+  });
 });
 
 describe('루프 통제', () => {

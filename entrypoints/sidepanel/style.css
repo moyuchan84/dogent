@@ -598,3 +598,10 @@ textarea.code {
 .site-list code {
   overflow-wrap: anywhere;
 }
+
+.notice.login-wait {
+  border: 1px solid var(--risk);
+}
+.notice.login-wait p {
+  margin: 4px 0 0;
+}

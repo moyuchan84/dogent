@@ -46,11 +46,27 @@ export interface RunDeps {
    * 다음 실행에서 모델 없이 다시 한다. 통하지 않으면 그 단계는 모델에게 넘긴다.
    */
   paths?: PathStore;
+  /**
+   * 로그인 화면을 만났을 때 사람이 로그인하기를 기다리는 시간. 주면 실행을 멈추고 기다리다가,
+   * 비밀번호 칸이 사라지면 그 단계부터 이어 간다. 0이거나 없으면 바로 끝낸다.
+   * 에이전트는 비밀번호 칸에 입력하지 않는다 (docs/09 D9).
+   */
+  loginWaitMs?: number;
 }
 
 const MAX_FORMAT_RETRIES = 2;
 const MAX_STRIKES = 3;
 const MAX_PAGES = 500;
+/** 로그인을 기다리는 동안 화면을 다시 읽는 간격 */
+const LOGIN_POLL_MS = 1500;
+
+/** ms만큼 기다린다. 중지하면 바로 끝난다. */
+function pause(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((done) => {
+    const t = setTimeout(done, ms);
+    signal?.addEventListener('abort', () => (clearTimeout(t), done()), { once: true });
+  });
+}
 /** 승인 요청에 현재 값으로 보여줄 입력 요소 */
 const FIELD_ROLES = new Set(['textbox', 'combobox', 'checkbox', 'radio']);
 
@@ -78,6 +94,8 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps, memo: PathM
   const datasets = deps.datasets ?? new DatasetStore();
   const emit = deps.onEvent ?? (() => {});
   const started = Date.now();
+  // 로그인을 기다린 시간. 스킬의 제한 시간에서 뺀다.
+  let waited = 0;
   const history: HistoryEntry[] = [];
   const savedFiles: string[] = [];
   const body = fillTemplate(skill, inputs);
@@ -390,14 +408,30 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps, memo: PathM
   try {
     for (let n = 1; n <= skill.limits.max_steps; n++) {
       if (signal?.aborted) return end('stopped', '사용자가 중지했습니다');
-      if (Date.now() - started > skill.limits.timeout_sec * 1000) {
+      if (Date.now() - started - waited > skill.limits.timeout_sec * 1000) {
         return end('aborted', `제한 시간 ${skill.limits.timeout_sec}초를 넘었습니다`);
       }
 
-      const snap = await browser.snapshot();
+      let snap = await browser.snapshot();
       emit({ type: 'observe', n, url: snap.url, title: snap.title });
       if (snap.hasPassword) {
-        return end('aborted', '로그인 화면이 감지되었습니다. 직접 로그인한 뒤 다시 실행해 주세요', 'login');
+        const waitMs = deps.loginWaitMs ?? 0;
+        if (waitMs <= 0) return end('aborted', '로그인 화면이 감지되었습니다. 직접 로그인한 뒤 다시 실행해 주세요', 'login');
+        // 사람이 이 탭에서 로그인하기를 기다린다. 그동안은 조작 중 표시를 끄고 화면을 사람에게 넘긴다.
+        emit({ type: 'login_wait', url: snap.url, timeoutSec: Math.round(waitMs / 1000) });
+        const since = Date.now();
+        await browser.setActive?.(false).catch(() => {});
+        while (snap.hasPassword) {
+          if (signal?.aborted) return end('stopped', '사용자가 중지했습니다');
+          if (Date.now() - since >= waitMs) {
+            return end('aborted', `로그인이 필요합니다. ${Math.round(waitMs / 60000) || 1}분 안에 로그인하지 않아 멈췄습니다`, 'login');
+          }
+          await pause(Math.min(LOGIN_POLL_MS, waitMs), signal);
+          snap = await browser.snapshot();
+        }
+        waited += Date.now() - since;
+        await browser.setActive?.(true).catch(() => {});
+        emit({ type: 'login_done', url: snap.url });
       }
       if (snap.dialogs?.length) {
         stepDialogs.push(...snap.dialogs.map((d) => d.message));
