@@ -266,7 +266,7 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps, memo: PathM
       if (attempt >= MAX_FORMAT_RETRIES) {
         throw new Error(`모델이 형식에 맞는 응답을 내지 못했습니다: ${parsed.error}`);
       }
-      emit({ type: 'llm_retry', n, reason: parsed.error });
+      emit({ type: 'llm_retry', n, reason: parsed.error, raw: text.slice(0, 400) });
       messages = [
         ...messages,
         { role: 'assistant', content: text },

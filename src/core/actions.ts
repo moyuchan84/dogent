@@ -103,6 +103,11 @@ const Envelope = z.object({
 export function extractJson(text: string): string | null {
   const start = text.indexOf('{');
   if (start < 0) return null;
+  return objectAt(text, start);
+}
+
+/** start의 { 에서 시작하는 객체 원문. 닫히지 않으면 null */
+function objectAt(text: string, start: number): string | null {
   let depth = 0;
   let inString = false;
   let escaped = false;
@@ -162,15 +167,105 @@ function resolveRef(tool: string, ref: unknown, snap: PageSnapshot, row?: unknow
 }
 
 /** snap을 주면 이름으로 적힌 ref를 현재 화면의 번호로 바꿔 준다. */
-export function parseAction(text: string, snap?: PageSnapshot): ParseResult {
-  const json = extractJson(text);
-  if (!json) return { ok: false, error: 'JSON 객체가 없습니다' };
-  let raw: unknown;
-  try {
-    raw = JSON.parse(json);
-  } catch (e) {
-    return { ok: false, error: `JSON 문법 오류: ${(e as Error).message}` };
+/** 응답 안의 JSON 객체 후보들. 설명 글에 든 { } 때문에 첫 후보가 JSON이 아닐 수 있다. */
+function jsonCandidates(text: string): string[] {
+  const found: string[] = [];
+  for (let i = text.indexOf('{'); i >= 0 && found.length < 12; i = text.indexOf('{', i + 1)) {
+    const obj = objectAt(text, i);
+    if (obj) found.push(obj);
   }
+  return found;
+}
+
+/**
+ * 작은 모델이 흔히 내는 사소한 문법 실수를 고친다.
+ * - 객체·배열 끝의 쉼표: {"ref": 4,}
+ * - 문자열 안의 날 줄바꿈·탭 (thought를 여러 줄로 쓴 경우)
+ */
+export function repairJson(json: string): string {
+  let out = '';
+  let inString = false;
+  let escaped = false;
+  for (let i = 0; i < json.length; i++) {
+    const ch = json[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === '\\') escaped = true;
+      else if (ch === '"') inString = false;
+      else if (ch === '\n') {
+        out += '\\n';
+        continue;
+      } else if (ch === '\r') continue;
+      else if (ch === '\t') {
+        out += '\\t';
+        continue;
+      }
+      out += ch;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    else if (ch === ',' && /^\s*[}\]]/.test(json.slice(i + 1))) continue;
+    out += ch;
+  }
+  return out;
+}
+
+/**
+ * 뜻은 맞는데 모양이 조금 다른 응답을 맞춘다.
+ * - "args" 없이 인자를 바로 적은 경우: {"tool":"click","ref":4}
+ * - "args"를 JSON 글자로 준 경우: "args":"{\"ref\":4}"
+ * - 도구 이름의 대소문자·공백·괄호: " Click()"
+ */
+function normalizeEnvelope(raw: Record<string, unknown>): Record<string, unknown> {
+  const out = { ...raw };
+  if (typeof out.tool === 'string') out.tool = out.tool.trim().replace(/\(\)$/, '').toLowerCase();
+  if (typeof out.args === 'string') {
+    try {
+      out.args = JSON.parse(out.args);
+    } catch {
+      /* 아래 검사가 알린다 */
+    }
+  }
+  if (out.args === undefined || out.args === null) {
+    const { step: _s, thought: _t, tool: _tool, args: _a, ...rest } = out;
+    out.args = rest;
+  }
+  return out;
+}
+
+/** 후보 중 도구가 적힌 객체를 고른다. 없으면 문법 오류를 돌려준다. */
+function pickObject(text: string): { value: Record<string, unknown> } | { error: string } {
+  const candidates = jsonCandidates(text);
+  if (candidates.length === 0) {
+    return {
+      error: text.includes('{')
+        ? '응답이 중간에 끊겼습니다 (닫는 } 가 없습니다). thought를 한 문장으로 짧게 쓰세요'
+        : 'JSON 객체가 없습니다',
+    };
+  }
+  let firstError = '';
+  let fallback: Record<string, unknown> | null = null;
+  for (const c of candidates) {
+    for (const t of [c, repairJson(c)]) {
+      try {
+        const v = JSON.parse(t) as unknown;
+        if (v && typeof v === 'object' && !Array.isArray(v)) {
+          if ('tool' in v) return { value: v as Record<string, unknown> };
+          fallback ??= v as Record<string, unknown>;
+        }
+        break;
+      } catch (e) {
+        firstError ||= (e as Error).message;
+      }
+    }
+  }
+  return fallback ? { value: fallback } : { error: `JSON 문법 오류: ${firstError}` };
+}
+
+export function parseAction(text: string, snap?: PageSnapshot): ParseResult {
+  const picked = pickObject(text);
+  if ('error' in picked) return { ok: false, error: picked.error };
+  const raw = normalizeEnvelope(picked.value);
   const env = Envelope.safeParse(raw);
   if (!env.success) return { ok: false, error: z.prettifyError(env.error) };
   if (!(env.data.tool in TOOL_ARGS)) {

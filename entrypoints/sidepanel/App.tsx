@@ -879,8 +879,8 @@ export function App() {
               }
               if (e.type === 'llm_retry') {
                 return (
-                  <li key={i} className="minor">
-                    모델 응답 형식 오류, 재요청
+                  <li key={i} className="minor retry" title={e.raw ? `모델 응답: ${e.raw}` : undefined}>
+                    모델 응답 형식 오류, 재요청: {e.reason.split('\n')[0].slice(0, 140)}
                   </li>
                 );
               }
