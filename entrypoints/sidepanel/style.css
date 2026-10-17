@@ -745,3 +745,9 @@ textarea.code {
   padding: 2px 10px;
   white-space: nowrap;
 }
+/* 입력 칸 아래 설명은 굵게 하지 않는다 */
+label .hint {
+  display: block;
+  font-weight: 400;
+  margin-top: 4px;
+}

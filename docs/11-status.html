@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dogent 진행 현황</title>
+<style>
+:root {
+  --bg: #f4f6fa; --paper: #ffffff; --ink: #152033; --muted: #5a6577; --line: #d9dfe8;
+  --accent: #1f5fd6; --accent-soft: #e6eefc; --ok: #1d7a4c; --ok-soft: #e1f3e9;
+  --warn: #8a5a00; --warn-soft: #fff4d6; --risk: #b3261e; --risk-soft: #fbe8e6;
+  --sans: "IBM Plex Sans KR", "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif;
+  --mono: "JetBrains Mono", Consolas, "D2Coding", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f141d; --paper: #171e2a; --ink: #e5eaf2; --muted: #9aa6b8; --line: #2a3445;
+    --accent: #78a6ff; --accent-soft: #1b2944; --ok: #6fd3a0; --ok-soft: #163425;
+    --warn: #f8dc8c; --warn-soft: #3a2e10; --risk: #ff8b80; --risk-soft: #3c1d1a;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f141d; --paper: #171e2a; --ink: #e5eaf2; --muted: #9aa6b8; --line: #2a3445;
+  --accent: #78a6ff; --accent-soft: #1b2944; --ok: #6fd3a0; --ok-soft: #163425;
+  --warn: #f8dc8c; --warn-soft: #3a2e10; --risk: #ff8b80; --risk-soft: #3c1d1a;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.65 var(--sans); }
+main { max-width: 980px; margin: 0 auto; padding: 32px 16px 64px; }
+h1 { font-size: 26px; margin: 0 0 4px; }
+h2 { font-size: 19px; margin: 36px 0 12px; padding-top: 8px; }
+h3 { font-size: 15px; margin: 0 0 6px; }
+p { margin: 6px 0; }
+.sub { color: var(--muted); }
+code { font-family: var(--mono); font-size: 0.9em; background: var(--accent-soft); padding: 1px 5px; border-radius: 4px; }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin-top: 16px; }
+.card { background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+.card b { display: block; font-size: 24px; }
+.card.ok b { color: var(--ok); }
+.card.warn b { color: var(--warn); }
+.card.risk b { color: var(--risk); }
+table { width: 100%; border-collapse: collapse; background: var(--paper); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; font-size: 14px; }
+th, td { text-align: left; vertical-align: top; padding: 9px 12px; border-bottom: 1px solid var(--line); }
+th { background: var(--accent-soft); font-weight: 700; white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
+.wrap { overflow-x: auto; }
+.tag { display: inline-block; font-size: 12px; font-weight: 700; padding: 1px 8px; border-radius: 999px; white-space: nowrap; }
+.t-ok { background: var(--ok-soft); color: var(--ok); }
+.t-warn { background: var(--warn-soft); color: var(--warn); }
+.t-risk { background: var(--risk-soft); color: var(--risk); }
+.t-none { background: var(--accent-soft); color: var(--accent); }
+pre { background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; overflow-x: auto; font: 13px/1.5 var(--mono); }
+ol li, ul li { margin: 4px 0; }
+footer { margin-top: 40px; color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Dogent 진행 현황</h1>
+  <p class="sub">2026-10-17 기준 · 사내 웹시스템을 Claude Code / Claude in Chrome 구조로 자동 제어하는 프로젝트 · 설계는 <code>docs/09-client-architecture.md</code></p>
+
+  <div class="cards">
+    <div class="card ok"><b>1~4단계</b>구현 완료 (확장 도구 서버, 터미널 클라이언트, 오피스 도구, 데스크탑 앱)</div>
+    <div class="card ok"><b>246개</b>단위 테스트 통과 (31개 파일) + 브리지·데스크탑 e2e 통과</div>
+    <div class="card warn"><b>모의 사이트만</b>사내 화면·사내 Gemma에서는 아직 검증 전</div>
+    <div class="card risk"><b>6건</b>미구현 항목 (EDM 스킬, xls, Hub, 스케줄 앱 화면 등)</div>
+  </div>
+
+  <h2>1. 구조</h2>
+  <p>판단·스킬·모델은 클라이언트가, 화면 조작은 브라우저 확장이 맡고 둘은 MCP로 잇습니다. 엑셀(문서 보안 NASCA)은 같은 클라이언트가 오피스 도구로 다룹니다.</p>
+<pre>데스크탑 앱 / 터미널 클라이언트 (Dogent.exe 하나)
+  에이전트 루프 · 스킬 · 사내 Gemma 호출 · 승인 · 기록 · 예약
+  ├─ 브리지 (같은 프로세스) ── Native Messaging / WebSocket ── 크롬·엣지 확장 ── 사내 웹
+  │                                                            허용 사이트 · 저장/상신 승인 · 로그인은 사람이
+  └─ dogent-office.exe (앱 안에 포함) ── Excel COM ── NASCA 문서 · EDM에서 연 문서</pre>
+  <p>사용자가 설치하는 것은 <b>앱 하나와 확장 하나</b>입니다. 오피스 도구는 앱 안에 들어 있습니다. 같은 브리지에 Claude Code를 붙여 쓸 수도 있습니다.</p>
+
+  <h2>2. 구현된 것</h2>
+  <div class="wrap"><table>
+    <tr><th>영역</th><th>내용</th><th>상태</th></tr>
+    <tr><td>확장 도구 서버 (1단계)</td><td>tabs, snapshot, click, type, select, wait_for, extract_table, download_table, fill_table 등 MCP 도구. 허용 사이트 제한, 저장·상신 승인 창, 로그인 대기</td><td><span class="tag t-ok">완료</span></td></tr>
+    <tr><td>터미널 클라이언트 (2단계)</td><td>스킬 실행, 말로 요청, 자유 요청 → 개인 스킬 저장, 개인·팀·기본 스킬 저장소, 실행 기록</td><td><span class="tag t-ok">완료</span></td></tr>
+    <tr><td>오피스 도구 (3단계)</td><td>Excel COM으로 열기·읽기·쓰기·저장, 사용자 Excel에 열린 문서 잡기(EDM), NASCA 문서 입력</td><td><span class="tag t-ok">완료</span></td></tr>
+    <tr><td>데스크탑 앱 (4단계)</td><td>Electron 한 파일 실행본, 말로 요청·스킬 실행·승인·설정, 브라우저(크롬/엣지) 고르기</td><td><span class="tag t-ok">완료</span></td></tr>
+    <tr><td>스킬 체계</td><td>목표 수준 단계 + 매개변수, 화면 요약, 경로 기억·자가 복구, 녹화로 초안, 품질 검사, 시험 실행, 팀 저장소 배포</td><td><span class="tag t-ok">완료</span></td></tr>
+  </table></div>
+
+  <h2>3. 이번에 추가한 것</h2>
+  <div class="wrap"><table>
+    <tr><th>항목</th><th>내용</th><th>확인</th></tr>
+    <tr><td>확장 연결 자동 등록</td><td>앱이 시작할 때 크롬·엣지 프로필에서 Dogent 확장을 찾아 Native Messaging 호스트를 등록. PC에 Node 불필요(앱을 <code>ELECTRON_RUN_AS_NODE</code>로 사용). 못 찾으면 설정에서 확장 ID 직접 입력. (<code>bridge/register.mjs</code>)</td><td><span class="tag t-ok">e2e 통과</span> 실제 프로필 탐지는 미확인</td></tr>
+    <tr><td>토큰 붙여넣기 제거</td><td>Native Messaging 방식에서는 호스트가 토큰을 확장에 전달. WebSocket 방식만 토큰 필요</td><td><span class="tag t-ok">e2e 통과</span></td></tr>
+    <tr><td>사용자 ID 자동</td><td><code>llm.userId</code>를 안 적으면 로그인한 Windows 계정으로 모델 API 헤더 <code>User-Id</code>를 채움. 설정값이 있으면 그 값 우선</td><td><span class="tag t-warn">게이트웨이 일치 여부 사내 확인</span></td></tr>
+    <tr><td>모델 API 바쁠 때 재시도</td><td>429/502/503/504면 <code>Retry-After</code>(없으면 2·4·8초)만큼 쉬고 최대 3번 재시도. 여러 사람이 같은 게이트웨이를 쓸 때 대비</td><td><span class="tag t-ok">테스트 통과</span></td></tr>
+    <tr><td>예약 실행</td><td><code>dogent schedule add|list|remove</code>. Windows 작업 스케줄러에 등록, 로그인해 있을 때만 실행, 저장·상신은 하지 않음(<code>--allow-write</code> 없음)</td><td><span class="tag t-ok">등록·조회·삭제 실측</span> 실제 실행은 미확인</td></tr>
+  </table></div>
+
+  <h2>4. 아직 구현하지 않은 것</h2>
+  <div class="wrap"><table>
+    <tr><th>항목</th><th>이유 / 필요한 것</th></tr>
+    <tr><td>EDM 스킬</td><td>실제 EDM 화면이 필요. 버튼이 Excel을 여는 방식(내려받기, <code>ms-excel:</code> 링크, 전용 프로그램)에 따라 달라짐. 도구(<code>excel_attach</code>)는 이미 있음</td></tr>
+    <tr><td>구형 xls 읽기</td><td>검증되지 않은 라이브러리를 넣거나, 확장에서 받은 파일을 클라이언트의 Excel로 넘기는 구조 변경이 필요. 사내에서 xls가 실제로 나오는지 먼저 확인</td></tr>
+    <tr><td>스크린샷 보조 입력, <code>chrome.debugger</code> 입력</td><td>사내 화면에서 snapshot이 실패하는 경우를 보고 정할 일</td></tr>
+    <tr><td>Hub</td><td>정책 배포·기록 수집·kill switch. 서버 위치, 인증, 운영 주체를 먼저 정해야 함</td></tr>
+    <tr><td>스킬 제작 확장</td><td>표 페이지 넘김·일괄 입력 녹화, 초안 공유 동기화, 성공률로 화면 변경 감지. 사내 표 구조를 본 뒤 설계</td></tr>
+    <tr><td>사이드 패널 줄이기, 앱 화면의 예약 메뉴</td><td>앱·확장이 사내에서 검증된 뒤. 예약은 지금 CLI에만 있음</td></tr>
+  </table></div>
+
+  <h2>5. 구현했지만 사내에서 확인되지 않은 것</h2>
+  <div class="wrap"><table>
+    <tr><th>항목</th><th>위험</th><th>확인 방법</th></tr>
+    <tr><td>사내 화면 호환성</td><td><span class="tag t-risk">가장 큼</span> iframe, canvas 그리드, shadow DOM에서 snapshot이 요소를 못 잡을 수 있음</td><td>확장의 "화면 점검" 보고서</td></tr>
+    <tr><td>사내 Gemma 도구 호출</td><td><span class="tag t-risk">큼</span> JSON 출력·다단계 판단이 불안정하면 자유 요청이 막힘. 집에서는 Ollama·모의 모델로만 시험</td><td>화면 하나에서 조회 1건을 자유 요청으로 실행</td></tr>
+    <tr><td>NASCA 재암호화</td><td><span class="tag t-warn">중</span> Excel이 저장한 파일을 문서 보안이 다시 암호화하는지 모름. 지금 확장이 만드는 엑셀은 암호화되지 않음</td><td><code>dogent excel resave &lt;원본&gt; &lt;새 경로&gt;</code> 후 다른 PC에서 열기</td></tr>
+    <tr><td>크롬 Native Messaging 정책</td><td><span class="tag t-warn">중</span> 정책으로 막히면 WebSocket(토큰 필요)으로</td><td><code>chrome://policy</code></td></tr>
+    <tr><td>확장 설치 방식</td><td><span class="tag t-warn">중</span> 압축해제 설치가 막히면 정책 배포와 확장 ID 고정 필요</td><td>보안 부서 협의</td></tr>
+    <tr><td>휴대용 실행본의 호스트 기동</td><td><span class="tag t-warn">중</span> 실행할 때마다 압축을 풀어 느릴 수 있음</td><td>사내 PC에서 확장 연결 시간 측정</td></tr>
+    <tr><td>같은 PC를 여러 명이 쓰는 환경</td><td><span class="tag t-warn">중</span> 브리지 포트 39217이 PC에서 하나뿐이라 두 번째 사용자 앱이 못 뜸</td><td>원격 데스크톱 공용 PC가 있는지 확인</td></tr>
+    <tr><td>모델 API 키 공유</td><td><span class="tag t-warn">중</span> 키가 빌드에 들어가 모두가 같은 키. 사용자 구분은 <code>User-Id</code> 헤더로만</td><td>개인별 토큰 발급 가능 여부</td></tr>
+  </table></div>
+
+  <h2>6. 여러 명이 같은 Gemma API를 쓸 때</h2>
+  <ul>
+    <li>API는 요청마다 메시지 전체를 보내는 방식이라 <b>서버에 대화 세션이 없습니다</b>. 대화 기록은 각자 PC의 앱 메모리와 <code>~/.dogent</code>에만 있어 섞이지 않습니다.</li>
+    <li>서버에서 사용자를 구분하는 것은 요청 헤더(<code>User-Id</code>, <code>Send-System-Name</code>, 요청마다 새로 만드는 uuid)입니다.</li>
+    <li>몰리면 429가 올 수 있어 재시도를 넣었습니다. 게이트웨이의 실제 한도는 사내에서 확인해야 합니다.</li>
+  </ul>
+
+  <h2>7. 다음 순서</h2>
+  <ol>
+    <li>사내 PC에 앱과 확장을 설치하고 화면 점검 보고서와 조회 1건(자유 요청)을 실행합니다. 5번 항목 대부분이 한 번에 드러납니다.</li>
+    <li>막힌 곳이 화면 구조면 xls, 스크린샷 입력, 녹화 확장을, 모델이면 프롬프트·재시도를 손봅니다.</li>
+    <li>EDM 스킬과 NASCA 저장은 실제 화면에서 이어서 합니다.</li>
+    <li>사용자가 늘면 Hub와 개인별 모델 토큰을 정합니다.</li>
+  </ol>
+
+  <footer>이 문서는 저장소 <code>docs/11-status.html</code>에 있습니다. 상태가 바뀌면 이 파일을 고쳐 주세요.</footer>
+</main>
+</body>
+</html>

@@ -14,6 +14,10 @@ export type BridgeMessage =
   | { type: 'result'; id: number; ok: true; text: string }
   | { type: 'result'; id: number; ok: false; error: string }
   | { type: 'status'; state: string; detail?: string }
+  /** Native Messaging 호스트가 확장에 전하는 연결 토큰. 크롬이 허용한 확장만 호스트를 띄울 수 있어 따로 붙여 넣지 않아도 된다. */
+  | { type: 'token'; token: string }
+  /** 확인을 마친 뒤 확장이 알리는 브라우저 이름과, 같은 브라우저인지 가리는 값(설치마다 다름) */
+  | { type: 'hello'; browser: string; key: string }
   | { type: 'ping' }
   | { type: 'pong' };
 

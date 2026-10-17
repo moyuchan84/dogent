@@ -16,6 +16,8 @@ export interface BridgeSettings {
   mode: BridgeMode;
   port: number;
   token: string;
+  /** 클라이언트가 브라우저를 고를 때 보이는 이름. 비우면 브라우저 이름(예: Microsoft Edge 141) */
+  label?: string;
 }
 export interface BridgeStatus {
   state: 'off' | 'connecting' | 'connected' | 'error';
@@ -154,9 +156,34 @@ interface Transport {
   close(): void;
 }
 
+/** 브라우저 이름과 판 (예: Microsoft Edge 141). 클라이언트가 브라우저를 고를 때 보여 준다. */
+function browserName(): string {
+  const data = (navigator as Navigator & { userAgentData?: { brands: { brand: string; version: string }[] } }).userAgentData;
+  const brands = data?.brands ?? [];
+  const named = brands.find((b) => !/not.?a.?brand|chromium/i.test(b.brand)) ?? brands.find((b) => /chromium/i.test(b.brand));
+  if (named) return `${named.brand} ${named.version}`;
+  const ua = navigator.userAgent;
+  const edge = /Edg\/(\d+)/.exec(ua);
+  if (edge) return `Microsoft Edge ${edge[1]}`;
+  const chrome = /Chrome\/(\d+)/.exec(ua);
+  return chrome ? `Google Chrome ${chrome[1]}` : '브라우저';
+}
+
+const INSTALL_KEY = 'bridgeInstallKey';
+/** 이 설치(브라우저 프로필)의 구분 값. 같은 브라우저가 다시 붙으면 브리지가 이전 연결을 대신하게 한다. */
+async function installKey(): Promise<string> {
+  const stored = (await browser.storage.local.get(INSTALL_KEY))[INSTALL_KEY] as string | undefined;
+  if (stored) return stored;
+  const key = crypto.randomUUID();
+  await browser.storage.local.set({ [INSTALL_KEY]: key });
+  return key;
+}
+
 let transport: Transport | null = null;
 let authed = false;
 let expected = '';
+/** Native Messaging 호스트가 전해 준 토큰. 있으면 설정에 넣은 토큰보다 먼저 쓴다. */
+let nativeToken = '';
 let retry: ReturnType<typeof setTimeout> | null = null;
 let keepalive: ReturnType<typeof setInterval> | null = null;
 /** 브리지가 거절한 이유 (토큰이 다름 등). 연결이 끊긴 뒤에도 이 이유를 보여 주고, 다시 붙는 간격을 늘린다. */
@@ -179,9 +206,12 @@ function drop() {
   t?.close();
 }
 
-async function onMessage(msg: BridgeMessage, settings: BridgeSettings) {
-  const t = transport;
-  if (!t) return;
+/** t는 메시지가 온 연결이다. 지금 쓰는 연결이 아니면(먼저 열었다가 대신된 연결) 닫고 무시한다. */
+async function onMessage(msg: BridgeMessage, settings: BridgeSettings, t: Transport) {
+  if (t !== transport) {
+    t.close();
+    return;
+  }
   switch (msg.type) {
     case 'status':
       if (msg.state === 'waiting-hub') await setStatus('connecting', 'Dogent 클라이언트(브리지)가 실행 중이 아닙니다. MCP 클라이언트에서 브리지를 띄우세요');
@@ -190,12 +220,16 @@ async function onMessage(msg: BridgeMessage, settings: BridgeSettings) {
         await setStatus('error', refused);
       }
       return;
+    case 'token':
+      if (settings.mode === 'native' && typeof msg.token === 'string') nativeToken = msg.token;
+      return;
     case 'challenge': {
-      if (!settings.token) {
+      const token = (settings.mode === 'native' && nativeToken) || settings.token;
+      if (!token) {
         await setStatus('error', '토큰이 없습니다. 설정 → 클라이언트 연결에 토큰을 넣으세요');
         return drop();
       }
-      const { reply, expect } = await answerChallenge(settings.token, msg);
+      const { reply, expect } = await answerChallenge(token, msg);
       expected = expect;
       t.send(reply);
       return;
@@ -210,17 +244,20 @@ async function onMessage(msg: BridgeMessage, settings: BridgeSettings) {
       authed = true;
       refused = '';
       await setStatus('connected', settings.mode === 'ws' ? `WebSocket 127.0.0.1:${settings.port}` : 'Native Messaging');
+      // 크롬과 엣지가 함께 붙어도 클라이언트가 고를 수 있게 브라우저 이름을 알린다.
+      t.send({ type: 'hello', browser: settings.label?.trim() || browserName(), key: await installKey() });
       if (keepalive) clearInterval(keepalive);
       // 연결이 살아 있는 동안 서비스 워커가 잠들지 않게 주기적으로 신호를 보낸다.
       keepalive = setInterval(() => transport?.send({ type: 'ping' }), 20_000);
       return;
     case 'call': {
       if (!authed) return;
+      // 답은 호출이 온 연결로 보낸다.
       try {
         const text = await runTool(msg.tool, msg.args ?? {});
-        transport?.send({ type: 'result', id: msg.id, ok: true, text });
+        t.send({ type: 'result', id: msg.id, ok: true, text });
       } catch (e) {
-        transport?.send({ type: 'result', id: msg.id, ok: false, error: (e as Error).message });
+        t.send({ type: 'result', id: msg.id, ok: false, error: (e as Error).message });
       }
       return;
     }
@@ -229,15 +266,35 @@ async function onMessage(msg: BridgeMessage, settings: BridgeSettings) {
   }
 }
 
-/** 설정에 맞게 연결을 맺거나 끊는다. 이미 연결되어 있으면 그대로 둔다. */
-export async function ensureConnected(): Promise<void> {
+let connecting: Promise<void> | null = null;
+/** 설정이 바뀔 때마다 늘린다. 바뀌기 전에 시작한 연결 시도는 옛 설정을 읽었으므로 그만둔다. */
+let generation = 0;
+
+/**
+ * 설정에 맞게 연결을 맺거나 끊는다. 이미 연결되어 있으면 그대로 둔다.
+ * 알람, 다시 붙기, 설정 변경이 한꺼번에 불러도 연결은 하나만 연다.
+ */
+export function ensureConnected(): Promise<void> {
+  if (!connecting) {
+    const mine = connect(generation).finally(() => {
+      if (connecting === mine) connecting = null;
+    });
+    connecting = mine;
+  }
+  return connecting;
+}
+
+async function connect(gen: number): Promise<void> {
   const settings = await loadBridgeSettings();
+  if (gen !== generation) return;
   if (settings.mode === 'off') {
     drop();
     return void setStatus('off');
   }
   if (transport) return;
-  await setStatus('connecting', settings.mode === 'ws' ? `ws://127.0.0.1:${settings.port} 에 붙는 중` : 'Native Messaging 호스트를 띄우는 중');
+  const status = settings.mode === 'ws' ? `ws://127.0.0.1:${settings.port} 에 붙는 중` : 'Native Messaging 호스트를 띄우는 중';
+  // 여기서부터는 기다리지 않는다. 기다리는 사이에 브리지의 첫 메시지(challenge)가 오면 받지 못한다.
+  void setStatus('connecting', status);
   if (settings.mode === 'ws') {
     let ws: WebSocket;
     try {
@@ -250,7 +307,7 @@ export async function ensureConnected(): Promise<void> {
     transport = t;
     ws.onmessage = (e) => {
       try {
-        void onMessage(JSON.parse(String(e.data)), settings);
+        void onMessage(JSON.parse(String(e.data)), settings, t);
       } catch {
         /* 형식이 틀린 메시지는 버린다 */
       }
@@ -265,7 +322,8 @@ export async function ensureConnected(): Promise<void> {
         return scheduleRetry(60_000);
       }
       void setStatus('error', wasAuthed ? '브리지와 연결이 끊겼습니다. 다시 붙는 중' : `ws://127.0.0.1:${settings.port} 에 닿지 않습니다. 브리지가 실행 중인지 확인하세요`);
-      scheduleRetry(5_000);
+      // 클라이언트가 켜지면 곧 붙도록 짧게 다시 시도한다 (클라이언트의 브라우저 목록은 6초를 기다린다).
+      scheduleRetry(3_000);
     };
     return;
   }
@@ -278,7 +336,7 @@ export async function ensureConnected(): Promise<void> {
   }
   const t: Transport = { send: (m) => port.postMessage(m), close: () => port.disconnect() };
   transport = t;
-  port.onMessage.addListener((m) => void onMessage(m as BridgeMessage, settings));
+  port.onMessage.addListener((m) => void onMessage(m as BridgeMessage, settings, t));
   port.onDisconnect.addListener(() => {
     if (transport !== t) return;
     const reason = browser.runtime.lastError?.message ?? '';
@@ -311,9 +369,13 @@ export function startBridge(): void {
     if (retry) clearTimeout(retry);
     retry = null;
     drop();
+    // 진행 중인 연결 시도는 옛 설정을 읽었을 수 있다. 새 설정으로 다시 시작한다.
+    generation++;
+    connecting = null;
     void ensureConnected();
   });
-  void browser.alarms.create('dogent-bridge', { periodInMinutes: 1 });
+  // 연결이 없으면 서비스 워커가 잠들어 다시 붙기 타이머가 사라진다. 크롬이 허용하는 가장 짧은 주기(30초)로 깨워 다시 붙는다.
+  void browser.alarms.create('dogent-bridge', { periodInMinutes: 0.5 });
   browser.alarms.onAlarm.addListener((a) => {
     if (a.name === 'dogent-bridge') void ensureConnected();
   });

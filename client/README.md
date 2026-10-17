@@ -56,6 +56,9 @@ pnpm client run wip-check line=7라인           # 스킬을 입력값으로 바
 pnpm client run wip-adjust source=D:\조정.xlsx  # 파일 입력은 경로로
 pnpm client skills                            # [개인] [팀] [기본]
 pnpm client check D:\my\SKILL.md              # 품질 검사
+pnpm client schedule add 아침재공 --at 09:00 --days 월,수,금 wip-check line=7라인   # 작업 스케줄러에 예약 (로그인해 있을 때만, 저장·상신은 안 함)
+pnpm client schedule list                     # 예약과 다음 실행 시각
+pnpm client schedule remove 아침재공
 pnpm client sync                              # 팀 스킬 저장소 git pull
 ```
 
@@ -67,6 +70,20 @@ pnpm client sync                              # 팀 스킬 저장소 git pull
 | `--wait <초>` | 확장 연결을 기다리는 시간 (기본 60) |
 
 실행 중 Ctrl+C는 멈춤, 한 번 더 누르면 끝냅니다. 결과 엑셀은 기본으로 내려받기 폴더에 저장합니다 (`config outputDir`로 바꿈).
+
+## 브라우저가 여럿일 때
+
+크롬과 엣지 둘 다 확장을 연결해 두면 둘 다 붙습니다.
+
+```bash
+pnpm client browsers                    # 연결된 브라우저 (6초 기다렸다가 보여 줌)
+pnpm client tabs --browser 크롬          # 이번만 그 브라우저
+pnpm client config browser edge         # 늘 그 브라우저
+```
+
+- 같은 종류가 둘이면 확장의 클라이언트 연결 → **이 브라우저 이름**에 이름을 붙입니다.
+- 번호는 실행마다 다시 매겨지므로 명령에는 이름을 씁니다. 대화 모드에서는 `browser 2`도 됩니다.
+- 한 번 고른 브라우저는 실행 중에 바뀌지 않습니다.
 
 ## 엑셀 (오피스 도구)
 

@@ -45,7 +45,7 @@ const tally = { pass: 0, fail: 0 };
  */
 function client(args, { answers = [], onOutput } = {}) {
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [CLIENT, ...args, '--wait', '20'], {
+    const child = spawn(process.execPath, [CLIENT, ...args, '--wait', '45'], {
       env: { ...process.env, DOGENT_HOME: home, DOGENT_BRIDGE_TOKEN: TOKEN, DOGENT_BRIDGE_PORT: String(PORT), DOGENT_BRIDGE_PIPE: `\\\\.\\pipe\\dogent-client-e2e-${process.pid}` },
     });
     let text = '';
@@ -193,6 +193,48 @@ try {
     assert.match(r.text, /adjust\.xls: 파일을 직접 읽지 못해.*Excel로 엽니다/);
     const saved = await fetch(`${SITE}/api/adjust`).then((x) => x.json());
     assert.deepEqual(saved, [rows.map((row) => row.map(String))]);
+  });
+
+  await scenario('브라우저가 둘이면 목록을 보여 주고, --browser로 고른 브라우저를 조작', async () => {
+    // 두 번째 브라우저(따로 띄운 Chromium, 확장 설치도 따로)를 같은 클라이언트에 붙인다.
+    const second = await chromium.launchPersistentContext(await mkdtemp(join(tmpdir(), 'dogent-client-2-')), {
+      channel: 'chromium',
+      headless: !HEADED,
+      args: [`--disable-extensions-except=${EXT}`, `--load-extension=${EXT}`],
+    });
+    try {
+      const w2 = second.serviceWorkers()[0] ?? (await second.waitForEvent('serviceworker'));
+      const p2 = await second.newPage();
+      await p2.goto(`chrome-extension://${new URL(w2.url()).host}/sidepanel.html`);
+      // 같은 종류의 브라우저가 둘이므로 두 번째에 이름을 붙인다 (설정 → 클라이언트 연결 → 이 브라우저 이름).
+      await p2.evaluate((v) => chrome.storage.local.set({ bridgeSettings: v }), { mode: 'ws', port: PORT, token: TOKEN, label: '두 번째 크롬' });
+      const t2 = await second.newPage();
+      await t2.goto(SITE + '/fw.html');
+      await open('/wip.html');
+
+      const list = await client(['browsers']);
+      assert.equal(list.code, 0, list.text);
+      const ids = [...list.text.matchAll(/\[(\d+)\]/g)].map((m) => m[1]);
+      assert.equal(ids.length, 2, list.text);
+      assert.match(list.text, /연결된 브라우저 2개/);
+      assert.match(list.text, /두 번째 크롬/);
+      // 이름으로 고르면 그 브라우저의 탭을 본다. 번호는 실행마다 다시 매겨지므로 명령에는 이름을 쓴다.
+      const second2 = await client(['tabs', '--browser', '두 번째']);
+      assert.equal(second2.code, 0, second2.text);
+      assert.match(second2.text, /fw\.html/);
+      assert.doesNotMatch(second2.text, /wip\.html/);
+      const first = await client(['tabs', '--browser', 'chromium']);
+      assert.equal(first.code, 0, first.text);
+      assert.match(first.text, /wip\.html/);
+      assert.doesNotMatch(first.text, /fw\.html/);
+      // 없는 브라우저를 고르면 연결된 목록을 알려 준다.
+      const bad = await client(['tabs', '--browser', 'firefox', '--wait', '2']);
+      assert.notEqual(bad.code, 0);
+      assert.match(bad.text, /"firefox"에 맞는 브라우저가 없습니다/);
+      return list.text.trim().split(/\r?\n/).slice(-2).join(' / ');
+    } finally {
+      await second.close();
+    }
   });
 
   await scenario('조작할 사이트 밖의 탭에서는 자유 요청이 막힘', async () => {

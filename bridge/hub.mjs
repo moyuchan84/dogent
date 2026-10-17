@@ -21,7 +21,7 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { WebSocketServer } from 'ws';
 import { DEFAULT_PORT, acceptAuth, lineReader, pipePath, randomNonce } from './protocol.mjs';
-import { PORT_TOOL, TOOLS } from './tools.mjs';
+import { HUB_TOOLS, PORT_TOOL, TOOLS } from './tools.mjs';
 
 const VERSION = '0.1.0';
 /** 승인 창이나 로그인을 기다리는 도구가 있어 넉넉히 둔다. */
@@ -45,14 +45,22 @@ export function loadToken() {
 
 /**
  * 브리지 본체. 확장 연결을 받고, MCP 요청을 처리한다. 테스트에서는 이 함수를 직접 쓴다.
- * 확장 연결은 하나만 쓴다. 새로 인증된 연결이 오면 그것으로 바꾼다.
+ *
+ * 크롬과 엣지처럼 Dogent 확장이 든 브라우저가 여럿 붙을 수 있다. 연결은 모두 두고, 도구 호출은 고른 브라우저 하나로 보낸다.
+ * 고르지 않았으면 가장 나중에 붙은 브라우저를 쓴다. 같은 브라우저가 다시 붙으면(서비스 워커가 다시 깨어남) 이전 연결을 대신한다.
  */
 export function createHub({ token, port = DEFAULT_PORT, pipe = pipePath(userInfo().username), log = () => {} }) {
-  let link = null; // { send(msg), close(), via }
+  /** 확인을 마친 연결들. { id, via, browser, key, since, send, close } */
+  const links = [];
+  let selected = null; // 고른 연결의 id
+  let nextLink = 1;
   let nextId = 1;
   const pending = new Map();
 
-  /** 연결 하나에 대해 확인 절차를 밟고, 통과하면 이 연결을 확장 연결로 쓴다. */
+  /** 지금 도구를 보낼 연결 */
+  const current = () => links.find((l) => l.id === selected) ?? links.at(-1) ?? null;
+
+  /** 연결 하나에 대해 확인 절차를 밟고, 통과하면 브라우저 목록에 넣는다. */
   function attach(via, send, close, onMessage) {
     const nonce = randomNonce();
     let authed = false;
@@ -62,7 +70,7 @@ export function createHub({ token, port = DEFAULT_PORT, pipe = pipePath(userInfo
         close();
       }
     }, AUTH_TIMEOUT_MS);
-    const self = { send, close, via };
+    const self = { id: 0, send, close, via, browser: '브라우저', key: '', since: Date.now() };
     onMessage(async (msg) => {
       if (!authed) {
         if (msg?.type === 'status') return log(`${via}: ${msg.state}${msg.detail ? ` (${msg.detail})` : ''}`);
@@ -76,12 +84,25 @@ export function createHub({ token, port = DEFAULT_PORT, pipe = pipePath(userInfo
         authed = true;
         clearTimeout(timer);
         send(welcome);
-        if (link && link !== self) link.close();
-        link = self;
+        self.id = nextLink++;
+        links.push(self);
         log(`확장 연결됨 (${via})`);
         return;
       }
       if (msg?.type === 'ping') return send({ type: 'pong' });
+      if (msg?.type === 'hello') {
+        // 확장이 알려 준 브라우저 이름(예: Microsoft Edge 141)과 구분 값(확장 ID + 브라우저 종류)
+        self.browser = String(msg.browser ?? '브라우저').slice(0, 80);
+        self.key = String(msg.key ?? '');
+        // 같은 브라우저가 다시 붙었으면 이전 연결을 대신한다. 고른 브라우저였으면 새 연결을 고른다.
+        const old = links.find((l) => l !== self && self.key && l.key === self.key);
+        if (old) {
+          if (selected === old.id) selected = self.id;
+          old.close();
+        }
+        log(`브라우저: ${self.browser} (${via})`);
+        return;
+      }
       if (msg?.type === 'result') {
         const p = pending.get(msg.id);
         if (!p) return;
@@ -94,17 +115,47 @@ export function createHub({ token, port = DEFAULT_PORT, pipe = pipePath(userInfo
     send({ type: 'challenge', nonce });
     return () => {
       clearTimeout(timer);
-      if (link === self) {
-        link = null;
-        log(`확장 연결 끊김 (${via})`);
-        for (const [id, p] of pending) {
-          clearTimeout(p.timer);
-          p.reject(new Error('확장 연결이 끊겼습니다'));
-          pending.delete(id);
-        }
+      const at = links.indexOf(self);
+      if (at < 0) return;
+      links.splice(at, 1);
+      if (selected === self.id) selected = null;
+      log(`확장 연결 끊김 (${self.browser}, ${via})`);
+      for (const [id, p] of pending) {
+        if (p.link !== self) continue;
+        clearTimeout(p.timer);
+        p.reject(new Error('확장 연결이 끊겼습니다'));
+        pending.delete(id);
       }
     };
   }
+
+  /** 연결된 브라우저 목록 */
+  function browsers() {
+    const now = current();
+    return links.map((l) => ({ id: l.id, browser: l.browser, via: l.via, since: l.since, selected: l === now }));
+  }
+
+  /** 브라우저를 고른다. 번호나 이름 일부(edge, chrome). 고른 브라우저를 돌려준다. */
+  function select(which) {
+    const text = String(which ?? '').trim().toLowerCase();
+    const byId = links.find((l) => String(l.id) === text);
+    const byName = links.filter((l) => l.browser.toLowerCase().includes(text));
+    const pick = byId ?? (byName.length === 1 ? byName[0] : null);
+    if (!pick) {
+      const names = links.map((l) => `[${l.id}] ${l.browser}`).join(', ') || '없음';
+      throw new Error(byName.length > 1 ? `"${which}"에 맞는 브라우저가 여럿입니다: ${names}. 번호로 고르세요` : `"${which}"에 맞는 브라우저가 없습니다. 연결된 브라우저: ${names}`);
+    }
+    selected = pick.id;
+    log(`브라우저를 골랐습니다: ${pick.browser}`);
+    return { id: pick.id, browser: pick.browser, via: pick.via };
+  }
+
+  const describeBrowsers = () =>
+    links.length === 0
+      ? '연결된 브라우저가 없습니다. 브라우저의 Dogent 사이드 패널 → 설정 → 클라이언트 연결을 켜세요'
+      : browsers()
+          .map((b) => `[${b.id}]${b.selected ? ' (사용 중)' : ''} ${b.browser} — ${b.via}`)
+          .join('\n');
 
   // WebSocket. 웹페이지도 localhost에 붙을 수 있으므로 확장(chrome-extension://)에서 온 연결만 받고, 토큰으로 다시 확인한다.
   const wss = new WebSocketServer({
@@ -162,6 +213,7 @@ export function createHub({ token, port = DEFAULT_PORT, pipe = pipePath(userInfo
 
   /** 확장에 도구 실행을 맡긴다. */
   function callTool(tool, args) {
+    const link = current();
     if (!link) {
       return Promise.reject(
         new Error(
@@ -175,7 +227,17 @@ export function createHub({ token, port = DEFAULT_PORT, pipe = pipePath(userInfo
         pending.delete(id);
         reject(new Error(`${CALL_TIMEOUT_MS / 60000}분 안에 확장이 답하지 않았습니다`));
       }, CALL_TIMEOUT_MS);
-      pending.set(id, { resolve, reject, timer });
+      const started = Date.now();
+      const slow = (ok) => {
+        const ms = Date.now() - started;
+        if (ms > 500) log(`느린 도구 호출: ${tool}${args?.method ? `.${args.method}` : ''} ${ms}ms${ok ? '' : ' (실패)'}`);
+      };
+      pending.set(id, {
+        resolve: (v) => (slow(true), resolve(v)),
+        reject: (e) => (slow(false), reject(e)),
+        timer,
+        link,
+      });
       link.send({ type: 'call', id, tool, args: args ?? {} });
     });
   }
@@ -197,9 +259,19 @@ export function createHub({ token, port = DEFAULT_PORT, pipe = pipePath(userInfo
       case 'ping':
         return reply({});
       case 'tools/list':
-        return reply({ tools: TOOLS });
+        return reply({ tools: [...HUB_TOOLS, ...TOOLS] });
       case 'tools/call': {
         const name = req.params?.name;
+        // 브라우저 고르기는 브리지가 직접 답한다.
+        if (name === 'browsers_list') return reply({ content: [{ type: 'text', text: describeBrowsers() }] });
+        if (name === 'browser_select') {
+          try {
+            const b = select(req.params?.arguments?.browser);
+            return reply({ content: [{ type: 'text', text: `[${b.id}] ${b.browser}을(를) 씁니다` }] });
+          } catch (e) {
+            return reply({ content: [{ type: 'text', text: e.message }], isError: true });
+          }
+        }
         if (name !== PORT_TOOL && !TOOLS.some((t) => t.name === name)) return fail(-32602, `모르는 도구: ${name}`);
         try {
           const text = await callTool(name, req.params?.arguments ?? {});
@@ -216,11 +288,14 @@ export function createHub({ token, port = DEFAULT_PORT, pipe = pipePath(userInfo
   return {
     ready: Promise.all([wsReady, pipeReady]),
     handleMcp,
-    connected: () => (link ? link.via : null),
+    /** 지금 쓰는 브라우저의 연결 방식. 없으면 null */
+    connected: () => current()?.via ?? null,
+    browsers,
+    select,
     close() {
       wss.close();
       pipeServer.close();
-      link?.close();
+      for (const l of [...links]) l.close();
     },
   };
 }

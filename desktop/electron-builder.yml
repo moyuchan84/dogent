@@ -1,0 +1,23 @@
+# Dogent 데스크탑 실행본 (pnpm desktop:pack). 한 파일로 도는 portable exe를 만든다.
+# 앱 코드는 desktop/dist에 모두 묶여 있고 의존성이 없으므로, 그 폴더를 프로젝트로 삼아 만든다.
+# 아래 경로는 desktop/dist 기준이다.
+appId: com.dogent.desktop
+productName: Dogent
+directories:
+  app: .
+  output: ../release
+files:
+  - '**/*'
+extraResources:
+  # pnpm office:build로 만든 오피스 도구가 있으면 함께 넣는다.
+  - from: ../../office/dist
+    to: .
+    filter:
+      - dogent-office.exe
+npmRebuild: false
+asar: true
+win:
+  target: portable
+  icon: ../../public/icon/256.png
+portable:
+  artifactName: Dogent-${version}.exe

@@ -17,6 +17,20 @@ export const PORT_TOOL = 'dogent_port';
 const ref = { type: 'integer', minimum: 0, description: '마지막 snapshot에서 [ ] 안의 요소 번호' };
 const tabId = { type: 'integer', description: '탭 번호 (tabs_list). 없으면 지금 대상 탭' };
 
+/** 브리지가 직접 답하는 도구. 확장이 여럿 붙었을 때 어느 브라우저를 쓸지 고른다 (Claude Code의 /chrome처럼). */
+export const HUB_TOOLS = [
+  {
+    name: 'browsers_list',
+    description: 'Dogent 확장이 연결된 브라우저 목록 (크롬, 엣지 등). 지금 쓰는 브라우저에 (사용 중)이 붙는다.',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'browser_select',
+    description: '도구를 보낼 브라우저를 고른다. browsers_list의 번호나 이름 일부(edge, chrome).',
+    inputSchema: { type: 'object', properties: { browser: { type: 'string' } }, required: ['browser'] },
+  },
+];
+
 export const TOOLS = [
   {
     name: 'tabs_list',

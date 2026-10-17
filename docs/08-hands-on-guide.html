@@ -166,6 +166,8 @@ footer { margin-top: 64px; color: var(--muted); font-size: 13px; }
       <li><a href="#history">E. 실행 기록</a></li>
       <li class="grp">터미널 클라이언트</li>
       <li><a href="#client">F. 클라이언트로 시키기</a></li>
+      <li class="grp">데스크탑 앱</li>
+      <li><a href="#desktop">G. 창에서 시키기</a></li>
       <li class="grp">사내 적용</li>
       <li><a href="#company">3. 사내 Gemma·시스템 연결</a></li>
       <li><a href="#inspect">· 화면 점검</a></li>
@@ -176,13 +178,13 @@ footer { margin-top: 64px; color: var(--muted); font-size: 13px; }
 
   <main>
     <header class="hero">
-      <div class="eyebrow">DOGENT · 크롬 확장 + 터미널 클라이언트</div>
+      <div class="eyebrow">DOGENT · 크롬 확장 + 클라이언트 + 데스크탑 앱</div>
       <h1>받아서 실행하고, 내 업무 시나리오까지 만들어 보기</h1>
-      <p>Dogent는 두 가지로 씁니다. 브라우저 오른쪽 <b>사이드 패널</b>에서 시키거나(A~E), PC의 <b>터미널 클라이언트</b>에서 시킵니다(F). 어느 쪽이든 화면을 읽고 누르는 일은 크롬 확장이 하고, 스킬과 안전장치는 같습니다. 먼저 모의 사이트와 모의 모델로 흐름을 익힌 뒤, 사내 Gemma와 실제 업무 화면에 연결합니다. 아래 화면과 터미널 출력은 모두 이 저장소를 빌드해 실제로 돌리면서 캡처한 것입니다.</p>
+      <p>Dogent는 두 가지로 씁니다. 브라우저 오른쪽 <b>사이드 패널</b>에서 시키거나(A~E), PC의 <b>터미널 클라이언트</b>(F)나 <b>데스크탑 앱</b>(G)에서 시킵니다. 어느 쪽이든 화면을 읽고 누르는 일은 크롬 확장이 하고, 스킬과 안전장치는 같습니다. 먼저 모의 사이트와 모의 모델로 흐름을 익힌 뒤, 사내 Gemma와 실제 업무 화면에 연결합니다. 아래 화면과 터미널 출력은 모두 이 저장소를 빌드해 실제로 돌리면서 캡처한 것입니다.</p>
       <div class="route">
         <div><b>① 준비</b><span>설치 · 빌드 · 확장 로드 (10분)</span></div>
         <div><b>② 사이드 패널</b><span>A~E 시나리오 따라하기 (20분)</span></div>
-        <div><b>③ 클라이언트</b><span>F · 터미널에서 같은 일 (10분)</span></div>
+        <div><b>③ 클라이언트·앱</b><span>F 터미널 · G 데스크탑 앱 (15분)</span></div>
         <div><b>④ 사내 연결</b><span>.env.company.local 하나로 둘 다 빌드</span></div>
         <div><b>⑤ 내 시나리오</b><span>녹화나 말로 시켜 스킬 만들기</span></div>
       </div>
@@ -596,9 +598,9 @@ pnpm build          <span class="c"># 그다음 chrome://extensions 에서 새�
             <tr><td>스킬</td><td>확장에 든 스킬, 공유 스킬, 내 초안</td><td>개인 폴더 &gt; 팀 저장소 &gt; 기본 (같은 ID면 앞의 것)</td></tr>
             <tr><td>저장·상신 승인</td><td>패널의 빨간 승인 상자</td><td>브라우저에 뜨는 <b>Dogent 승인 창</b> (확장이 띄움)</td></tr>
             <tr><td>결과 엑셀</td><td>내려받기 폴더</td><td>내려받기 폴더 (<code>config outputDir</code>로 바꿈)</td></tr>
-            <tr><td>앞으로</td><td>승인·진행 표시용으로 줄어듦</td><td>문서 보안(NASCA) 엑셀 도구, 예약 실행이 붙음</td></tr>
+            <tr><td>엑셀</td><td>파일 입력 (xlsx·csv)</td><td>오피스 도구로 문서 보안(NASCA) 문서, EDM에서 연 문서까지</td></tr>
           </table></div>
-          <div class="note warn"><b>화면이 있는 데스크탑 프로그램(Electron)은 아직 없습니다.</b> 지금은 터미널 프로그램이고, 같은 엔진 위에 화면을 입히는 것은 다음 단계(docs/09의 4단계)입니다. 아래 명령과 흐름은 화면판에서도 그대로 이어집니다.</div>
+          <div class="note ok"><b>같은 일을 창에서 하려면 G. 데스크탑 앱</b>을 씁니다. 엔진이 같아서 아래 흐름이 그대로 화면에 보입니다. 이 장의 명령은 자동화나 문제를 찾을 때 씁니다.</div>
         </div>
       </div>
       <div class="step wide">
@@ -751,12 +753,128 @@ pnpm client help               <span class="c"># 명령 목록</span></code></pr
           <p>실행 기록은 <code>%USERPROFILE%\.dogent\runs.jsonl</code>에 남습니다. 문제가 생기면 이 파일을 개발 담당에게 보내 주세요.</p>
         </div>
       </div>
+      <div class="step wide">
+        <div class="text">
+          <h3><span class="num">7</span>브라우저가 여럿일 때 (크롬·엣지)</h3>
+          <p>크롬과 엣지 둘 다에 확장을 올려 연결을 켜 두면 둘 다 붙습니다. 어느 브라우저를 조작할지 고릅니다. 같은 종류 브라우저가 둘이면(크롬 프로필 둘 등) 확장의 <b>클라이언트 연결 → 이 브라우저 이름</b>에 구분할 이름을 붙입니다(예: 업무용 크롬).</p>
+<pre><code><span class="c">$ </span>pnpm client browsers
+연결된 브라우저 2개
+  [1] (사용 중) Microsoft Edge 141 — WebSocket
+  [2] 업무용 크롬 — WebSocket
+
+pnpm client tabs --browser 크롬               <span class="c"># 이번만 크롬</span>
+pnpm client config browser edge              <span class="c"># 늘 엣지</span></code></pre>
+          <ul>
+            <li>고르지 않으면 지금 붙어 있는 브라우저를 쓰고, 실행 중에 다른 브라우저가 붙어도 바뀌지 않습니다.</li>
+            <li>번호는 실행할 때마다 다시 매겨지므로, 명령에는 이름을 씁니다. 대화 모드에서는 <code>browser 2</code>처럼 번호도 됩니다.</li>
+            <li>데스크탑 앱은 위쪽 목록에서 고릅니다(G). Claude Code에서는 <code>browsers_list</code>, <code>browser_select</code> 도구가 같은 일을 합니다.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- G: 데스크탑 -->
+    <section class="part" id="desktop">
+      <h2>G. 데스크탑 앱 <small>터미널 없이 창에서 시키기 (Electron)</small></h2>
+      <p class="lead">F의 클라이언트에 화면을 입힌 앱입니다. 엔진이 같아서 스킬, 설정, 실행 기록(<code>%USERPROFILE%\.dogent</code>)을 함께 씁니다. 현업 사용자에게는 이 앱 하나와 브라우저 확장만 나눠 주면 됩니다.</p>
+      <div class="step wide">
+        <div class="text">
+          <h3><span class="num">1</span>빌드와 실행</h3>
+<pre><code>pnpm desktop                   <span class="c"># 빌드하고 바로 띄우기 (모의 모델)</span>
+pnpm desktop:pack              <span class="c"># 한 파일 실행본 desktop/release/Dogent-0.1.0.exe (약 96MB)</span>
+pnpm desktop:pack:company      <span class="c"># 회사 설정(.env.company.local)으로 실행본</span></code></pre>
+          <ul>
+            <li>실행본은 설치 없이 더블클릭으로 뜹니다. <code>pnpm office:build</code>로 오피스 도구를 먼저 만들어 두면 실행본 안에 함께 들어갑니다.</li>
+            <li>사내망에서 Electron을 내려받지 못하면 <code>pnpm install</code> 전에 <code>set ELECTRON_MIRROR=(사내 미러)/electron/</code></li>
+            <li>터미널 클라이언트와 앱을 동시에 켜면 브리지 포트가 겹칩니다. 하나만 켭니다.</li>
+          </ul>
+          <div class="note risk"><b>회사 설정으로 만든 실행본에는 API 키가 들어갑니다.</b> 사내에서만 나누고, 저장소·메일·메신저로 옮기지 마세요 (<code>desktop/dist</code>, <code>desktop/release</code>는 저장소에 올라가지 않음).</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="text">
+          <h3><span class="num">2</span>첫 화면과 연결</h3>
+          <ol>
+            <li>앱의 <b>설정</b> → 확장 연결 토큰 <b>복사</b></li>
+            <li>브라우저의 Dogent 사이드 패널 → 설정 → 클라이언트 연결 → WebSocket, 토큰 붙여 넣기 → 저장 (F-2와 같음)</li>
+            <li>앱 위쪽에 브라우저 이름이 보이고 초록 점이 켜지면 연결된 것입니다</li>
+          </ol>
+          <p>왼쪽에는 스킬이 <b>개인 / 팀 / 기본</b>으로 나뉘어 있습니다. <b>엑셀 문서</b> 탭은 지금 Excel에 열린 문서(문서 공유망에서 읽기·편집으로 연 문서 등)를 보여 줍니다.</p>
+        </div>
+        <div class="shots">
+          <figure>
+            <div class="frame"><img src="guide-img/31-desktop-home.png" alt="데스크탑 앱 첫 화면: 위쪽 브라우저 선택, 왼쪽 스킬 목록, 가운데 무엇을 할까요" loading="lazy"></div>
+            <figcaption>첫 화면. 예시 요청을 눌러도 됩니다</figcaption>
+          </figure>
+        </div>
+      </div>
+      <div class="step">
+        <div class="text">
+          <h3><span class="num">3</span>말로 시키거나, 스킬을 눌러 실행</h3>
+          <ul>
+            <li>아래 입력 칸에 <code>7라인 재공 확인해줘</code> → Enter. 고른 스킬과 입력값이 나오고 <b>실행할까요?</b> 카드에서 <b>예</b></li>
+            <li>왼쪽 스킬을 누르면 입력 칸 카드가 나옵니다. 값을 넣고 <b>실행</b></li>
+            <li>실행은 카드 하나로 보입니다. 단계마다 무엇을 했는지, 끝나면 결과와 저장한 파일(<b>폴더에서 보기</b>)</li>
+            <li>실행 중에는 <b>중지</b>. 아래 체크로 자유 요청의 저장·상신 허용, 시험 실행(상신 직전에 멈춤)</li>
+          </ul>
+        </div>
+        <div class="shots">
+          <figure>
+            <div class="frame"><img src="guide-img/32-desktop-run.png" alt="실행 카드: 단계별 진행과 완료 결과, 저장한 파일과 폴더에서 보기 버튼" loading="lazy"></div>
+            <figcaption>재공 확인: 3페이지를 읽어 엑셀 세 시트로</figcaption>
+          </figure>
+        </div>
+      </div>
+      <div class="step">
+        <div class="text">
+          <h3><span class="num">4</span>저장·상신은 브라우저의 승인 창에서</h3>
+          <p>R3 스킬이 상신 버튼에 다다르면 앱의 실행 카드에 빨간 안내와 화면에서 다시 읽은 값이 나오고, 브라우저에 <b>Dogent 승인 창</b>이 뜹니다(F-5와 같은 창). 승인은 그 창에서만 합니다.</p>
+        </div>
+        <div class="shots">
+          <figure>
+            <div class="frame"><img src="guide-img/33-desktop-approval.png" alt="실행 카드의 상신 전 확인 안내와 입력값" loading="lazy"></div>
+            <figcaption>앱에 보이는 승인 안내 (승인은 브라우저 창에서)</figcaption>
+          </figure>
+        </div>
+      </div>
+      <div class="step">
+        <div class="text">
+          <h3><span class="num">5</span>잘 된 자유 요청을 내 스킬로</h3>
+          <p>맞는 스킬이 없는 요청은 지금 화면에서 자유 요청으로 합니다. 끝나면 <b>스킬로 저장할까요?</b> 카드가 나오고, 매개변수 이름·설명, 스킬 ID, 담당 부서를 카드에 차례로 답합니다(F-6과 같은 질문). 저장하면 왼쪽 <b>개인</b>에 바로 나타납니다.</p>
+        </div>
+        <div class="shots">
+          <figure>
+            <div class="frame"><img src="guide-img/34-desktop-saved.png" alt="질문 카드에 답해 저장한 개인 스킬이 왼쪽 목록에 나타난 모습" loading="lazy"></div>
+            <figcaption>왼쪽 위 개인: 라인 재공 건수</figcaption>
+          </figure>
+        </div>
+      </div>
+      <div class="step">
+        <div class="text">
+          <h3><span class="num">6</span>설정</h3>
+          <div class="tbl"><table>
+            <tr><th>칸</th><th>쓰임</th></tr>
+            <tr><td>확장 연결 토큰</td><td>브라우저 확장의 클라이언트 연결에 넣을 값 (복사)</td></tr>
+            <tr><td>사용자 ID</td><td>사내 모델 게이트웨이의 user-id (사내 SSO ID)</td></tr>
+            <tr><td>쓸 브라우저</td><td>확장이 든 브라우저가 여럿일 때 이름 일부 (예: 엣지)</td></tr>
+            <tr><td>결과 엑셀 저장 폴더</td><td>비우면 내려받기 폴더</td></tr>
+            <tr><td>팀 스킬 저장소 폴더</td><td>사내 GitHub의 dogent-skills를 받아 둔 폴더</td></tr>
+          </table></div>
+          <p>아래 <b>지금 설정</b>에는 빌드 모드, 모델 주소, 헤더 이름, 스킬 폴더, 오피스 도구 위치가 보입니다(키는 가림).</p>
+        </div>
+        <div class="shots">
+          <figure>
+            <div class="frame"><img src="guide-img/35-desktop-settings.png" alt="설정 창: 토큰 복사, 사용자 ID, 쓸 브라우저, 저장 폴더, 팀 스킬 폴더, 지금 설정" loading="lazy"></div>
+            <figcaption>설정 (오른쪽에서 열림)</figcaption>
+          </figure>
+        </div>
+      </div>
     </section>
 
     <!-- 사내 -->
     <section class="part" id="company">
       <h2>3. 사내 Gemma와 업무 시스템에 연결</h2>
-      <p class="lead">집과 회사는 <b>설정 파일 하나만</b> 다릅니다. 확장과 클라이언트가 같은 설정 파일을 씁니다. 코드와 명령은 같아서, 집에서 개발한 것을 받아 회사에서 설정 파일만 두고 빌드하면 됩니다. 설정 파일(<code>*.local</code>)은 Git에 올라가지 않습니다.</p>
+      <p class="lead">집과 회사는 <b>설정 파일 하나만</b> 다릅니다. 확장, 클라이언트, 데스크탑 앱이 같은 설정 파일을 씁니다. 코드와 명령은 같아서, 집에서 개발한 것을 받아 회사에서 설정 파일만 두고 빌드하면 됩니다. 설정 파일(<code>*.local</code>)은 Git에 올라가지 않습니다.</p>
       <div class="step wide">
         <div class="text">
           <div class="tbl"><table>
@@ -764,6 +882,7 @@ pnpm client help               <span class="c"># 명령 목록</span></code></pr
             <tr><td>설정 파일</td><td><code>.env.home.local</code><br>← <code>.env.home.example</code> 복사</td><td><code>.env.company.local</code><br>← <code>.env.company.example</code> 복사</td></tr>
             <tr><td>확장 빌드</td><td><code>pnpm build:home</code></td><td><code>pnpm build:company</code></td></tr>
             <tr><td>클라이언트 빌드</td><td><code>pnpm client:build:home</code></td><td><code>pnpm client:build:company</code></td></tr>
+            <tr><td>데스크탑 실행본</td><td><code>pnpm desktop:pack</code> (집 설정은 <code>.env.local</code>에)</td><td><code>pnpm desktop:pack:company</code></td></tr>
             <tr><td>로드할 폴더</td><td><code>.output/chrome-mv3-home</code></td><td><code>.output/chrome-mv3-company</code></td></tr>
             <tr><td>모델 호출</td><td>Ollama 중계 서버(<code>pnpm ollama:proxy</code>)</td><td>사내 게이트웨이, 헤더로 키·사용자 전달</td></tr>
           </table></div>
@@ -939,7 +1058,9 @@ pnpm ollama:proxy   <span class="c"># 터미널 2</span></code></pre>
             <tr><td>"허용되지 않은 사이트" / 아무 동작도 안 함</td><td><b>화면 점검</b>을 눌러 막힘 항목을 봄. 대개 조작할 사이트에 그 주소(또는 iframe 주소)가 없음. <b>이 사이트 허용</b>을 누르거나 설정 → 조작할 사이트에서 더함</td></tr>
             <tr><td>"같은 동작을 3번 했지만 화면이 바뀌지 않아 중단"</td><td>모델이 같은 동작을 되풀이하는데 화면이 그대로인 경우만 멈춤(같은 버튼을 이어 누르는 정상 동작은 멈추지 않음). 단계의 목적이나 검사 조건을 더 분명히 적음</td></tr>
             <tr><td>클라이언트: "확장이 연결되지 않았습니다"</td><td>설정 → 클라이언트 연결이 켜져 있고 토큰이 <code>pnpm client token</code>과 같은지. 포트를 바꿨으면 <code>config bridgePort</code>도 같게</td></tr>
-            <tr><td>클라이언트: "포트 39217을(를) 열지 못했습니다"</td><td>다른 프로그램(Claude Code의 Dogent 브리지, 다른 클라이언트 창)이 이미 씀. 하나만 켬</td></tr>
+            <tr><td>클라이언트·앱: "포트 39217을(를) 열지 못했습니다"</td><td>다른 프로그램(데스크탑 앱, 터미널 클라이언트, Claude Code의 Dogent 브리지)이 이미 씀. 하나만 켬</td></tr>
+            <tr><td>앱 위쪽이 "브라우저 연결 기다리는 중"에서 안 바뀜</td><td>확장의 클라이언트 연결이 켜져 있고 토큰이 앱 설정의 토큰과 같은지. 브라우저가 쉬고 있으면 30초 안에 다시 붙음</td></tr>
+            <tr><td>엉뚱한 브라우저를 조작함</td><td>브라우저가 여럿 붙어 있음. 앱 위쪽 목록이나 <code>--browser</code>로 고르고, 늘 쓸 브라우저는 설정에 적음 (F-7)</td></tr>
             <tr><td>클라이언트: "지금 브라우저 탭은 조작할 사이트 목록에 없습니다"</td><td>업무 화면 탭을 앞에 두지 않았음. 그 탭을 눌러 앞으로 가져온 뒤 다시 실행</td></tr>
             <tr><td>해석을 눌러도 응답이 없거나 시간 초과</td><td>설정의 <b>연결 시험</b>으로 원인 확인. 느리면 제한 시간 배율(또는 WXT_LLM_TIMEOUT_SCALE)을 올림</td></tr>
             <tr><td>모델 응답 형식 오류가 반복</td><td>JSON 출력 모드를 켜 봄 (API가 지원할 때)</td></tr>

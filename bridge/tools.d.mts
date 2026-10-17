@@ -4,4 +4,5 @@ export interface ToolSpec {
   inputSchema: Record<string, unknown>;
 }
 export const TOOLS: ToolSpec[];
+export const HUB_TOOLS: ToolSpec[];
 export const PORT_TOOL: string;
