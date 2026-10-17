@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { lintSkill } from '../../src/core';
 import { loadToken } from './bridge';
 import { describeConfig, loadConfig, setConfig } from './config';
+import { addSchedule, describeSchedule, listSchedules, parseSpec, removeSchedule } from './schedule';
 import { Session, type SessionOptions } from './session';
 import { Terminal } from './terminal';
 
@@ -19,6 +20,8 @@ const HELP = `Dogent 클라이언트 ${__DOGENT_BUILD__.version} (${__DOGENT_BUI
   dogent excel <파일>             Excel로 열어 시트와 앞부분을 보여 준다 (문서 보안 문서 확인)
   dogent excel docs               사용자의 Excel에 열린 문서 (문서 공유망에서 연 문서 등)
   dogent excel resave <원본> <새 경로>   Excel로 다시 저장 (문서 보안이 다시 암호화하는지 확인)
+  dogent schedule add <이름> --at 09:00 [--days 월,수,금] <스킬ID> [이름=값 …]   예약 실행 (매일, 또는 요일마다. 저장·상신은 하지 않는다)
+  dogent schedule list|remove <이름>   예약 보기 / 지우기
   dogent token                    확장의 "클라이언트 연결"에 넣을 토큰
   dogent config [키 값]            설정 보기 / 바꾸기 (예: dogent config llm.userId sso123)
 
@@ -55,6 +58,19 @@ async function main(): Promise<number> {
   if (cmd === 'token') {
     console.log(loadToken());
     return 0;
+  }
+  if (cmd === 'schedule') {
+    const [sub, ...more] = rest;
+    try {
+    if (sub === 'add') console.log(`등록했습니다: ${addSchedule(parseSpec(more))}`);
+    else if (sub === 'remove' && more[0]) (removeSchedule(more[0]), console.log('지웠습니다'));
+    else if (sub === 'list') for (const n of listSchedules()) console.log(describeSchedule(n));
+    else throw new Error('사용법: dogent schedule add|list|remove');
+    return 0;
+    } catch (e) {
+      console.error(`오류: ${(e as Error).message}`);
+      return 1;
+    }
   }
   const cfg = loadConfig();
   if (cmd === 'config') {

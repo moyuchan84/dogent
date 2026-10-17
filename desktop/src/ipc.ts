@@ -46,6 +46,18 @@ export interface DogentApi {
   show(path: string): Promise<void>;
   options(patch: { allowWrite?: boolean; dryRun?: boolean }): Promise<unknown>;
   token(): Promise<string>;
+  /** 확장 연결(Native Messaging 등록) 상태. register를 주면 그 확장 ID도 허용해 등록한다. */
+  extension(register?: string): Promise<ExtensionStatus>;
   setConfig(key: string, value: string): Promise<string>;
   onUi(listener: (message: UiMessage) => void): () => void;
+}
+
+/** 앱이 브라우저 확장에 연결되는 길(Native Messaging)을 깔아 둔 상태 */
+export interface ExtensionStatus {
+  /** 등록된 허용 확장 ID */
+  ids: string[];
+  /** 브라우저 프로필에서 찾은 Dogent 확장 중 아직 등록되지 않은 것 */
+  missing: { id: string; browser: string }[];
+  /** 방금 등록하다 난 오류 */
+  error?: string;
 }

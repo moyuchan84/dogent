@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { homedir, userInfo } from 'node:os';
 import { join } from 'node:path';
 import type { LlmSettings } from '../../src/core';
 import { dogentConfig } from '../../dogent.config';
@@ -42,6 +42,18 @@ export interface ClientConfig {
   file: string;
 }
 
+/**
+ * 지금 로그인한 Windows 계정 이름 (도메인 계정이면 도메인을 뺀 ID, 예: CORP\hong → hong). 사내 게이트웨이의 사용자 ID가 보통 이 계정이라
+ * 설정에 따로 적지 않았을 때 대신 쓴다. 읽지 못하면 빈 값.
+ */
+export function windowsAccount(): string {
+  try {
+    return (process.env.USERNAME || userInfo().username || '').trim();
+  } catch {
+    return '';
+  }
+}
+
 /** 사용자 폴더. 시험할 때는 DOGENT_HOME으로 바꾼다. */
 export function dogentHome(): string {
   return process.env.DOGENT_HOME ?? join(homedir(), '.dogent');
@@ -59,6 +71,8 @@ export function loadConfig(): ClientConfig {
     }
   }
   const llm: LlmSettings = { ...dogentConfig.llmDefaults, ...__DOGENT_BUILD__.llm, ...user.llm };
+  // 사용자 ID를 적지 않았으면 Windows 계정으로 채운다 (SSO ID가 다르면 dogent config llm.userId 로 덮어쓴다).
+  if (!llm.userId?.trim()) llm.userId = windowsAccount() || undefined;
   return {
     home,
     llm,
@@ -99,7 +113,7 @@ export function describeConfig(c: ClientConfig): string {
     `API 키         ${key}`,
     `헤더 틀        ${c.llm.headers ? Object.keys(c.llm.headers).join(', ') : '(없음, Authorization)'}`,
     `시스템 이름    ${c.llm.systemName ?? ''}`,
-    `사용자 ID      ${c.llm.userId ?? ''}`,
+    `사용자 ID      ${c.llm.userId ?? ''}${c.llm.userId && c.llm.userId === windowsAccount() ? ' (Windows 계정)' : ''}`,
     `브라우저       ${c.browser ?? '(여럿이면 가장 나중에 연결된 것)'}`,
     `개인 스킬      ${c.personalSkills}`,
     `팀 스킬        ${c.teamSkills ?? '(설정 안 함: dogent config teamSkills <폴더>)'}`,

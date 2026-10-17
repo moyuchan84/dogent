@@ -56,6 +56,9 @@ pnpm client run wip-check line=7라인           # 스킬을 입력값으로 바
 pnpm client run wip-adjust source=D:\조정.xlsx  # 파일 입력은 경로로
 pnpm client skills                            # [개인] [팀] [기본]
 pnpm client check D:\my\SKILL.md              # 품질 검사
+pnpm client schedule add 아침재공 --at 09:00 --days 월,수,금 wip-check line=7라인   # 작업 스케줄러에 예약 (로그인해 있을 때만, 저장·상신은 안 함)
+pnpm client schedule list                     # 예약과 다음 실행 시각
+pnpm client schedule remove 아침재공
 pnpm client sync                              # 팀 스킬 저장소 git pull
 ```
 

@@ -115,3 +115,22 @@ describe('OpenAiCompatClient', () => {
     );
   });
 });
+
+describe('게이트웨이가 바쁠 때', () => {
+  const ok = () => new Response(JSON.stringify({ choices: [{ message: { content: 'ok' } }] }), { status: 200 });
+
+  it('429면 Retry-After만큼 쉬고 다시 보낸다', async () => {
+    let calls = 0;
+    const fetchImpl = (async () => (++calls === 1 ? new Response('busy', { status: 429, headers: { 'retry-after': '1' } }) : ok())) as typeof fetch;
+    const out = await new OpenAiCompatClient(base, fetchImpl).complete([{ role: 'user', content: 'hi' }]);
+    expect(out).toBe('ok');
+    expect(calls).toBe(2);
+  });
+
+  it('400 같은 오류는 다시 보내지 않는다', async () => {
+    let calls = 0;
+    const fetchImpl = (async () => (++calls, new Response('bad', { status: 400 }))) as typeof fetch;
+    await expect(new OpenAiCompatClient(base, fetchImpl).complete([{ role: 'user', content: 'hi' }])).rejects.toThrow('400');
+    expect(calls).toBe(1);
+  });
+});

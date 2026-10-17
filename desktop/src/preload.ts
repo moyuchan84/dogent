@@ -15,6 +15,7 @@ const api: DogentApi = {
   show: (path) => ipcRenderer.invoke('dogent:show', path),
   options: (patch) => ipcRenderer.invoke('dogent:options', patch),
   token: () => ipcRenderer.invoke('dogent:token'),
+  extension: (register) => ipcRenderer.invoke('dogent:extension', register),
   setConfig: (key, value) => ipcRenderer.invoke('dogent:set-config', key, value),
   onUi: (listener) => {
     const handler = (_e: unknown, message: UiMessage) => listener(message);

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ApprovalRequest, RunEvent, RunResult } from '../../../src/core';
 import type { BrowserLink } from '../../../bridge/hub.mjs';
-import type { DogentApi, InitInfo, SkillSummary, UiMessage } from '../ipc';
+import type { DogentApi, ExtensionStatus, InitInfo, SkillSummary, UiMessage } from '../ipc';
 
 declare global {
   interface Window {
@@ -497,10 +497,13 @@ function ExcelDocs() {
 function Settings({ onClose, onChanged, config }: { onClose: () => void; onChanged: (config: string) => void; config: string }) {
   const [token, setToken] = useState('');
   const [copied, setCopied] = useState(false);
+  const [link, setLink] = useState<ExtensionStatus | null>(null);
+  const [extId, setExtId] = useState('');
   const [form, setForm] = useState({ userId: '', browser: '', outputDir: '', teamSkills: '' });
   const [message, setMessage] = useState('');
   useEffect(() => {
     void api.token().then(setToken);
+    void api.extension().then(setLink);
   }, []);
   const save = async (key: string, value: string) => {
     try {
@@ -525,8 +528,29 @@ function Settings({ onClose, onChanged, config }: { onClose: () => void; onChang
             닫기
           </button>
         </div>
+        <div id="extension-link">
+          <div className="group" style={{ margin: '0 0 6px' }}>
+            브라우저 확장 연결
+          </div>
+          {link?.ids.length ? (
+            <div className="hint">
+              연결 준비됨 (확장 {link.ids.length}개 허용). 브라우저의 Dogent 사이드 패널 → 설정 → 클라이언트 연결에서 방식을 Native Messaging으로 하면 토큰 없이 붙습니다.
+            </div>
+          ) : (
+            <div className="hint">
+              설치된 Dogent 확장을 찾지 못했습니다. 크롬·엣지에 확장을 설치하고 아래 다시 찾기를 누르거나, 확장 ID를 직접 넣으세요.
+            </div>
+          )}
+          {link?.error && <div className="hint">오류: {link.error}</div>}
+          <div className="token">
+            <input value={extId} placeholder="확장 ID (32글자, 확장 관리 화면에 나옴)" onChange={(e) => setExtId(e.target.value)} />
+            <button className="secondary" onClick={() => void api.extension(extId.trim() || undefined).then(setLink)}>
+              {extId.trim() ? '등록' : '다시 찾기'}
+            </button>
+          </div>
+        </div>
         <label>
-          확장 연결 토큰
+          WebSocket으로 붙을 때만 쓰는 토큰
           <div className="token">
             <input readOnly value={token} id="token" />
             <button
@@ -538,7 +562,7 @@ function Settings({ onClose, onChanged, config }: { onClose: () => void; onChang
               {copied ? '복사됨' : '복사'}
             </button>
           </div>
-          <span className="hint">브라우저의 Dogent 사이드 패널 → 설정 → 클라이언트 연결에서 WebSocket을 고르고 이 토큰을 넣으세요.</span>
+          <span className="hint">회사 정책으로 Native Messaging이 막혔을 때: 사이드 패널 → 설정 → 클라이언트 연결에서 WebSocket을 고르고 이 토큰을 넣으세요.</span>
         </label>
         {fields.map((f) => (
           <label key={f.key}>

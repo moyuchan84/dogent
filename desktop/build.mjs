@@ -41,6 +41,9 @@ await build({
   output: { file: join(OUT, 'renderer/app.js'), format: 'iife', minify: true },
 });
 for (const f of ['index.html', 'style.css']) copyFileSync(join(SRC, 'renderer', f), join(OUT, 'renderer', f));
+// 브라우저가 띄우는 Native Messaging 호스트 (앱이 첫 실행에 ~/.dogent로 복사해 등록한다)
+mkdirSync(join(OUT, 'host'), { recursive: true });
+for (const f of ['native-host.mjs', 'protocol.mjs']) copyFileSync(join(ROOT, 'bridge', f), join(OUT, 'host', f));
 copyFileSync(join(ROOT, 'public/icon/dogent.svg'), join(OUT, 'renderer/icon.svg'));
 copyFileSync(join(ROOT, 'public/icon/256.png'), join(OUT, 'renderer/icon.png'));
 

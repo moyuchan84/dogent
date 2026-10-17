@@ -182,6 +182,8 @@ async function installKey(): Promise<string> {
 let transport: Transport | null = null;
 let authed = false;
 let expected = '';
+/** Native Messaging 호스트가 전해 준 토큰. 있으면 설정에 넣은 토큰보다 먼저 쓴다. */
+let nativeToken = '';
 let retry: ReturnType<typeof setTimeout> | null = null;
 let keepalive: ReturnType<typeof setInterval> | null = null;
 /** 브리지가 거절한 이유 (토큰이 다름 등). 연결이 끊긴 뒤에도 이 이유를 보여 주고, 다시 붙는 간격을 늘린다. */
@@ -218,12 +220,16 @@ async function onMessage(msg: BridgeMessage, settings: BridgeSettings, t: Transp
         await setStatus('error', refused);
       }
       return;
+    case 'token':
+      if (settings.mode === 'native' && typeof msg.token === 'string') nativeToken = msg.token;
+      return;
     case 'challenge': {
-      if (!settings.token) {
+      const token = (settings.mode === 'native' && nativeToken) || settings.token;
+      if (!token) {
         await setStatus('error', '토큰이 없습니다. 설정 → 클라이언트 연결에 토큰을 넣으세요');
         return drop();
       }
-      const { reply, expect } = await answerChallenge(settings.token, msg);
+      const { reply, expect } = await answerChallenge(token, msg);
       expected = expect;
       t.send(reply);
       return;

@@ -10,7 +10,8 @@ import type { RunEvent } from '../../src/core';
 import { loadToken } from '../../client/src/bridge';
 import { describeConfig, loadConfig, setConfig } from '../../client/src/config';
 import { Session, type SessionOptions, type Ui } from '../../client/src/session';
-import type { UiMessage } from './ipc';
+import { findInstalledExtensions, registerNativeHost, registeredIds } from '../../bridge/register.mjs';
+import type { ExtensionStatus, UiMessage } from './ipc';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -18,6 +19,27 @@ const here = dirname(fileURLToPath(import.meta.url));
 if (app.isPackaged && !process.env.DOGENT_OFFICE_EXE) {
   const exe = join(process.resourcesPath, 'dogent-office.exe');
   if (existsSync(exe)) process.env.DOGENT_OFFICE_EXE = exe;
+}
+
+/**
+ * 브라우저가 이 앱과 말하는 길(Native Messaging 호스트)을 이 PC에 깔고, 설치된 Dogent 확장을 허용한다.
+ * 호스트는 앱 자신을 Node처럼 돌려(ELECTRON_RUN_AS_NODE) 쓰므로 PC에 Node가 없어도 된다.
+ * 휴대용 실행본은 실행할 때마다 임시 폴더로 풀리므로 원래 파일 경로(PORTABLE_EXECUTABLE_FILE)를 적는다.
+ */
+function setupExtensionLink(extraId?: string): ExtensionStatus {
+  try {
+    const found = findInstalledExtensions();
+    const ids = [...found.map((f) => f.id), ...(extraId ? [extraId] : [])];
+    const known = registeredIds();
+    // 이미 등록된 ID만 있어도 앱 위치가 바뀌었을 수 있으므로 매번 새로 쓴다 (레지스트리 한 줄이라 가볍다).
+    if (ids.length > 0 || known.length > 0) {
+      registerNativeHost({ ids, runtime: process.env.PORTABLE_EXECUTABLE_FILE || process.execPath, hostDir: join(here, 'host') });
+    }
+    const now = new Set(registeredIds());
+    return { ids: [...now], missing: found.filter((f) => !now.has(f.id)).map((f) => ({ id: f.id, browser: f.browser })) };
+  } catch (e) {
+    return { ids: registeredIds(), missing: [], error: (e as Error).message };
+  }
 }
 
 let win: BrowserWindow | null = null;
@@ -155,6 +177,7 @@ ipcMain.handle('dogent:excel-docs', async () => (await session.officeTool()).use
 ipcMain.handle('dogent:show', (_e, path: string) => shell.showItemInFolder(path));
 ipcMain.handle('dogent:options', (_e, patch: Partial<SessionOptions>) => Object.assign(options, patch));
 ipcMain.handle('dogent:token', () => loadToken());
+ipcMain.handle('dogent:extension', (_e, register?: string) => setupExtensionLink(register?.trim() || undefined));
 ipcMain.handle('dogent:set-config', async (_e, key: string, value: string) => {
   if (busy) throw new Error('실행 중에는 설정을 바꿀 수 없습니다');
   setConfig(key, value);
@@ -192,6 +215,7 @@ else {
     win?.focus();
   });
   app.whenReady().then(async () => {
+    if (process.platform === 'win32') setupExtensionLink();
     createWindow();
     // 브리지를 먼저 띄워 두면 브라우저 확장들이 미리 붙는다. 붙은 브라우저가 바뀌면 창에 알린다.
     await session.listen().catch((e: Error) => ui.print(`오류: ${e.message}`));

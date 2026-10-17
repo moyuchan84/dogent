@@ -84,6 +84,22 @@ export function buildHeaders(settings: LlmSettings, uuid: () => string = () => c
 }
 
 const CALL_TIMEOUT_MS = 60_000;
+const BUSY_STATUS = new Set([429, 502, 503, 504]);
+const BUSY_RETRIES = 3;
+
+/** 게이트웨이가 바쁘다고 답하면(Retry-After가 있으면 그만큼, 없으면 2·4·8초 + 흩뜨림) 쉬었다가 다시 보낸다. */
+async function retryBusy(send: () => Promise<Response>, signal?: AbortSignal): Promise<Response> {
+  for (let attempt = 0; ; attempt++) {
+    const res = await send();
+    if (!BUSY_STATUS.has(res.status) || attempt >= BUSY_RETRIES) return res;
+    const retryAfter = Number(res.headers.get('retry-after'));
+    const wait = (retryAfter > 0 ? Math.min(retryAfter, 30) : 2 ** (attempt + 1)) * 1000 + Math.random() * 500;
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(resolve, wait);
+      signal?.addEventListener('abort', () => (clearTimeout(timer), reject(signal.reason)), { once: true });
+    });
+  }
+}
 
 /** OpenAI 호환 /chat/completions 엔드포인트용 클라이언트. */
 export class OpenAiCompatClient implements LlmPort {
@@ -99,18 +115,17 @@ export class OpenAiCompatClient implements LlmPort {
     const headers = buildHeaders(this.settings);
     const timeout = AbortSignal.timeout(CALL_TIMEOUT_MS * Math.max(1, this.settings.timeoutScale || 1));
     const url = `${baseUrl.replace(/\/+$/, '')}/chat/completions`;
-    const res = await this.fetchImpl(url, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        model,
-        messages,
-        temperature: 0,
-        max_tokens: this.maxTokens,
-        ...(jsonMode ? { response_format: { type: 'json_object' } } : {}),
-      }),
-      signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
-    }).catch((e: unknown) => {
+    const body = JSON.stringify({
+      model,
+      messages,
+      temperature: 0,
+      max_tokens: this.maxTokens,
+      ...(jsonMode ? { response_format: { type: 'json_object' } } : {}),
+    });
+    const send = () =>
+      this.fetchImpl(url, { method: 'POST', headers, body, signal: signal ? AbortSignal.any([signal, timeout]) : timeout });
+    // 여러 사람이 같은 게이트웨이를 쓰면 몰릴 때 429(요청 한도)나 503이 올 수 있다. 잠깐 쉬고 몇 번 다시 시도한다.
+    const res = await retryBusy(send, signal).catch((e: unknown) => {
       // 중지·시간 초과는 그대로 올리고, 네트워크에 닿지 못한 것만 원인을 짚어 준다.
       if (!(e instanceof TypeError)) throw e;
       throw new Error(

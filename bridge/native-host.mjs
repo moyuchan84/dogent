@@ -3,8 +3,10 @@
 // 확인 절차(토큰)는 확장과 브리지가 직접 한다. 이 프로그램은 토큰을 모른다.
 //
 // 설치: pnpm bridge:install (호스트 매니페스트와 레지스트리를 등록한다)
+import { existsSync, readFileSync } from 'node:fs';
 import { connect } from 'node:net';
-import { userInfo } from 'node:os';
+import { homedir, userInfo } from 'node:os';
+import { join } from 'node:path';
 import { encodeNative, lineReader, nativeReader, pipePath } from './protocol.mjs';
 
 const PIPE = process.env.DOGENT_BRIDGE_PIPE ?? pipePath(userInfo().username);
@@ -17,11 +19,20 @@ let told = false;
 
 const toChrome = (msg) => process.stdout.write(encodeNative(msg));
 
+// 크롬은 매니페스트에 적힌 확장만 이 프로그램을 띄울 수 있게 한다. 그래서 확장에는 토큰을 따로 붙여 넣지 않고 여기서 전한다.
+// 브리지(클라이언트)가 처음 실행될 때 만드는 파일이라, 브리지에 붙을 때마다 다시 읽는다.
+function sendToken() {
+  const file = join(homedir(), '.dogent', 'bridge-token');
+  const token = process.env.DOGENT_BRIDGE_TOKEN || (existsSync(file) ? readFileSync(file, 'utf8').trim() : '');
+  if (token) toChrome({ type: 'token', token });
+}
+
 function connectHub() {
   const s = connect(PIPE);
   s.on('connect', () => {
     sock = s;
     told = false;
+    sendToken();
     toChrome({ type: 'status', state: 'hub-connected' });
     for (const m of queue.splice(0)) s.write(`${JSON.stringify(m)}\n`);
   });
