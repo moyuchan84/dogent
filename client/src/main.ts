@@ -13,6 +13,8 @@ const HELP = `Dogent 클라이언트 ${__DOGENT_BUILD__.version} (${__DOGENT_BUI
   dogent "<요청>"                  요청 하나를 처리하고 끝낸다. 맞는 스킬이 있으면 스킬로, 없으면 지금 화면에서 자유 요청으로
   dogent run <스킬ID> 이름=값 …    스킬을 정한 입력값으로 실행한다. 파일 입력은 이름=파일경로
   dogent skills                   쓸 수 있는 스킬 (개인 > 팀 > 기본)
+  dogent skill new ["<업무 설명>"]   말로 스킬 만들기: 지금 브라우저 화면을 보고 초안 → 말로 고치기 → 시험 → 저장
+  dogent skill edit <스킬ID>       스킬 파일을 편집기로 열고, 닫으면 품질 검사 (편집기: DOGENT_EDITOR, 기본 notepad)
   dogent check <SKILL.md>         스킬 품질 검사
   dogent sync                     팀 스킬 저장소를 git pull로 받는다
   dogent tabs                     브라우저 탭 목록
@@ -115,6 +117,12 @@ async function main(): Promise<number> {
     if (cmd === 'tabs') {
       await client.tabs();
       return 0;
+    }
+    if (cmd === 'skill' && rest[0] === 'new') return (await client.composeSkill(rest.slice(1).join(' '))) ? 0 : 1;
+    if (cmd === 'skill' && rest[0] === 'edit' && rest[1]) return (await client.editSkill(rest[1])) ? 0 : 1;
+    if (cmd === 'skill') {
+      term.print('사용법: dogent skill new ["<업무 설명>"] | dogent skill edit <스킬ID>');
+      return 1;
     }
     if (cmd === 'run') return (await client.runSkillById(rest[0] ?? '', rest.slice(1))) ? 0 : 1;
     if (cmd) return (await client.request(args.join(' '))) ? 0 : 1;

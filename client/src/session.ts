@@ -18,7 +18,8 @@ import {
 } from '../../src/core';
 import type { BrowserLink } from '../../bridge/hub.mjs';
 import { openBridge, type Bridge } from './bridge';
-import type { ClientConfig } from './config';
+import { composeFlow, editSkill } from './compose-skill';
+import { setConfig, type ClientConfig } from './config';
 import { Office, findOfficeExe } from './office';
 import { saveRunAsSkill } from './save-skill';
 import { loadSkills, type SkillEntry } from './skills';
@@ -240,7 +241,12 @@ export class Session {
   }
 
   /** 스킬 하나를 실행한다. 사이드 패널의 실행과 같은 규칙(승인, 로그인 대기, 경로 기억, 기록)을 따른다. */
-  async execute(skill: Skill, values: SkillInputs, filePaths: Record<string, string> = {}): Promise<{ result: RunResult; entries: HistoryEntry[]; tabUrl: string }> {
+  async execute(
+    skill: Skill,
+    values: SkillInputs,
+    filePaths: Record<string, string> = {},
+    opts: { dryRun?: boolean } = {},
+  ): Promise<{ result: RunResult; entries: HistoryEntry[]; tabUrl: string }> {
     const bridge = await this.connect();
     const isFree = skill.id === FREE_SKILL_ID;
     const datasets = new DatasetStore();
@@ -270,7 +276,7 @@ export class Session {
         browser: bridge.browser,
         datasets,
         signal: this.abort.signal,
-        dryRun: !isFree && skill.risk === 'R3' && this.flags.dryRun,
+        dryRun: !isFree && skill.risk === 'R3' && (opts.dryRun ?? this.flags.dryRun),
         direct: this.cfg.llm.skillDirect,
         paths: this.cfg.llm.pathCache && !isFree ? filePathStore(this.cfg.home) : undefined,
         files: folderFiles(
@@ -359,6 +365,56 @@ export class Session {
     return true;
   }
 
+  /** 말로 스킬 만들기 (skill new). 지금 브라우저 탭의 화면에서 시작한다. */
+  async composeSkill(request?: string): Promise<boolean> {
+    this.reloadSkills();
+    const bridge = await this.connect();
+    const file = await composeFlow(
+      {
+        ui: this.term,
+        llm: this.llm(),
+        personalDir: this.cfg.personalSkills,
+        takenIds: new Set(this.skills.map((e) => e.skill.id)),
+        owner: this.cfg.owner,
+        rememberOwner: (owner) => {
+          this.cfg.owner = owner;
+          setConfig('owner', owner);
+        },
+        page: async () => {
+          const target = await bridge.browser.target();
+          if (!target.allowed) {
+            throw new Error(`지금 브라우저 탭(${target.url})은 조작할 사이트 목록에 없습니다. 업무 화면 탭을 앞에 두거나 확장 설정 → 조작할 사이트에서 더하세요`);
+          }
+          return { url: target.url, title: target.title, snap: await bridge.browser.snapshot() };
+        },
+        test: async (skill) => {
+          this.term.print('\n시험 실행합니다. 저장·상신은 직전에 멈춥니다.');
+          const filled = await this.fillInputs(skill, {});
+          if (!filled) return null;
+          return (await this.execute(skill, filled.values, filled.files, { dryRun: true })).result;
+        },
+      },
+      request,
+    );
+    this.reloadSkills();
+    return file !== null;
+  }
+
+  /** 스킬을 편집기로 고친다 (skill edit <id>). */
+  async editSkill(id: string): Promise<boolean> {
+    this.reloadSkills();
+    const entry = this.skills.find((e) => e.skill.id === id);
+    if (!entry) {
+      this.term.print(`"${id}" 스킬이 없습니다. dogent skills로 목록을 보세요`);
+      return false;
+    }
+    // 기본 스킬은 파일이 없으므로 빌드에 넣은 원문을 복사해 연다
+    const bundled = Object.entries(__DOGENT_SKILLS__).find(([p, src]) => p.endsWith('SKILL.md') && new RegExp(`^id:\\s*${id}\\s*$`, 'm').test(src))?.[1];
+    const file = await editSkill(this.term, entry, this.cfg.personalSkills, bundled);
+    this.reloadSkills();
+    return file !== null;
+  }
+
   async tabs(): Promise<void> {
     const bridge = await this.connect();
     const r = await bridge.call('tabs_list', {});
@@ -367,7 +423,7 @@ export class Session {
 
   /** 대화: 요청을 한 줄씩 받는다. */
   async repl(): Promise<void> {
-    this.term.print(`Dogent 클라이언트 (${__DOGENT_BUILD__.mode}). 할 일을 말해 주세요. skills, tabs, browsers, browser <이름>, help, exit`);
+    this.term.print(`Dogent 클라이언트 (${__DOGENT_BUILD__.mode}). 할 일을 말해 주세요. skills, skill new, skill edit <id>, tabs, browsers, browser <이름>, help, exit`);
     for (;;) {
       const line = await this.term.ask('\n무엇을 할까요? > ');
       if (line === null) return;
@@ -413,7 +469,9 @@ export class Session {
     else if (/^run\s+/.test(text)) {
       const [id, ...pairs] = text.replace(/^run\s+/, '').split(/\s+/);
       await this.runSkillById(id, pairs);
-    } else if (/^excel(\s|$)/.test(text)) await this.excel(text.replace(/^excel\s*/, '').split(/\s+/).filter(Boolean));
+    } else if (/^(skill\s+new|스킬\s*만들기)(\s|$)/.test(text)) await this.composeSkill(text.replace(/^(skill\s+new|스킬\s*만들기)\s*/, ''));
+    else if (/^skill\s+edit\s+\S/.test(text)) await this.editSkill(text.replace(/^skill\s+edit\s+/, '').trim());
+    else if (/^excel(\s|$)/.test(text)) await this.excel(text.replace(/^excel\s*/, '').split(/\s+/).filter(Boolean));
     else await this.request(text);
   }
 

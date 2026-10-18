@@ -162,6 +162,28 @@ try {
     assert.match((await client(['skills'])).text, /\[개인\] wip-count-cli — 라인 재공 건수/);
   });
 
+  await scenario('말로 스킬 만들기: 화면을 보고 초안 → 말로 고치기 → 시험 → 저장 → 다른 라인으로 실행', async () => {
+    await open('/wip.html');
+    const r = await client(['skill', 'new', '라인을 골라 재공을 조회하고 총 몇 건인지 알려줘. 라인은 매번 다름'], {
+      // 고칠 점 / 시험 / 저장 → 담당 부서 / 스킬 ID
+      answers: ['이름을 라인별 재공 건수로 바꿔 줘', '시험', '저장', '생산관리', 'wip-count-talk'],
+    });
+    assert.equal(r.code, 0, r.text);
+    assert.match(r.text, /시작 화면: /);
+    assert.match(r.text, /라인별 재공 건수 \(wip-count/);
+    assert.match(r.text, /시험 결과: 성공/);
+    const file = join(home, 'skills', 'wip-count-talk', 'SKILL.md');
+    assert.ok(existsSync(file), r.text);
+    const source = readFileSync(file, 'utf8');
+    assert.match(source, /owner: "생산관리"/);
+    assert.match(source, /"라인"에서 \{line\}을 선택한다/);
+
+    await open('/wip.html');
+    const again = await client(['run', 'wip-count-talk', 'line=8라인']);
+    assert.equal(again.code, 0, again.text);
+    assert.match(again.text, new RegExp(`총 ${generateWip('8라인').length}건`));
+  });
+
   await scenario('직접 못 읽는 엑셀(xls)은 오피스 도구가 Excel로 열어 화면 표에 채움', async () => {
     if (!existsSync(join(ROOT, 'office/dist/dogent-office.exe'))) return '건너뜀: pnpm office:build 필요';
     // 문서 보안 파일 대신, exceljs가 읽지 못하는 구형 xls로 같은 상황을 만든다.

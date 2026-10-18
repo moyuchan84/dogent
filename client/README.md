@@ -55,6 +55,8 @@ pnpm client "8라인 선택하고 조회해서 몇 건인지 알려줘"   # 맞�
 pnpm client run wip-check line=7라인           # 스킬을 입력값으로 바로 실행
 pnpm client run wip-adjust source=D:\조정.xlsx  # 파일 입력은 경로로
 pnpm client skills                            # [개인] [팀] [기본]
+pnpm client skill new "라인 골라 HOLD Lot을 사유별로 정리해 줘. 라인은 매번 다름"   # 말로 스킬 만들기: 지금 화면을 보고 초안 → 말로 고치기 → 시험 → 저장
+pnpm client skill edit wip-check              # 편집기로 열고, 닫으면 품질 검사 (DOGENT_EDITOR, 기본 notepad)
 pnpm client check D:\my\SKILL.md              # 품질 검사
 pnpm client schedule add 아침재공 --at 09:00 --days 월,수,금 wip-check line=7라인   # 작업 스케줄러에 예약 (로그인해 있을 때만, 저장·상신은 안 함)
 pnpm client schedule list                     # 예약과 다음 실행 시각

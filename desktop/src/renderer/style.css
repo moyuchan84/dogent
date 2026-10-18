@@ -545,3 +545,10 @@ label.check input {
   font-size: 13px;
   padding: 8px 4px;
 }
+button.compose {
+  width: 100%;
+  margin-bottom: 4px;
+}
+.ask .quick {
+  gap: 6px;
+}

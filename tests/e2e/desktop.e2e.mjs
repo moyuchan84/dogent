@@ -168,6 +168,24 @@ try {
     await win.screenshot({ path: join(ROOT, 'test-results/desktop-saved.png') });
   });
 
+  await scenario('말로 스킬 만들기: 버튼 → 업무 설명 → 말로 고치기 → 시험 → 저장 → 왼쪽 목록', async () => {
+    await open('/wip.html');
+    await win.locator('#compose-skill').click();
+    await answer('라인을 골라 재공을 조회하고 총 몇 건인지 알려줘. 라인은 매번 다름');
+    await win.locator('.msg-text', { hasText: '라인 재공 건수 (wip-count' }).waitFor({ timeout: RUN_TIMEOUT });
+    await answer('이름을 라인별 재공 건수로 바꿔 줘');
+    await win.locator('.msg-text', { hasText: '라인별 재공 건수 (wip-count' }).waitFor({ timeout: RUN_TIMEOUT });
+    await win.screenshot({ path: join(ROOT, 'test-results/desktop-compose.png') });
+    await win.locator('.card.ask [data-quick=시험]').first().click();
+    const r = await lastResult();
+    assert.equal(r.status, 'done', r.text);
+    await win.locator('.card.ask [data-quick=저장]').first().click();
+    await answer('생산관리'); // 담당 부서
+    await answer('wip-count-desk'); // 스킬 ID
+    await win.locator('[data-skill=wip-count-desk]').waitFor({ timeout: 10_000 });
+    assert.match(await win.locator('#skill-list').innerText(), /개인[\s\S]*라인별 재공 건수/);
+  });
+
   await scenario('설정: 확장 연결 토큰과 지금 설정을 보여 줌', async () => {
     await win.locator('#open-settings').click();
     await win.locator('#settings').waitFor();

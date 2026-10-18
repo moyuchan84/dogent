@@ -180,6 +180,9 @@ export function App() {
           </nav>
           {side === 'skills' ? (
             <div className="side-list" id="skill-list">
+              <button className="secondary compose" id="compose-skill" disabled={busy} onClick={() => send('스킬 만들기')} title="지금 브라우저 화면에서 하는 업무를 말로 설명하면 스킬 초안을 씁니다">
+                + 말로 스킬 만들기
+              </button>
               {grouped.map((g) => (
                 <div key={g.source} style={{ display: 'grid', gap: 4 }}>
                   <div className="group">{g.source}</div>
@@ -218,7 +221,7 @@ export function App() {
               </div>
             )}
             {items.map((it, i) => (
-              <FeedItem key={i} item={it} onAnswer={answer} onRun={runForm} busy={busy} />
+              <FeedItem key={i} item={it} onAnswer={answer} onRun={runForm} onEdit={(id) => send(`skill edit ${id}`)} busy={busy} />
             ))}
             <div ref={feedEnd} />
           </div>
@@ -269,12 +272,18 @@ export function App() {
   );
 }
 
-function FeedItem(props: { item: Item; onAnswer: (id: number, v: string | null) => void; onRun: (s: SkillSummary, v: Record<string, string>) => void; busy: boolean }) {
+function FeedItem(props: {
+  item: Item;
+  onAnswer: (id: number, v: string | null) => void;
+  onRun: (s: SkillSummary, v: Record<string, string>) => void;
+  onEdit: (id: string) => void;
+  busy: boolean;
+}) {
   const it = props.item;
   if (it.type === 'user') return <div className="msg-user">{it.text}</div>;
   if (it.type === 'text') return <div className={`msg-text ${/^오류/.test(it.text) ? 'error' : ''}`}>{it.text}</div>;
   if (it.type === 'ask') return <Ask item={it} onAnswer={props.onAnswer} />;
-  if (it.type === 'form') return <SkillForm skill={it.skill} onRun={props.onRun} busy={props.busy} />;
+  if (it.type === 'form') return <SkillForm skill={it.skill} onRun={props.onRun} onEdit={props.onEdit} busy={props.busy} />;
   return <RunCard run={it} />;
 }
 
@@ -308,6 +317,16 @@ function Ask({ item, onAnswer }: { item: Extract<Item, { type: 'ask' }>; onAnswe
             onAnswer(item.id, value);
           }}
         >
+          {/* 말로 스킬 만들기의 명령은 눌러서도 고른다 */}
+          {item.question.includes('시험 · 저장 · 보기 · 그만') && (
+            <div className="row quick" style={{ width: '100%' }}>
+              {['시험', '저장', '보기', '그만'].map((c) => (
+                <button key={c} type="button" className="secondary" data-quick={c} onClick={() => onAnswer(item.id, c)}>
+                  {c}
+                </button>
+              ))}
+            </div>
+          )}
           <input data-answer autoFocus value={value} placeholder={item.fallback ? `비우면 ${item.fallback}` : ''} onChange={(e) => setValue(e.target.value)} style={{ flex: 1, width: 'auto' }} />
           <button type="submit">확인</button>
           <button type="button" className="ghost" onClick={() => onAnswer(item.id, null)}>
@@ -319,7 +338,17 @@ function Ask({ item, onAnswer }: { item: Extract<Item, { type: 'ask' }>; onAnswe
   );
 }
 
-function SkillForm({ skill, onRun, busy }: { skill: SkillSummary; onRun: (s: SkillSummary, v: Record<string, string>) => void; busy: boolean }) {
+function SkillForm({
+  skill,
+  onRun,
+  onEdit,
+  busy,
+}: {
+  skill: SkillSummary;
+  onRun: (s: SkillSummary, v: Record<string, string>) => void;
+  onEdit: (id: string) => void;
+  busy: boolean;
+}) {
   const [values, setValues] = useState<Record<string, string>>(() => Object.fromEntries(skill.inputs.map((i) => [i.name, i.default])));
   const [sent, setSent] = useState(false);
   return (
@@ -364,6 +393,9 @@ function SkillForm({ skill, onRun, busy }: { skill: SkillSummary; onRun: (s: Ski
         <div className="row">
           <button type="submit" disabled={busy}>
             실행
+          </button>
+          <button type="button" className="ghost" data-edit={skill.id} disabled={busy} onClick={() => onEdit(skill.id)} title="SKILL.md를 편집기로 열고, 닫으면 품질 검사">
+            파일로 고치기
           </button>
         </div>
       )}

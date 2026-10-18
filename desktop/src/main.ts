@@ -55,7 +55,7 @@ class WindowUi implements Ui {
 
   private prompt(mode: 'text' | 'confirm', question: string, fallback: string): Promise<string | null> {
     const id = this.nextId++;
-    this.send({ kind: 'ask', id, mode, question: question.replace(/\s+$/, '').replace(/:$/, '').trim(), fallback });
+    this.send({ kind: 'ask', id, mode, question: question.replace(/[\s>]+$/, '').replace(/:$/, '').trim(), fallback });
     return new Promise((resolve) => this.waiting.set(id, resolve));
   }
 

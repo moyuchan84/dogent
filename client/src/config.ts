@@ -26,6 +26,8 @@ export interface UserConfig {
   officeExe?: string;
   /** 결과 엑셀을 Excel로 다시 저장한다. 문서 보안(NASCA) 규정상 Excel로 저장해야 할 때 켠다 */
   saveThroughExcel?: boolean;
+  /** 스킬을 만들 때 넣을 담당 부서 (처음 저장할 때 물어 기억한다) */
+  owner?: string;
 }
 
 export interface ClientConfig {
@@ -38,6 +40,7 @@ export interface ClientConfig {
   officeExe?: string;
   saveThroughExcel: boolean;
   browser?: string;
+  owner?: string;
   /** 사용자 설정 파일 경로 */
   file: string;
 }
@@ -83,6 +86,7 @@ export function loadConfig(): ClientConfig {
     officeExe: user.officeExe,
     browser: user.browser,
     saveThroughExcel: user.saveThroughExcel === true,
+    owner: user.owner,
     file,
   };
 }
@@ -116,6 +120,7 @@ export function describeConfig(c: ClientConfig): string {
     `사용자 ID      ${c.llm.userId ?? ''}${c.llm.userId && c.llm.userId === windowsAccount() ? ' (Windows 계정)' : ''}`,
     `브라우저       ${c.browser ?? '(여럿이면 가장 나중에 연결된 것)'}`,
     `개인 스킬      ${c.personalSkills}`,
+    `담당 부서      ${c.owner ?? '(스킬을 처음 저장할 때 묻습니다)'}`,
     `팀 스킬        ${c.teamSkills ?? '(설정 안 함: dogent config teamSkills <폴더>)'}`,
     `결과 저장      ${c.outputDir}${c.saveThroughExcel ? ' (Excel로 저장)' : ''}`,
     `오피스 도구    ${findOfficeExe(c.officeExe) ?? '(없음: pnpm office:build)'}`,

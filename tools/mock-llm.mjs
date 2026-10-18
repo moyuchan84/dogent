@@ -84,7 +84,56 @@ function followStep(user) {
     const total = /총 (\d+)건/.exec(page)?.[1];
     return { thought: '보고', tool: 'finish', args: { summary: total ? `조회 결과는 총 ${total}건입니다.` : '요청한 일을 마쳤습니다.' } };
   }
+  // 말로 만든 스킬의 목표 단계: 따옴표 안의 요소 이름과 "선택한다", "누른다", "보고한다"로 고른다.
+  const n = /^ \((\d+)\/\d+\)/.exec(stepText)?.[1];
+  const named = /"([^"]+)"/.exec(stepText)?.[1];
+  if (named && /선택/.test(stepText)) {
+    const value = /에서 (\S+?)[을를] 선택/.exec(stepText)?.[1];
+    if (value) return { thought: '선택', tool: 'select', args: { ref: named, value } };
+  }
+  if (named && /누른다|눌러/.test(stepText)) {
+    if (page.includes('조회 중')) return { thought: '대기', tool: 'wait_for', args: { text: '건', timeout_sec: 10 } };
+    if (history.some((h) => h.includes(`[단계 ${n}] click`) && h.includes('→ 성공'))) return { thought: '눌렀음', tool: 'next_step', args: {} };
+    return { thought: '누름', tool: 'click', args: { ref: named } };
+  }
+  if (/보고한다/.test(stepText)) {
+    const total = /총 (\d+)건/.exec(page)?.[1];
+    return { thought: '보고', tool: 'finish', args: { summary: total ? `총 ${total}건입니다.` : '요청한 일을 마쳤습니다.' } };
+  }
   return { thought: '할 일 없음', tool: 'next_step', args: {} };
+}
+
+/**
+ * 말로 스킬 만들기. 재공 화면이면 라인을 입력으로 받아 조회하고 건수를 보고하는 초안을 쓴다.
+ * 고칠 점에 "이름을 ○○로"가 있으면 이름만 바꾼다 (나머지는 그대로 두는지 보는 용도).
+ */
+function composeReply(user) {
+  const current = section(user, '## 지금 초안', '## ');
+  const feedback = section(user, '## 고칠 점').trim();
+  if (current.trim()) {
+    const spec = JSON.parse(current.trim());
+    const name = /이름을 (.+?)(?:으로|로) /.exec(`${feedback} `)?.[1];
+    return name ? { ...spec, name } : spec;
+  }
+  const request = section(user, '## 만들 업무').trim();
+  const page = section(user, '## 지금 화면', '## 만들 업무');
+  if (!page.includes('재공 현황 조회')) {
+    return { id: 'my-task', name: '내 업무', description: `${request}.`, risk: 'R1', inputs: [], steps: [{ text: request }, { text: '결과를 정리해 보고한다' }] };
+  }
+  return {
+    id: 'wip-count',
+    name: '라인 재공 건수',
+    description: `${request}. "8라인 재공 몇 건이야" 같은 요청에 쓴다.`,
+    risk: 'R1',
+    inputs: [{ name: 'line', label: '라인', description: '조회할 라인. 예 "7라인"', type: 'string', default: '7라인', required: true }],
+    steps: [
+      { text: '"라인"에서 {line}을 선택한다', check: 'value("라인") == "{line}"' },
+      { text: '"조회" 버튼을 눌러 결과를 띄운다', check: 'no_text("조회 중") and text("총")' },
+      { text: '총 건수를 확인해 보고한다' },
+    ],
+    exceptions: ['결과가 0건이면 abort로 알린다'],
+    result: '라인과 총 건수',
+  };
 }
 
 /**
@@ -295,6 +344,7 @@ export function mockComplete(messages) {
   if (!system && user.includes('연결 확인')) return 'ok';
   if (system.includes('자료를 정리하는 담당')) return summarizeReply(user);
   if (system.includes('스킬 문서 편집자')) return JSON.stringify(polishReply(user));
+  if (system.includes('업무 절차서(스킬) 작성자')) return JSON.stringify(composeReply(user));
   return JSON.stringify(system.includes('스킬 선택기') ? planReply(user) : agentReply(user));
 }
 
