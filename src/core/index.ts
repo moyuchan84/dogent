@@ -28,3 +28,4 @@ export * from './mcp-browser';
 export * from './compose';
 export * from './catalog';
 export * from './systems';
+export * from './start';

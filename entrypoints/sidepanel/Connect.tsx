@@ -105,7 +105,7 @@ export function Connect() {
       {status?.detail && <p className="hint">{status.detail}</p>}
       {s.mode === 'native' && (
         <p className="hint">
-          처음 한 번 저장소 폴더에서 <code>pnpm bridge:install --id {id}</code> 를 실행해 이 브라우저에 호스트를 등록하세요.
+          호스트 등록이 필요합니다. Dogent 앱을 한 번 실행하면 자동으로 등록됩니다. 앱 없이 터미널 클라이언트만 쓴다면 <code>dogent doctor --fix --id {id}</code> 를 실행하세요. 그래도 안 붙으면 <code>dogent doctor</code> 가 원인을 알려 줍니다 (개발 PC는 <code>pnpm bridge:install --id {id}</code>).
         </p>
       )}
       {s.mode !== 'off' && (

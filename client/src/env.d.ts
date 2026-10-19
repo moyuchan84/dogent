@@ -11,3 +11,6 @@ declare const __DOGENT_BUILD__: {
 
 /** 클라이언트에 넣은 기본 스킬. 경로(예: wip-check/SKILL.md) → 내용 */
 declare const __DOGENT_SKILLS__: Record<string, string>;
+
+/** 브라우저가 띄우는 Native Messaging 호스트 파일 (native-host.mjs, protocol.mjs). dogent doctor --fix가 등록할 때 쓴다 */
+declare const __DOGENT_HOST__: Record<string, string>;

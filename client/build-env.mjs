@@ -78,6 +78,7 @@ export function buildDefines(mode) {
     define: {
       __DOGENT_BUILD__: JSON.stringify({ mode, version, llm, ...(skillsUrl ? { skillsUrl } : {}) }),
       __DOGENT_SKILLS__: JSON.stringify(bundledSkills()),
+      __DOGENT_HOST__: JSON.stringify(Object.fromEntries(['native-host.mjs', 'protocol.mjs'].map((f) => [f, readFileSync(join(ROOT, 'bridge', f), 'utf8')]))),
     },
   };
 }

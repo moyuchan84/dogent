@@ -12,6 +12,9 @@ import {
   readTable,
   resolveInputs,
   runSkill,
+  sameUrl,
+  startUrlForSkill,
+  urlInText,
   searchSkills,
   searchSystems,
   shortlistSkills,
@@ -130,11 +133,18 @@ export class Session {
   async currentPage(): Promise<{ url: string; title: string } | null> {
     if (!this.bridge?.connected()) return null;
     try {
+      await this.followActiveTab();
       const t = await this.bridge.browser.target();
       return { url: t.url, title: t.title };
     } catch {
       return null;
     }
+  }
+
+  /** 실행 중이 아니면 대상 탭을 사용자가 보고 있는 탭으로 되돌린다 (앞 요청이 새 탭을 열었어도 다음 요청은 지금 보는 탭에서 시작) */
+  private async followActiveTab(): Promise<void> {
+    if (this.running || !this.bridge?.connected()) return;
+    await this.bridge.browser.followActive().catch(() => {});
   }
 
   private async currentUrl(): Promise<string | undefined> {
@@ -289,7 +299,8 @@ export class Session {
     // 확장은 보통 1초 안에 붙는다. 그보다 오래 걸릴 때만 무엇을 할지 알려 준다.
     if (!(await bridge.waitForExtension(2000))) {
       this.term.print('브라우저의 Dogent 확장이 연결되기를 기다립니다…');
-      this.term.print('  사이드 패널 → 설정 → 클라이언트 연결을 켜고 토큰을 넣으세요 (토큰: dogent token).');
+      this.term.print('  사이드 패널 → 설정 → 클라이언트 연결에서 방식을 고르고 저장하세요 (WebSocket이면 토큰: dogent token).');
+      this.term.print('  계속 안 붙으면 터미널에서 dogent doctor 로 원인을 찾을 수 있습니다 (Native Messaging 등록은 dogent doctor --fix).');
       if (!(await bridge.waitForExtension(this.flags.waitSec * 1000))) {
         throw new Error(`${this.flags.waitSec}초 안에 확장이 연결되지 않았습니다. 확장의 클라이언트 연결 설정과 토큰을 확인하세요`);
       }
@@ -452,20 +463,35 @@ export class Session {
     return { named, systemInfo: context.length ? context.map(describeSystem).join('\n\n') : undefined };
   }
 
-  /** 시스템 화면이 이미 열려 있으면 그대로, 아니면 사용자에게 묻고 시스템 주소로 이동한다. 못 가면 false */
-  private async openSystem(system: System): Promise<boolean> {
+  /**
+   * 주소를 새 탭에서 열고 그 탭을 대상으로 정한다. 열려 있는 탭은 건드리지 않는다.
+   * 조작할 사이트 목록 밖이면 확장이 거절한다. 못 열었거나 사용자가 그만두면 false.
+   */
+  private async openStart(url: string, label: string): Promise<boolean> {
     const bridge = await this.connect();
-    const now = await bridge.browser.target().catch(() => null);
-    if (now && skillCoversUrl(docOfSystem(system), now.url)) return true;
-    if (!this.flags.yes && !(await this.term.confirm(`지금 탭에서 ${system.name}(${system.url})을 엽니다. 진행할까요?`, true))) return false;
-    try {
-      const r = await bridge.browser.navigate(system.url);
-      if (!r.ok) throw new Error(r.message);
-      return true;
-    } catch (e) {
-      this.term.print(`${system.name}을 열지 못했습니다: ${(e as Error).message}`);
+    if (!this.flags.yes && !(await this.term.confirm(`새 탭에서 ${label}(${url})을 엽니다. 진행할까요?`, true))) return false;
+    const r = await bridge.call('tab_open', { url });
+    if (r.isError) {
+      this.term.print(`${label}을(를) 열지 못했습니다: ${r.text}`);
       return false;
     }
+    this.term.print(`새 탭에서 열었습니다: ${url}`);
+    return true;
+  }
+
+  /**
+   * 스킬을 돌릴 탭을 마련한다. 지금 탭이 스킬의 사이트면 그대로 쓰고, 아니면 시작 주소(요청에 쓴 주소 > 시스템 사전 > 스킬 본문)를 새 탭에서 연다.
+   * 시작 주소를 알 수 없으면 지금 탭에서 한다 (맞지 않으면 실행이 안내한다).
+   */
+  private async ensureStartTab(skill: Skill, request?: string): Promise<boolean> {
+    const bridge = await this.connect();
+    const now = await bridge.browser.target().catch(() => null);
+    const doc = docOfSkill(skill);
+    const asked = request ? urlInText(request) : null;
+    if (asked && skillCoversUrl(doc, asked)) return sameUrl(now?.url, asked) || (await this.openStart(asked, skill.name));
+    if (now?.allowed && skillCoversUrl(doc, now.url)) return true;
+    const url = startUrlForSkill(skill, this.systems.map((e) => e.system));
+    return url ? this.openStart(url, skill.name) : true;
   }
 
   /** systems — 시스템 사전 목록 */
@@ -499,6 +525,7 @@ export class Session {
 
   /** dogent run <id> 이름=값 … */
   async runSkillById(id: string, pairs: string[]): Promise<boolean> {
+    await this.followActiveTab();
     const entry = this.skills.find((e) => e.skill.id === id);
     if (!entry) {
       this.term.print(`"${id}" 스킬이 없습니다. dogent skills로 목록을 보세요`);
@@ -507,6 +534,7 @@ export class Session {
     const given = Object.fromEntries(pairs.map((p) => [p.slice(0, p.indexOf('=')), p.slice(p.indexOf('=') + 1)]).filter(([k]) => k));
     const filled = await this.fillInputs(entry.skill, given);
     if (!filled) return false;
+    if (!(await this.ensureStartTab(entry.skill))) return false;
     const { result } = await this.execute(entry.skill, filled.values, filled.files);
     return result.status === 'done' || result.status === 'dryrun';
   }
@@ -514,6 +542,7 @@ export class Session {
   /** 말로 한 요청: 맞는 스킬을 고르고 입력값을 뽑는다. 없으면 지금 화면에서 자유 요청으로 한다. */
   async request(text: string): Promise<boolean> {
     this.reloadSkills();
+    await this.followActiveTab();
     const { named, systemInfo } = await this.systemsFor(text);
     if (named.length) this.term.print(`시스템: ${named.map((m) => m.name).join(', ')}`);
     this.term.print('요청을 해석하는 중…');
@@ -536,14 +565,22 @@ export class Session {
       const filled = await this.fillInputs(entry.skill, given);
       if (!filled) return false;
       if (!this.flags.yes && !(await this.term.confirm('실행할까요?', true))) return false;
+      if (!(await this.ensureStartTab(entry.skill, text))) return false;
       const { result } = await this.execute(entry.skill, filled.values, filled.files);
       return result.status === 'done' || result.status === 'dryrun';
     }
 
     this.term.print('맞는 스킬이 없어 지금 브라우저 화면에서 자유 요청으로 합니다.');
     if (!this.flags.yes && !(await this.term.confirm('진행할까요?', true))) return false;
-    // 요청에 시스템 이름이 있는데 그 화면이 열려 있지 않으면 시스템의 주소로 간다 (조작할 사이트 목록 안일 때만 이동된다)
-    if (named[0] && !(await this.openSystem(named[0]))) return false;
+    // 요청에 주소나 시스템 이름이 있으면 열려 있는 탭을 두고 새 탭에서 시작한다 (조작할 사이트 목록 안일 때만 열린다)
+    const asked = urlInText(text);
+    if (asked) {
+      const now = await (await this.connect()).browser.target().catch(() => null);
+      if (!sameUrl(now?.url, asked) && !(await this.openStart(asked, asked))) return false;
+    } else if (named[0]) {
+      const now = await (await this.connect()).browser.target().catch(() => null);
+      if (!(now && skillCoversUrl(docOfSystem(named[0]), now.url)) && !(await this.openStart(named[0].url, named[0].name))) return false;
+    }
     const free = buildFreeSkill('http://localhost/', this.flags.allowWrite);
     const run = await this.execute(free, { request: text }, {}, { systemInfo });
     if (run.result.status !== 'done') return false;

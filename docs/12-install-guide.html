@@ -248,6 +248,7 @@ claude mcp add dogent-office -- D:\code\samsung\dogent\office\dist\dogent-office
 <div class="wrap"><table>
   <tr><th>증상</th><th>원인과 조치</th></tr>
   <tr><td>개발자 모드가 회색이거나 로드가 막힘</td><td>회사 크롬 정책(<code>DeveloperToolsAvailability</code>, <code>ExtensionInstallBlocklist</code>)이 압축해제 확장을 막고 있습니다. <code>chrome://policy</code>에서 확인하고, 엣지로 시도하거나 IT에 허용(또는 사내 배포 등록)을 요청합니다.</td></tr>
+  <tr><td>터미널 <code>dogent</code>가 "확장이 연결되기를 기다립니다…"에서 멈춤</td><td>터미널에서 <code>dogent doctor</code>를 실행합니다. 토큰, 포트 39217 점유, 호스트 등록, 크롬·엣지 정책(NativeMessagingBlocklist, NativeMessagingUserLevelHosts), 호스트 실행, 그리고 15초 실시간 시험까지 한 번에 보여 주고 원인을 알려 줍니다. Native Messaging 방식인데 호스트가 등록되어 있지 않으면(터미널 dogent는 등록하지 않습니다) <code>dogent doctor --fix</code> 후 확장의 "연결 설정 저장"을 다시 누릅니다. 회사 정책이 막으면 확장의 방식을 WebSocket으로 바꾸고 <code>dogent token</code>의 값을 넣습니다.</td></tr>
   <tr><td>앱 위쪽에 브라우저가 안 보임</td><td>① 패널 설정의 연결 방식이 Native Messaging인지, 저장했는지 ② 확장을 앱보다 나중에 로드했다면 앱을 다시 켭니다 (켜질 때 확장을 찾아 등록) ③ 브라우저를 완전히 닫았다 다시 엽니다.</td></tr>
   <tr><td>업데이트 뒤 연결이 끊김</td><td>확장 폴더를 다른 곳에 로드해 확장 ID가 바뀌었습니다. 확장 관리 화면의 Dogent가 <code>%LOCALAPPDATA%\Dogent\extension</code>을 가리키는지 보고, 아니면 지우고 그 폴더로 다시 로드한 뒤 앱을 다시 켭니다.</td></tr>
   <tr><td>앱과 터미널을 함께 켜면 연결이 안 됨</td><td>브리지 포트(39217)가 겹칩니다. 터미널 클라이언트, 데스크탑 앱, Claude Code의 브리지 중 하나만 켭니다.</td></tr>

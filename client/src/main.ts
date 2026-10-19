@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { lintSkill, lintSystem } from '../../src/core';
+import { runDoctor } from './doctor';
 import { loadToken } from './bridge';
 import { describeConfig, loadConfig, setConfig } from './config';
 import { addSchedule, describeSchedule, listSchedules, parseSpec, removeSchedule } from './schedule';
@@ -27,6 +28,8 @@ const HELP = `Dogent 클라이언트 ${__DOGENT_BUILD__.version} (${__DOGENT_BUI
   dogent excel resave <원본> <새 경로>   Excel로 다시 저장 (문서 보안이 다시 암호화하는지 확인)
   dogent schedule add <이름> --at 09:00 [--days 월,수,금] <스킬ID> [이름=값 …]   예약 실행 (매일, 또는 요일마다. 저장·상신은 하지 않는다)
   dogent schedule list|remove <이름>   예약 보기 / 지우기
+  dogent doctor [--fix] [--id <확장 ID>] [--wait <초>]
+                                  확장이 안 붙을 때 원인 점검 (토큰, 포트, Native Messaging 등록, 회사 정책, 실시간 시험). --fix는 호스트를 등록한다
   dogent token                    확장의 "클라이언트 연결"에 넣을 토큰
   dogent config [키 값]            설정 보기 / 바꾸기 (예: dogent config llm.userId sso123)
 
@@ -63,6 +66,16 @@ async function main(): Promise<number> {
   if (cmd === 'token') {
     console.log(loadToken());
     return 0;
+  }
+  if (cmd === 'doctor') {
+    const ok = await runDoctor({
+      waitSec: process.argv.includes('--wait') ? flags.waitSec : 15,
+      fix: rest.includes('--fix'),
+      ids: rest.flatMap((a, i) => (a === '--id' && rest[i + 1] ? [rest[i + 1]] : [])),
+      print: (l) => console.log(l),
+      version: __DOGENT_BUILD__.version,
+    });
+    return ok ? 0 : 1;
   }
   if (cmd === 'schedule') {
     const [sub, ...more] = rest;
