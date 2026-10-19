@@ -164,7 +164,8 @@ try {
     await answer(''); // 설명
     await answer('생산관리');
     await win.locator('[data-skill=wip-count-app]').waitFor({ timeout: 10_000 });
-    assert.match(await win.locator('#skill-list').innerText(), /개인[\s\S]*라인 재공 건수/);
+    // 지금 화면의 사이트를 다루므로 "지금 화면" 묶음에 출처 "개인"과 함께 보인다
+    assert.match(await win.locator('[data-skill=wip-count-app]').innerText(), /라인 재공 건수[\s\S]*개인/);
     await win.screenshot({ path: join(ROOT, 'test-results/desktop-saved.png') });
   });
 
@@ -183,7 +184,22 @@ try {
     await answer('생산관리'); // 담당 부서
     await answer('wip-count-desk'); // 스킬 ID
     await win.locator('[data-skill=wip-count-desk]').waitFor({ timeout: 10_000 });
-    assert.match(await win.locator('#skill-list').innerText(), /개인[\s\S]*라인별 재공 건수/);
+    assert.match(await win.locator('[data-skill=wip-count-desk]').innerText(), /라인별 재공 건수[\s\S]*개인/);
+  });
+
+  await scenario('스킬 찾기: 검색창, 지금 화면의 스킬, 성공률, 없으면 말로 만들기', async () => {
+    await open('/wip.html');
+    // 지금 탭의 사이트를 다루는 스킬이 맨 위 묶음에 (몇 초마다 탭을 읽는다)
+    await win.locator('[data-group=here] [data-skill=wip-check]').waitFor({ timeout: 15_000 });
+    assert.match(await win.locator('[data-group=here] .group').innerText(), /지금 화면 · localhost:4173/);
+    // 앞 시나리오에서 돌려 본 스킬에는 이 PC의 성공률
+    assert.match(await win.locator('[data-group=here] [data-skill=wip-check]').innerText(), /성공 \d+%/);
+    await win.locator('#skill-search').fill('홀드 해제해줘');
+    assert.equal(await win.locator('#skill-hits [data-skill]').first().getAttribute('data-skill'), 'hold-release');
+    await win.screenshot({ path: join(ROOT, 'test-results/desktop-search.png') });
+    await win.locator('#skill-search').fill('휴가 신청');
+    assert.match(await win.locator('#skill-hits').innerText(), /맞는 스킬이 없습니다[\s\S]*"휴가 신청" 말로 만들기/);
+    await win.locator('#skill-search').fill('');
   });
 
   await scenario('설정: 확장 연결 토큰과 지금 설정을 보여 줌', async () => {

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ApprovalRequest, RunEvent, RunResult } from '../../../src/core';
+import { searchSkills, skillCoversUrl } from '../../../src/core/catalog';
 import type { BrowserLink } from '../../../bridge/hub.mjs';
 import type { DogentApi, ExtensionStatus, InitInfo, SkillSummary, UiMessage } from '../ipc';
 
@@ -38,7 +39,17 @@ export function App() {
   const [side, setSide] = useState<'skills' | 'excel'>('skills');
   const [showSettings, setShowSettings] = useState(false);
   const [opts, setOpts] = useState({ allowWrite: false, dryRun: false });
+  const [query, setQuery] = useState('');
+  const [page, setPage] = useState<{ url: string; title: string } | null>(null);
   const feedEnd = useRef<HTMLDivElement>(null);
+
+  // 지금 브라우저 탭을 몇 초마다 읽어 그 사이트를 다루는 스킬을 위에 둔다
+  useEffect(() => {
+    const read = () => void api.page().then(setPage, () => setPage(null));
+    read();
+    const t = setInterval(read, 4000);
+    return () => clearInterval(t);
+  }, []);
 
   useEffect(() => {
     void api.init().then((i) => {
@@ -62,6 +73,7 @@ export function App() {
       return;
     }
     if (m.kind === 'browsers') return setBrowsers(m.browsers);
+    if (m.kind === 'skills') return void api.skills().then(setSkills);
     setItems((prev) => {
       const next = [...prev];
       const lastRun = () => {
@@ -139,7 +151,20 @@ export function App() {
   }
 
   const current = browsers.find((b) => b.selected);
-  const grouped = (['개인', '팀', '기본'] as const).map((source) => ({ source, list: skills.filter((s) => s.source === source) })).filter((g) => g.list.length);
+  // 검색어가 있으면 맞는 순서로 한 줄, 없으면 "지금 화면"(이 탭의 사이트를 다루는 스킬) 다음에 출처별로
+  const hits = query.trim() ? searchSkills(skills, (s) => s, query, { url: page?.url }) : [];
+  const here = query.trim() ? [] : skills.filter((s) => skillCoversUrl(s, page?.url));
+  const hereHost = (() => {
+    try {
+      return page ? new URL(page.url).host : '';
+    } catch {
+      return '';
+    }
+  })();
+  const grouped = [
+    ...(here.length ? [{ source: `지금 화면 · ${hereHost}`, list: here }] : []),
+    ...(['개인', '팀', '기본'] as const).map((source) => ({ source, list: skills.filter((s) => s.source === source && !here.includes(s)) })),
+  ].filter((g) => g.list.length);
 
   return (
     <div className="app">
@@ -183,20 +208,39 @@ export function App() {
               <button className="secondary compose" id="compose-skill" disabled={busy} onClick={() => send('스킬 만들기')} title="지금 브라우저 화면에서 하는 업무를 말로 설명하면 스킬 초안을 씁니다">
                 + 말로 스킬 만들기
               </button>
-              {grouped.map((g) => (
-                <div key={g.source} style={{ display: 'grid', gap: 4 }}>
-                  <div className="group">{g.source}</div>
-                  {g.list.map((s) => (
-                    <button key={s.id} className="skill" data-skill={s.id} disabled={busy} onClick={() => openForm(s)} title={s.description}>
-                      <span>
-                        <b>{s.name}</b>
-                        <span className={`risk ${s.risk}`}>{s.risk}</span>
-                      </span>
-                      <small>{s.description}</small>
-                    </button>
+              <input
+                id="skill-search"
+                type="search"
+                value={query}
+                placeholder="스킬 찾기 (예: 홀드 해제, 방화벽)"
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => e.key === 'Escape' && setQuery('')}
+              />
+              {query.trim() ? (
+                <div style={{ display: 'grid', gap: 4 }} id="skill-hits">
+                  <div className="group">찾은 스킬 {hits.length}</div>
+                  {hits.map((h) => (
+                    <SkillButton key={h.item.id} skill={h.item} here={h.site} showSource busy={busy} onOpen={openForm} />
                   ))}
+                  {hits.length === 0 && (
+                    <div className="hint">
+                      맞는 스킬이 없습니다.{' '}
+                      <button className="link" disabled={busy} onClick={() => send(`스킬 만들기 ${query}`)}>
+                        "{query}" 말로 만들기
+                      </button>
+                    </div>
+                  )}
                 </div>
-              ))}
+              ) : (
+                grouped.map((g) => (
+                  <div key={g.source} style={{ display: 'grid', gap: 4 }} data-group={g.source.startsWith('지금 화면') ? 'here' : g.source}>
+                    <div className="group">{g.source}</div>
+                    {g.list.map((s) => (
+                      <SkillButton key={s.id} skill={s} showSource={g.source.startsWith('지금 화면')} busy={busy} onOpen={openForm} />
+                    ))}
+                  </div>
+                ))
+              )}
             </div>
           ) : (
             <ExcelDocs />
@@ -269,6 +313,49 @@ export function App() {
 
       {showSettings && <Settings onClose={() => setShowSettings(false)} onChanged={(c) => setInfo((i) => i && { ...i, config: c })} config={info?.config ?? ''} />}
     </div>
+  );
+}
+
+/** 왼쪽 목록의 스킬 하나. 이 PC에서 돌려 본 적이 있으면 성공률을, 최근 연달아 실패했으면 그것을 보여 준다 */
+function SkillButton({
+  skill: s,
+  here,
+  showSource,
+  busy,
+  onOpen,
+}: {
+  skill: SkillSummary;
+  here?: boolean;
+  /** 출처별 묶음 밖(지금 화면, 찾은 스킬)에서는 출처를 따로 보여 준다 */
+  showSource?: boolean;
+  busy: boolean;
+  onOpen: (s: SkillSummary) => void;
+}) {
+  const st = s.stats;
+  return (
+    <button className="skill" data-skill={s.id} disabled={busy} onClick={() => onOpen(s)} title={`${s.description}\n담당 ${s.owner}${s.tags.length ? ` · ${s.tags.join(', ')}` : ''}`}>
+      <span>
+        <b>{s.name}</b>
+        <span className={`risk ${s.risk}`}>{s.risk}</span>
+        {showSource && (
+          <span className="chip" data-source={s.source}>
+            {s.source}
+          </span>
+        )}
+        {here && <span className="chip here">지금 화면</span>}
+        {st?.broken ? (
+          <span className="chip bad" title="전에는 되다가 최근 연달아 실패했습니다. 화면이 바뀌었을 수 있습니다">최근 실패</span>
+        ) : st && st.rate !== null ? (
+          <span className="chip" title={`이 PC에서 ${st.runs}번 실행`}>
+            성공 {Math.round(st.rate * 100)}%
+          </span>
+        ) : null}
+      </span>
+      <small>
+        {s.description}
+        {s.source === '팀' && <> · {s.owner}</>}
+      </small>
+    </button>
   );
 }
 

@@ -26,3 +26,4 @@ export * from './browser-tools';
 export * from './from-run';
 export * from './mcp-browser';
 export * from './compose';
+export * from './catalog';

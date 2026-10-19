@@ -43,6 +43,8 @@ const SkillMeta = z.object({
   owner: z.string().min(1),
   risk: z.enum(RISK_LEVELS),
   domains: z.array(z.string().min(1)).min(1),
+  /** 찾기에 쓰는 말 (시스템 이름, 업무 이름, 대상 등). 스킬 검색에서 이름 다음으로 크게 친다 */
+  tags: z.array(z.string().min(1)).default([]),
   inputs: z.array(InputSpec).default([]),
   outputs: z.unknown().optional(),
   submit_steps: z.array(z.number().int().positive()).default([]),

@@ -27,6 +27,7 @@ JSON 객체 하나로만 답합니다.
   "name": "<짧은 한글 이름>",
   "description": "<무엇을 하는 스킬인지 + 어떤 요청에 쓰는지 한두 문장. 예: '... 한다. \\"8라인 HOLD 사유 정리해줘\\" 같은 요청에 쓴다.'>",
   "risk": "R1 | R2 | R3",
+  "tags": ["<찾을 때 쓸 말 3~5개: 화면·시스템 이름, 업무, 대상. 예: 재공, HOLD, 생산>"],
   "inputs": [{"name": "<영문 소문자>", "label": "<한글>", "description": "<요청의 어느 부분이 이 값인지, 예시 값>", "type": "string | number | text | enum", "values": ["<enum일 때 보기>"], "default": "<없으면 생략>", "required": true}],
   "steps": [{"text": "<할 일 한 문장. 입력값은 {name}으로>", "check": "<이 단계를 마친 뒤에만 화면에 보이는 것. 없으면 생략>"}],
   "submit": {"step": <저장·상신 버튼을 누르는 steps의 번호(1부터)>, "labels": ["<그 버튼 이름>"]},
@@ -65,6 +66,7 @@ export const ComposeSpec = z.object({
   name: z.string().min(1),
   description: z.string().min(1),
   risk: z.enum(['R1', 'R2', 'R3']).catch('R1'),
+  tags: z.array(z.string()).catch([]).default([]),
   inputs: z.array(InputDraft).default([]),
   steps: z.array(StepDraft).min(1),
   submit: z.object({ step: z.number().int().positive(), labels: z.array(z.string()).default([]) }).nullish(),
@@ -371,6 +373,8 @@ export function renderSpec(spec: ComposeSpec, start: ComposeStart): { source: st
     'domains:',
     `  - ${q(url.host)}`,
   ];
+  const tags = [...new Set(spec.tags.map((t) => t.trim()).filter((t) => t && t.length <= 30))].slice(0, 8);
+  if (tags.length) front.push(`tags: [${tags.map(q).join(', ')}]`);
   if (inputs.length) {
     front.push('inputs:');
     for (const i of inputs) {

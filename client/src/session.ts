@@ -5,14 +5,18 @@ import {
   FREE_SKILL_ID,
   OpenAiCompatClient,
   buildFreeSkill,
+  docOfSkill,
   planRequest,
   readTable,
   resolveInputs,
   runSkill,
+  searchSkills,
+  shortlistSkills,
   type ApprovalRequest,
   type HistoryEntry,
   type RunEvent,
   type RunResult,
+  type SearchHit,
   type Skill,
   type SkillInputs,
 } from '../../src/core';
@@ -23,7 +27,11 @@ import { setConfig, type ClientConfig } from './config';
 import { Office, findOfficeExe } from './office';
 import { saveRunAsSkill } from './save-skill';
 import { loadSkills, type SkillEntry } from './skills';
-import { appendRun, filePathStore, folderFiles } from './store';
+import { appendRun, filePathStore, folderFiles, readRunStats } from './store';
+import { syncTeam, teamCacheDir, teamMeta, teamStale, type TeamMeta } from './team';
+
+/** 팀 스킬 저장소를 다시 받기까지의 시간 */
+const TEAM_MAX_AGE_MS = 60 * 60_000;
 import { describeApproval, describeEvent, describeResult } from './terminal';
 
 /**
@@ -77,9 +85,115 @@ export class Session {
   }
 
   reloadSkills(): string[] {
-    const { skills, errors } = loadSkills({ personal: this.cfg.personalSkills, team: this.cfg.teamSkills }, __DOGENT_SKILLS__);
+    const { skills, errors } = loadSkills(
+      { personal: this.cfg.personalSkills, team: this.cfg.teamSkills, teamCache: this.cfg.teamSkillsUrl ? teamCacheDir(this.cfg.home) : undefined },
+      __DOGENT_SKILLS__,
+    );
     this.skills = skills;
     return errors;
+  }
+
+  /**
+   * 팀 스킬 저장소를 주소로 받아 온다. force가 아니면 마지막으로 받은 지 한 시간이 지났을 때만.
+   * 닿지 않으면 받아 둔 것을 그대로 쓴다. 받았으면 몇 개를 받았는지 돌려준다.
+   */
+  async refreshTeam(opts: { force?: boolean; quiet?: boolean } = {}): Promise<TeamMeta | null> {
+    const url = this.cfg.teamSkillsUrl;
+    if (!url || (!opts.force && !teamStale(this.cfg.home, url, TEAM_MAX_AGE_MS))) return null;
+    try {
+      const meta = await syncTeam(this.cfg.home, url, { token: this.cfg.teamSkillsToken, timeoutMs: opts.force ? 20_000 : 6_000 });
+      this.reloadSkills();
+      if (!opts.quiet || meta.errors.length) this.term.print(`팀 스킬 ${meta.count}개를 받았습니다 (${url})`);
+      for (const e of meta.errors) this.term.print(`  받지 않음: ${e}`);
+      return meta;
+    } catch (e) {
+      const last = teamMeta(this.cfg.home);
+      this.term.print(`팀 스킬 저장소에 닿지 못했습니다: ${(e as Error).message}${last ? `\n  ${last.at.slice(0, 16).replace('T', ' ')}에 받아 둔 ${last.count}개를 씁니다` : ''}`);
+      return null;
+    }
+  }
+
+  /** 지금 브라우저 탭. 확장이 붙어 있지 않으면 기다리지 않고 null (앱의 "지금 화면" 스킬에 쓴다) */
+  async currentPage(): Promise<{ url: string; title: string } | null> {
+    if (!this.bridge?.connected()) return null;
+    try {
+      const t = await this.bridge.browser.target();
+      return { url: t.url, title: t.title };
+    } catch {
+      return null;
+    }
+  }
+
+  private async currentUrl(): Promise<string | undefined> {
+    return (await this.currentPage())?.url;
+  }
+
+  /** 이 PC의 실행 기록으로 낸 스킬별 성공률 */
+  runStats() {
+    return readRunStats(this.cfg.home);
+  }
+
+  /** 스킬 찾기 (skills search <말>). 말이 비면 지금 화면의 사이트를 다루는 스킬을 보여 준다. */
+  async searchSkills(query: string): Promise<SearchHit<SkillEntry>[]> {
+    this.reloadSkills();
+    // 말이 없으면 지금 화면의 스킬을 보여 주는 것이라 확장이 붙기를 기다린다
+    if (!query.trim()) await this.connect();
+    const url = await this.currentUrl();
+    const hits = searchSkills(this.skills, (e) => docOfSkill(e.skill), query, { url }).filter((h) => query.trim() || h.site);
+    const stats = readRunStats(this.cfg.home);
+    if (hits.length === 0) {
+      this.term.print(
+        query.trim()
+          ? `"${query}"에 맞는 스킬이 없습니다. 말로 만들려면: skill new ${query}`
+          : '지금 화면의 사이트를 다루는 스킬이 없습니다. skills search <말>로 찾거나 skill new로 만드세요',
+      );
+      return hits;
+    }
+    for (const h of hits.slice(0, 10)) {
+      const s = h.item.skill;
+      const st = stats.get(s.id);
+      const used = st ? ` · 이 PC에서 ${st.runs}번${st.rate !== null ? `, 성공 ${Math.round(st.rate * 100)}%` : ''}${st.broken ? ' · 최근 연달아 실패' : ''}` : '';
+      this.term.print(`  [${h.item.source}] ${s.id} — ${s.name} (${s.risk})${h.site ? ' · 지금 화면' : ''}${used}`);
+      this.term.print(`      ${s.description}`);
+    }
+    if (hits.length > 10) this.term.print(`  … 외 ${hits.length - 10}개`);
+    this.term.print('  자세히: skills info <ID> · 실행: run <ID> 이름=값 또는 말로 요청');
+    return hits;
+  }
+
+  /** 스킬 하나의 자세한 정보 (skills info <id>) */
+  skillInfo(id: string): boolean {
+    this.reloadSkills();
+    const e = this.skills.find((x) => x.skill.id === id);
+    if (!e) {
+      this.term.print(`"${id}" 스킬이 없습니다. skills search <말>로 찾아보세요`);
+      return false;
+    }
+    const s = e.skill;
+    const st = readRunStats(this.cfg.home).get(s.id);
+    const lines = [
+      `${s.name} (${s.id} v${s.version}) [${e.source}]`,
+      `  ${s.description}`,
+      `  담당 ${s.owner} · 위험 ${s.risk}${s.risk === 'R3' ? ' (저장·상신, 승인 필요)' : ''} · 사이트 ${s.domains.join(', ')}${s.schedulable ? ' · 예약 가능' : ''}`,
+      ...(s.tags.length ? [`  태그 ${s.tags.join(', ')}`] : []),
+      `  단계 ${s.steps.length}개${e.path ? ` · ${e.path}` : ''}`,
+    ];
+    if (s.inputs.length) {
+      lines.push('  입력:');
+      for (const i of s.inputs) {
+        const notes = [i.type, ...(i.required && i.default === undefined ? ['필수'] : []), ...(i.default !== undefined ? [`기본 ${i.default}`] : [])].join(', ');
+        lines.push(`    ${i.name} ${i.label ?? ''} (${notes})${i.description ? ` — ${i.description}` : ''}`);
+      }
+    }
+    lines.push(
+      st
+        ? `  이 PC의 기록: ${st.runs}번 실행, 성공 ${st.ok} · 실패 ${st.fail}${st.avgSec !== null ? ` · 평균 ${Math.round(st.avgSec)}초` : ''} · 마지막 ${st.lastAt.slice(0, 16).replace('T', ' ')}${st.broken ? '\n  ! 전에는 되다가 최근 연달아 실패합니다. 화면이 바뀌었을 수 있습니다' : ''}`
+        : '  이 PC의 기록: 아직 실행하지 않음',
+    );
+    const inputs = s.inputs.filter((i) => i.type !== 'file').map((i) => `${i.name}=${i.default ?? '…'}`).join(' ');
+    lines.push(`  실행: run ${s.id}${inputs ? ` ${inputs}` : ''}`);
+    this.term.print(lines.join('\n'));
+    return true;
   }
 
   /** Ctrl+C: 실행 중이면 멈추고, 아니면 끝낸다. */
@@ -332,7 +446,9 @@ export class Session {
     this.term.print('요청을 해석하는 중…');
     let plan: { skill_id: string | null; inputs: Record<string, unknown> };
     try {
-      plan = await planRequest(text, this.skills.map((e) => e.skill), this.llm());
+      // 스킬이 많으면 말이 맞는 것과 지금 화면의 사이트를 다루는 것만 모델에 보여 준다 (프롬프트가 길어지지 않게)
+      const candidates = shortlistSkills(this.skills, (e) => docOfSkill(e.skill), text, { url: await this.currentUrl() });
+      plan = await planRequest(text, candidates.map((e) => e.skill), this.llm());
     } catch (e) {
       this.term.print(`요청을 해석하지 못했습니다: ${(e as Error).message}`);
       return false;
@@ -423,7 +539,7 @@ export class Session {
 
   /** 대화: 요청을 한 줄씩 받는다. */
   async repl(): Promise<void> {
-    this.term.print(`Dogent 클라이언트 (${__DOGENT_BUILD__.mode}). 할 일을 말해 주세요. skills, skill new, skill edit <id>, tabs, browsers, browser <이름>, help, exit`);
+    this.term.print(`Dogent 클라이언트 (${__DOGENT_BUILD__.mode}). 할 일을 말해 주세요. skills, 찾기 <말>, skills info <id>, skill new, skill edit <id>, sync, tabs, browsers, browser <이름>, help, exit`);
     for (;;) {
       const line = await this.term.ask('\n무엇을 할까요? > ');
       if (line === null) return;
@@ -463,6 +579,9 @@ export class Session {
   async handle(text: string): Promise<void> {
     if (text === 'help') this.term.print(this.help);
     else if (text === 'skills') this.listSkills();
+    else if (/^(skills\s+search|찾기)(\s|$)/.test(text)) await this.searchSkills(text.replace(/^(skills\s+search|찾기)\s*/, ''));
+    else if (/^skills\s+info\s+\S/.test(text)) this.skillInfo(text.replace(/^skills\s+info\s+/, '').trim());
+    else if (text === 'sync') await this.refreshTeam({ force: true });
     else if (text === 'tabs') await this.tabs();
     else if (text === 'browsers') await this.listBrowsers();
     else if (/^browser\s+/.test(text)) await this.useBrowser(text.replace(/^browser\s+/, ''));

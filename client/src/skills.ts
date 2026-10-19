@@ -32,7 +32,11 @@ function readFolder(dir: string): { path: string; source: string; policy?: strin
     });
 }
 
-export function loadSkills(dirs: { personal: string; team?: string }, bundled: Record<string, string> = {}): { skills: SkillEntry[]; errors: string[] } {
+/** teamCache는 팀 저장소를 주소로 받아 둔 폴더(team.ts). 같은 id면 git으로 받은 팀 폴더(team)가 먼저다. */
+export function loadSkills(
+  dirs: { personal: string; team?: string; teamCache?: string },
+  bundled: Record<string, string> = {},
+): { skills: SkillEntry[]; errors: string[] } {
   const errors: string[] = [];
   const found: SkillEntry[] = [];
   const add = (source: SkillSource, files: { path: string; source: string; policy?: string }[], shown: (p: string) => string) => {
@@ -46,6 +50,7 @@ export function loadSkills(dirs: { personal: string; team?: string }, bundled: R
   };
   add('개인', readFolder(dirs.personal), (p) => p);
   if (dirs.team) add('팀', readFolder(dirs.team), (p) => p);
+  if (dirs.teamCache) add('팀', readFolder(dirs.teamCache), (p) => p);
   const builtIn = Object.entries(bundled)
     .filter(([p]) => p.endsWith('SKILL.md'))
     .map(([p, source]) => ({ path: p, source, policy: bundled[p.replace(/SKILL\.md$/, 'policy.yaml')] }));

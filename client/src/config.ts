@@ -16,6 +16,10 @@ export interface UserConfig {
   llm?: Partial<LlmSettings>;
   /** 팀 스킬 저장소(사내 GitHub Enterprise의 dogent-skills)를 받아 둔 폴더 */
   teamSkills?: string;
+  /** 팀 스킬 저장소의 index.json 주소. 주면 git 없이 받아 온다 (빌드의 WXT_SKILLS_URL이 기본) */
+  teamSkillsUrl?: string;
+  /** 그 주소가 로그인을 요구하면 보낼 토큰 (사내 GitHub의 개인 토큰 등) */
+  teamSkillsToken?: string;
   /** 엑셀 결과를 저장할 폴더. 기본은 내려받기 폴더 */
   outputDir?: string;
   /** 확장과 잇는 WebSocket 포트 */
@@ -35,6 +39,8 @@ export interface ClientConfig {
   llm: LlmSettings;
   personalSkills: string;
   teamSkills?: string;
+  teamSkillsUrl?: string;
+  teamSkillsToken?: string;
   outputDir: string;
   bridgePort?: number;
   officeExe?: string;
@@ -81,6 +87,8 @@ export function loadConfig(): ClientConfig {
     llm,
     personalSkills: join(home, 'skills'),
     teamSkills: user.teamSkills,
+    teamSkillsUrl: user.teamSkillsUrl?.trim() || __DOGENT_BUILD__.skillsUrl,
+    teamSkillsToken: user.teamSkillsToken,
     outputDir: user.outputDir ?? join(homedir(), 'Downloads'),
     bridgePort: user.bridgePort,
     officeExe: user.officeExe,
@@ -121,7 +129,8 @@ export function describeConfig(c: ClientConfig): string {
     `브라우저       ${c.browser ?? '(여럿이면 가장 나중에 연결된 것)'}`,
     `개인 스킬      ${c.personalSkills}`,
     `담당 부서      ${c.owner ?? '(스킬을 처음 저장할 때 묻습니다)'}`,
-    `팀 스킬        ${c.teamSkills ?? '(설정 안 함: dogent config teamSkills <폴더>)'}`,
+    `팀 스킬        ${c.teamSkills ?? '(폴더 없음: dogent config teamSkills <폴더>)'}`,
+    `팀 스킬 주소   ${c.teamSkillsUrl ?? '(없음: dogent config teamSkillsUrl <index.json 주소>)'}${c.teamSkillsToken ? ' (토큰 있음)' : ''}`,
     `결과 저장      ${c.outputDir}${c.saveThroughExcel ? ' (Excel로 저장)' : ''}`,
     `오피스 도구    ${findOfficeExe(c.officeExe) ?? '(없음: pnpm office:build)'}`,
     `설정 파일      ${c.file}`,

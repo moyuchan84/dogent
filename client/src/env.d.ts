@@ -5,6 +5,8 @@ declare const __DOGENT_BUILD__: {
   mode: string;
   version: string;
   llm: Partial<import('../../src/core').LlmSettings>;
+  /** 팀 스킬 저장소의 index.json 주소 (환경 파일의 WXT_SKILLS_URL) */
+  skillsUrl?: string;
 };
 
 /** 클라이언트에 넣은 기본 스킬. 경로(예: wip-check/SKILL.md) → 내용 */

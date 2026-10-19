@@ -63,11 +63,13 @@ export function bundledSkills() {
 export function buildDefines(mode) {
   const version = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).version;
   const llm = llmFromEnv(mode);
+  // 팀 스킬 저장소의 목록 주소. 확장의 공유 스킬 저장소와 같은 값을 쓴다 (사용자가 dogent config teamSkillsUrl로 바꿀 수 있다)
+  const skillsUrl = loadEnv(mode).WXT_SKILLS_URL?.trim() || undefined;
   return {
     llm,
     skills: bundledSkills(),
     define: {
-      __DOGENT_BUILD__: JSON.stringify({ mode, version, llm }),
+      __DOGENT_BUILD__: JSON.stringify({ mode, version, llm, ...(skillsUrl ? { skillsUrl } : {}) }),
       __DOGENT_SKILLS__: JSON.stringify(bundledSkills()),
     },
   };

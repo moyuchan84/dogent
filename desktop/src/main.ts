@@ -11,7 +11,7 @@ import { loadToken } from '../../client/src/bridge';
 import { describeConfig, loadConfig, setConfig } from '../../client/src/config';
 import { Session, type SessionOptions, type Ui } from '../../client/src/session';
 import { findInstalledExtensions, registerNativeHost, registeredIds } from '../../bridge/register.mjs';
-import type { ExtensionStatus, UiMessage } from './ipc';
+import type { ExtensionStatus, SkillSummary, UiMessage } from './ipc';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -134,13 +134,21 @@ async function work(job: () => Promise<unknown>): Promise<void> {
   }
 }
 
-function skillSummaries() {
+function skillSummaries(): SkillSummary[] {
+  const stats = session.runStats();
   return session.skillList().map((e) => ({
     id: e.skill.id,
     name: e.skill.name,
     description: e.skill.description,
     risk: e.skill.risk,
     source: e.source,
+    owner: e.skill.owner,
+    tags: e.skill.tags,
+    domains: e.skill.domains,
+    stats: (() => {
+      const s = stats.get(e.skill.id);
+      return s ? { runs: s.runs, rate: s.rate, broken: s.broken } : undefined;
+    })(),
     inputs: e.skill.inputs.map((i) => ({
       name: i.name,
       label: i.label ?? i.name,
@@ -171,6 +179,7 @@ ipcMain.handle('dogent:stop', () => {
   ui.cancelAll();
 });
 ipcMain.handle('dogent:skills', () => skillSummaries());
+ipcMain.handle('dogent:page', () => session.currentPage());
 ipcMain.handle('dogent:browsers', () => session.browsersNow());
 ipcMain.handle('dogent:select-browser', (_e, which: string) => work(() => session.useBrowser(which)));
 ipcMain.handle('dogent:excel-docs', async () => (await session.officeTool()).userWorkbooks());
@@ -219,6 +228,10 @@ else {
     createWindow();
     // 브리지를 먼저 띄워 두면 브라우저 확장들이 미리 붙는다. 붙은 브라우저가 바뀌면 창에 알린다.
     await session.listen().catch((e: Error) => ui.print(`오류: ${e.message}`));
+    // 팀 스킬 저장소를 받아 오면 창의 스킬 목록을 다시 읽게 한다 (한 시간마다)
+    const team = () => void session.refreshTeam({ quiet: true }).then((m) => m && ui.send({ kind: 'skills' }));
+    team();
+    setInterval(() => !busy && team(), 60 * 60_000);
     let last = '';
     setInterval(() => {
       const list = session.browsersNow();

@@ -9,6 +9,7 @@ const api: DogentApi = {
   answer: (id, value) => ipcRenderer.invoke('dogent:answer', id, value),
   stop: () => ipcRenderer.invoke('dogent:stop'),
   skills: () => ipcRenderer.invoke('dogent:skills'),
+  page: () => ipcRenderer.invoke('dogent:page'),
   browsers: () => ipcRenderer.invoke('dogent:browsers'),
   selectBrowser: (which) => ipcRenderer.invoke('dogent:select-browser', which),
   excelDocs: () => ipcRenderer.invoke('dogent:excel-docs'),

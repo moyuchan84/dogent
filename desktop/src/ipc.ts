@@ -12,7 +12,9 @@ export type UiMessage =
   | { kind: 'approval'; request: ApprovalRequest }
   | { kind: 'result'; result: RunResult; saved: string[] }
   | { kind: 'busy'; busy: boolean }
-  | { kind: 'browsers'; browsers: BrowserLink[] };
+  | { kind: 'browsers'; browsers: BrowserLink[] }
+  /** 스킬 목록이 바뀜 (팀 스킬 저장소를 받아 옴) */
+  | { kind: 'skills' };
 
 export interface SkillSummary {
   id: string;
@@ -20,6 +22,11 @@ export interface SkillSummary {
   description: string;
   risk: string;
   source: '개인' | '팀' | '기본';
+  owner: string;
+  tags: string[];
+  domains: string[];
+  /** 이 PC의 실행 기록 (없으면 아직 실행하지 않음) */
+  stats?: { runs: number; rate: number | null; broken: boolean };
   inputs: { name: string; label: string; type: string; required: boolean; description: string; values: string[]; default: string }[];
 }
 
@@ -40,6 +47,8 @@ export interface DogentApi {
   answer(id: number, value: string | null): Promise<void>;
   stop(): Promise<void>;
   skills(): Promise<SkillSummary[]>;
+  /** 지금 브라우저 탭 (확장이 붙어 있지 않으면 null) */
+  page(): Promise<{ url: string; title: string } | null>;
   browsers(): Promise<BrowserLink[]>;
   selectBrowser(which: string): Promise<void>;
   excelDocs(): Promise<{ name: string; full_name: string; read_only: boolean }[]>;

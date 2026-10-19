@@ -5,6 +5,7 @@
 // 클라이언트는 별도 프로세스(client/dist/dogent.mjs)로 띄우고, 확장은 클라이언트 안의 브리지에 WebSocket으로 붙는다.
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { createServer } from 'node:http';
 import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -182,6 +183,43 @@ try {
     const again = await client(['run', 'wip-count-talk', 'line=8라인']);
     assert.equal(again.code, 0, again.text);
     assert.match(again.text, new RegExp(`총 ${generateWip('8라인').length}건`));
+  });
+
+  await scenario('스킬 찾기: 말로 찾기, 지금 화면의 스킬, 자세히 보기, 팀 저장소를 주소로 받기', async () => {
+    const hold = await client(['skills', 'search', '홀드', '해제해줘']);
+    assert.equal(hold.code, 0, hold.text);
+    assert.match(hold.text.split('\n').find((l) => l.includes('[')) ?? '', /hold-release — Lot 홀드 해제 요청/);
+    const none = await client(['skills', 'search', '휴가', '신청']);
+    assert.equal(none.code, 1);
+    assert.match(none.text, /맞는 스킬이 없습니다\. 말로 만들려면: skill new 휴가 신청/);
+
+    await open('/wip.html');
+    const here = await client(['skills', 'search']);
+    assert.match(here.text, /wip-check — 재공 확인 \(R1\) · 지금 화면/);
+    const info = await client(['skills', 'info', 'wip-check']);
+    assert.match(info.text, /태그 재공, WIP/);
+    assert.match(info.text, /이 PC의 기록: \d+번 실행/); // 앞 시나리오에서 실행했다
+
+    // 팀 저장소: git 없이 index.json 주소로 받는다
+    const team = createServer((req, res) => {
+      const skill = readFileSync(join(ROOT, 'skills/wip-check/SKILL.md'), 'utf8').replace('id: wip-check', 'id: team-wip').replace('name: 재공 확인', 'name: 팀 재공 확인');
+      const body = { '/s/index.json': JSON.stringify({ skills: [{ id: 'team-wip', path: 'team-wip/SKILL.md' }] }), '/s/team-wip/SKILL.md': skill }[req.url];
+      res.writeHead(body ? 200 : 404).end(body);
+    }).listen(4179);
+    try {
+      await client(['config', 'teamSkillsUrl', 'http://127.0.0.1:4179/s/index.json']);
+      const synced = await client(['sync']);
+      assert.equal(synced.code, 0, synced.text);
+      assert.match(synced.text, /팀 스킬 1개를 받았습니다/);
+      assert.match((await client(['skills'])).text, /\[팀\] team-wip — 팀 재공 확인/);
+    } finally {
+      team.close();
+    }
+    // 닿지 않으면 받아 둔 것을 쓴다
+    const offline = await client(['sync']);
+    assert.match(offline.text, /팀 스킬 저장소에 닿지 못했습니다[\s\S]*받아 둔 1개를 씁니다/);
+    assert.match((await client(['skills'])).text, /\[팀\] team-wip/);
+    return '홀드·지금 화면·팀 저장소';
   });
 
   await scenario('직접 못 읽는 엑셀(xls)은 오피스 도구가 Excel로 열어 화면 표에 채움', async () => {

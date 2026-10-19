@@ -7,6 +7,7 @@ owner: 인프라운영
 risk: R3
 domains:
   - localhost:4173
+tags: ["방화벽", "IP", "포트", "네트워크", "보안 신청"]
 inputs:
   - name: src_ip
     label: 출발지 IP

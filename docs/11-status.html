@@ -84,7 +84,7 @@ footer { margin-top: 40px; color: var(--muted); font-size: 13px; }
     <tr><td>터미널 클라이언트 (2단계)</td><td>스킬 실행, 말로 요청, 자유 요청 → 개인 스킬 저장, 개인·팀·기본 스킬 저장소, 실행 기록</td><td><span class="tag t-ok">완료</span></td></tr>
     <tr><td>오피스 도구 (3단계)</td><td>Excel COM으로 열기·읽기·쓰기·저장, 사용자 Excel에 열린 문서 잡기(EDM), NASCA 문서 입력</td><td><span class="tag t-ok">완료</span></td></tr>
     <tr><td>데스크탑 앱 (4단계)</td><td>Electron 한 파일 실행본, 말로 요청·스킬 실행·승인·설정, 브라우저(크롬/엣지) 고르기</td><td><span class="tag t-ok">완료</span></td></tr>
-    <tr><td>스킬 체계</td><td>목표 수준 단계 + 매개변수, 화면 요약, 경로 기억·자가 복구, 녹화로 초안, 품질 검사, 시험 실행, 팀 저장소 배포</td><td><span class="tag t-ok">완료</span></td></tr>
+    <tr><td>스킬 체계</td><td>목표 수준 단계 + 매개변수, 화면 요약, 경로 기억·자가 복구, 녹화로 초안, 말로 만들기, 품질 검사, 시험 실행, 찾기, 팀 저장소 배포</td><td><span class="tag t-ok">완료</span></td></tr>
   </table></div>
 
   <h2>3. 이번에 추가한 것</h2>
@@ -95,6 +95,9 @@ footer { margin-top: 40px; color: var(--muted); font-size: 13px; }
     <tr><td>사용자 ID 자동</td><td><code>llm.userId</code>를 안 적으면 로그인한 Windows 계정으로 모델 API 헤더 <code>User-Id</code>를 채움. 설정값이 있으면 그 값 우선</td><td><span class="tag t-warn">게이트웨이 일치 여부 사내 확인</span></td></tr>
     <tr><td>모델 API 바쁠 때 재시도</td><td>429/502/503/504면 <code>Retry-After</code>(없으면 2·4·8초)만큼 쉬고 최대 3번 재시도. 여러 사람이 같은 게이트웨이를 쓸 때 대비</td><td><span class="tag t-ok">테스트 통과</span></td></tr>
     <tr><td>예약 실행</td><td><code>dogent schedule add|list|remove</code>. Windows 작업 스케줄러에 등록, 로그인해 있을 때만 실행, 저장·상신은 하지 않음(<code>--allow-write</code> 없음)</td><td><span class="tag t-ok">등록·조회·삭제 실측</span> 실제 실행은 미확인</td></tr>
+    <tr><td>말로 스킬 만들기</td><td>지금 브라우저 화면을 보고 초안 → 말로 고치기 → 시험 실행 → 개인 스킬로 저장. 터미널 <code>dogent skill new</code>와 앱 버튼 (<code>src/core/compose.ts</code>)</td><td><span class="tag t-ok">e2e 통과</span> 사내 모델 품질은 미확인</td></tr>
+    <tr><td>스킬 찾기</td><td>스킬에 <code>tags</code>를 적고, 이름·태그·설명으로 찾음(조사·어미가 붙어도). <code>dogent skills search [&lt;말&gt;]</code>, <code>skills info &lt;ID&gt;</code>(입력·위험도·담당·이 PC 성공률). 말이 없으면 지금 브라우저 화면의 사이트용 스킬. 앱은 검색창과 맨 위 "지금 화면" 묶음. 맞는 스킬이 없으면 말로 만들기로 안내 (<code>src/core/catalog.ts</code>)</td><td><span class="tag t-ok">테스트·e2e 통과</span></td></tr>
+    <tr><td>팀 스킬 저장소를 주소로 받기</td><td><code>teamSkillsUrl</code>(빌드의 <code>WXT_SKILLS_URL</code>)의 <code>index.json</code>에서 git 없이 한 시간마다 받아 <code>~/.dogent/team-cache</code>에 둠. 닿지 않으면 받아 둔 것을 씀. git clone 폴더(<code>teamSkills</code>)가 있으면 같은 ID는 그쪽 우선 (<code>client/src/team.ts</code>)</td><td><span class="tag t-ok">e2e 통과</span> <span class="tag t-warn">사내 GitHub 주소·토큰 방식 미확인</span></td></tr>
   </table></div>
 
   <h2>4. 아직 구현하지 않은 것</h2>

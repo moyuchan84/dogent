@@ -113,6 +113,8 @@
 | 기본 | 클라이언트·확장에 들어 있는 것 (`skills/`) | 예제와 공통 스킬 |
 
 - 팀 저장소는 평범한 Git 저장소다. 스킬 하나가 폴더 하나(`<id>/SKILL.md`, 선택으로 `policy.yaml`)이고, `skills/index.json`에 해시와 함께 목록을 둔다.
+- 클라이언트는 git 없이도 `teamSkillsUrl`(`index.json` 주소)에서 한 시간마다 받아 `~/.dogent/team-cache`에 두고 `[팀]` 스킬로 쓴다. 닿지 않으면 받아 둔 것을 쓴다. git clone 폴더(`teamSkills`)가 있으면 같은 id는 그쪽이 먼저다.
+- 스킬 찾기: `tags`·이름·설명으로 찾고(`src/core/catalog.ts`), 지금 브라우저 화면의 사이트를 다루는 스킬을 먼저 보여 준다. 터미널은 `skills search`·`skills info`, 앱은 검색창과 "지금 화면" 묶음.
 - 확장은 지금도 이 목록 주소(`WXT_SKILLS_URL`)로 받아 쓴다. 비공개 저장소는 "브라우저 로그인으로 읽기"(`WXT_SKILLS_WITH_LOGIN`)로 브라우저의 사내 GitHub 세션을 써서 읽는다.
 - 클라이언트로 옮긴 뒤에는 같은 저장소를 사용자의 Git 자격 증명으로 받아(`git pull`) 쓴다. 저장소 구조는 바뀌지 않는다.
 - CI 검사기(`tools/skill-check.mjs`)는 Dogent의 검사 규칙을 한 파일로 묶은 것이다(`pnpm skill:bundle`). 사내 러너에 Node만 있으면 된다.

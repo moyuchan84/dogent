@@ -13,10 +13,12 @@ const HELP = `Dogent 클라이언트 ${__DOGENT_BUILD__.version} (${__DOGENT_BUI
   dogent "<요청>"                  요청 하나를 처리하고 끝낸다. 맞는 스킬이 있으면 스킬로, 없으면 지금 화면에서 자유 요청으로
   dogent run <스킬ID> 이름=값 …    스킬을 정한 입력값으로 실행한다. 파일 입력은 이름=파일경로
   dogent skills                   쓸 수 있는 스킬 (개인 > 팀 > 기본)
+  dogent skills search [<말>]     스킬 찾기 (예: dogent skills search 홀드 해제). 말이 없으면 지금 브라우저 화면의 사이트용 스킬
+  dogent skills info <스킬ID>     입력, 위험도, 담당, 이 PC에서의 성공률
   dogent skill new ["<업무 설명>"]   말로 스킬 만들기: 지금 브라우저 화면을 보고 초안 → 말로 고치기 → 시험 → 저장
   dogent skill edit <스킬ID>       스킬 파일을 편집기로 열고, 닫으면 품질 검사 (편집기: DOGENT_EDITOR, 기본 notepad)
   dogent check <SKILL.md>         스킬 품질 검사
-  dogent sync                     팀 스킬 저장소를 git pull로 받는다
+  dogent sync                     팀 스킬 저장소를 받는다 (teamSkillsUrl이면 주소로, teamSkills 폴더면 git pull)
   dogent tabs                     브라우저 탭 목록
   dogent browsers                 Dogent 확장이 연결된 브라우저 (크롬, 엣지 …). 대화 중에는 browser edge 로 바꿈
   dogent excel <파일>             Excel로 열어 시트와 앞부분을 보여 준다 (문서 보안 문서 확인)
@@ -86,9 +88,9 @@ async function main(): Promise<number> {
     for (const f of report.findings) console.log(`  [${f.level}] ${f.rule}${f.step ? ` ${f.step}단계` : ''}: ${f.message}`);
     return report.grade === 'F' ? 1 : 0;
   }
-  if (cmd === 'sync') {
+  if (cmd === 'sync' && !cfg.teamSkillsUrl) {
     if (!cfg.teamSkills) {
-      console.log('팀 스킬 폴더가 없습니다. 사내 GitHub의 dogent-skills를 git clone한 뒤 dogent config teamSkills <폴더> 로 알려 주세요');
+      console.log('팀 스킬 저장소가 없습니다. dogent config teamSkillsUrl <index.json 주소> (git 없이), 또는 git clone한 폴더를 dogent config teamSkills <폴더> 로 알려 주세요');
       return 1;
     }
     execFileSync('git', ['-C', cfg.teamSkills, 'pull', '--ff-only'], { stdio: 'inherit' });
@@ -105,6 +107,14 @@ async function main(): Promise<number> {
     }
   });
   try {
+    if (cmd === 'sync') {
+      if (cfg.teamSkills) execFileSync('git', ['-C', cfg.teamSkills, 'pull', '--ff-only'], { stdio: 'inherit' });
+      return (await client.refreshTeam({ force: true })) ? 0 : 1;
+    }
+    // 스킬을 쓰는 명령이면 팀 스킬 저장소를 받아 온다 (한 시간에 한 번, 닿지 않으면 받아 둔 것)
+    if (!['excel', 'browsers', 'tabs'].includes(cmd ?? '')) await client.refreshTeam({ quiet: true });
+    if (cmd === 'skills' && rest[0] === 'search') return (await client.searchSkills(rest.slice(1).join(' '))).length ? 0 : 1;
+    if (cmd === 'skills' && rest[0] === 'info' && rest[1]) return client.skillInfo(rest[1]) ? 0 : 1;
     if (cmd === 'skills') {
       client.listSkills();
       return 0;
