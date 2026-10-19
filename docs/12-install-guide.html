@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dogent 설치 안내</title>
+<style>
+:root {
+  --bg: #f4f6fa; --paper: #ffffff; --ink: #152033; --muted: #5a6577; --line: #d9dfe8;
+  --accent: #1f5fd6; --accent-soft: #e6eefc; --ok: #1d7a4c; --ok-soft: #e1f3e9;
+  --warn: #8a5a00; --warn-soft: #fff4d6; --risk: #b3261e; --risk-soft: #fbe8e6;
+  --code-bg: #1b2232; --code-fg: #e4e9f2; --code-dim: #8d98ad;
+  --sans: "IBM Plex Sans KR", "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif;
+  --mono: "JetBrains Mono", Consolas, "D2Coding", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f141d; --paper: #171e2a; --ink: #e5eaf2; --muted: #9aa6b8; --line: #2a3445;
+    --accent: #78a6ff; --accent-soft: #1b2944; --ok: #6fd3a0; --ok-soft: #163425;
+    --warn: #f8dc8c; --warn-soft: #3a2e10; --risk: #ff8b80; --risk-soft: #3c1d1a;
+    --code-bg: #0b0f16; --code-fg: #dfe5ef; --code-dim: #7d889c;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f141d; --paper: #171e2a; --ink: #e5eaf2; --muted: #9aa6b8; --line: #2a3445;
+  --accent: #78a6ff; --accent-soft: #1b2944; --ok: #6fd3a0; --ok-soft: #163425;
+  --warn: #f8dc8c; --warn-soft: #3a2e10; --risk: #ff8b80; --risk-soft: #3c1d1a;
+  --code-bg: #0b0f16; --code-fg: #dfe5ef; --code-dim: #7d889c;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.7 var(--sans); }
+a { color: var(--accent); }
+.layout { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 36px; max-width: 1120px; margin: 0 auto; padding: 32px 16px 72px; }
+nav { position: sticky; top: 24px; align-self: start; font-size: 14px; }
+nav .brand { font-weight: 700; font-size: 16px; margin-bottom: 10px; }
+nav ol { list-style: none; margin: 0; padding: 0; }
+nav a { display: block; padding: 4px 10px; border-radius: 6px; color: var(--muted); text-decoration: none; }
+nav a:hover { background: var(--accent-soft); color: var(--accent); }
+nav .group { margin: 14px 0 4px 10px; font-size: 12px; font-weight: 700; color: var(--muted); letter-spacing: .04em; }
+main { min-width: 0; }
+h1 { font-size: 28px; margin: 0 0 6px; line-height: 1.3; }
+h2 { font-size: 21px; margin: 48px 0 12px; padding-top: 8px; scroll-margin-top: 16px; }
+h3 { font-size: 16px; margin: 22px 0 6px; }
+p { margin: 6px 0; }
+.sub { color: var(--muted); }
+code { font-family: var(--mono); font-size: 0.88em; background: var(--accent-soft); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
+pre { background: var(--code-bg); color: var(--code-fg); border-radius: 10px; padding: 14px 16px; overflow-x: auto; font: 13px/1.6 var(--mono); margin: 10px 0; }
+pre code { background: none; padding: 0; color: inherit; font-size: inherit; }
+pre .c { color: var(--code-dim); }
+.who { display: inline-block; font-size: 12px; font-weight: 700; padding: 2px 10px; border-radius: 999px; margin-bottom: 6px; }
+.who.user { background: var(--ok-soft); color: var(--ok); }
+.who.dev { background: var(--accent-soft); color: var(--accent); }
+.parts { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin: 18px 0; }
+.part { background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+.part b { display: block; font-size: 15px; }
+.part .file { font: 12px var(--mono); color: var(--muted); }
+.part p { font-size: 14px; color: var(--muted); margin-top: 6px; }
+.flow { display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; margin: 16px 0; }
+.flow div { flex: 1 1 140px; background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font-size: 14px; }
+.flow div b { display: block; color: var(--accent); font-size: 12px; }
+.steps { counter-reset: s; list-style: none; padding: 0; margin: 14px 0; }
+.steps > li { counter-increment: s; position: relative; background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px 14px 56px; margin: 10px 0; }
+.steps > li::before { content: counter(s); position: absolute; left: 16px; top: 14px; width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color: var(--paper); font-weight: 700; font-size: 14px; display: grid; place-items: center; }
+.steps > li > b:first-child { display: block; font-size: 15.5px; }
+.note { border-left: 4px solid var(--accent); background: var(--accent-soft); border-radius: 0 8px 8px 0; padding: 10px 14px; margin: 12px 0; font-size: 14px; }
+.note.warn { border-color: var(--warn); background: var(--warn-soft); }
+.note.risk { border-color: var(--risk); background: var(--risk-soft); }
+.wrap { overflow-x: auto; margin: 10px 0; }
+table { width: 100%; border-collapse: collapse; background: var(--paper); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; font-size: 14px; }
+th, td { text-align: left; vertical-align: top; padding: 9px 12px; border-bottom: 1px solid var(--line); }
+th { background: var(--accent-soft); font-weight: 700; white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
+td:first-child { white-space: nowrap; }
+kbd { font: 12px var(--mono); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; background: var(--paper); }
+footer { margin-top: 48px; color: var(--muted); font-size: 13px; }
+@media (max-width: 820px) {
+  .layout { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  nav { position: static; }
+  nav ol { display: flex; flex-wrap: wrap; gap: 2px; }
+  nav .group { width: 100%; margin: 8px 0 0 10px; }
+  td:first-child { white-space: normal; }
+}
+</style>
+</head>
+<body>
+<div class="layout">
+<nav aria-label="목차">
+  <div class="brand">Dogent 설치 안내</div>
+  <ol>
+    <li><a href="#parts">무엇이 설치되나</a></li>
+    <li class="group">사용자</li>
+    <li><a href="#install">설치하기</a></li>
+    <li><a href="#first">처음 한 번 설정</a></li>
+    <li><a href="#update">업데이트</a></li>
+    <li><a href="#remove">제거</a></li>
+    <li class="group">배포 담당자</li>
+    <li><a href="#prepare">준비물</a></li>
+    <li><a href="#build">빌드와 묶음</a></li>
+    <li><a href="#manual">하나씩 빌드하기</a></li>
+    <li><a href="#options">스크립트 옵션</a></li>
+    <li class="group">도움</li>
+    <li><a href="#trouble">문제 해결</a></li>
+  </ol>
+</nav>
+<main>
+
+<h1>Dogent 설치 안내</h1>
+<p class="sub">브라우저 확장 · 데스크탑 앱 · 오피스 도구 · 터미널 클라이언트를 Windows PC에 한 번에 설치합니다. 관리자 권한은 필요 없습니다.</p>
+
+<div class="flow" aria-label="전체 흐름">
+  <div><b>배포 담당자</b><code>build.cmd</code> 로 빌드 → 배포 묶음(zip)</div>
+  <div><b>사용자 1</b>zip을 풀고 <code>install.cmd</code></div>
+  <div><b>사용자 2</b>브라우저에 확장 폴더 로드</div>
+  <div><b>사용자 3</b>앱 실행 → 연결 방식 Native Messaging</div>
+</div>
+
+<h2 id="parts">무엇이 설치되나</h2>
+<div class="parts">
+  <div class="part"><b>브라우저 확장</b><span class="file">extension\</span><p>업무 화면을 읽고 조작합니다. 사이드 패널, 승인 창, 조작할 사이트 목록을 지킵니다. 크롬·엣지에 로드합니다.</p></div>
+  <div class="part"><b>데스크탑 앱</b><span class="file">Dogent.exe</span><p>말로 요청하고 스킬을 실행하는 창. 확장과의 연결(Native Messaging)을 첫 실행에 스스로 등록합니다. Node가 없어도 됩니다.</p></div>
+  <div class="part"><b>오피스 도구</b><span class="file">dogent-office.exe</span><p>사용자의 Excel로 문서 보안(NASCA) 문서, EDM에서 연 문서를 읽고 씁니다. Excel이 설치된 PC에서만 씁니다.</p></div>
+  <div class="part"><b>터미널 클라이언트</b><span class="file">dogent.mjs · dogent 명령</span><p>앱과 같은 엔진의 명령줄 판. 예약 실행(<code>dogent schedule</code>)에 씁니다. Node.js 22 이상이 있어야 합니다.</p></div>
+</div>
+<p>설치하면 이렇게 놓입니다.</p>
+<pre><code>%LOCALAPPDATA%\Dogent\          <span class="c">← 프로그램 (업데이트할 때 같은 곳에 덮어씀)</span>
+  extension\                    <span class="c">← 브라우저에 로드하는 폴더. 경로가 바뀌면 확장 ID가 바뀝니다</span>
+  Dogent.exe  dogent-office.exe  dogent.mjs
+  bin\dogent.cmd                <span class="c">← dogent 명령 (PATH에 더함)</span>
+  설치안내.html  uninstall.cmd
+%USERPROFILE%\.dogent\          <span class="c">← 내 스킬·설정·실행 기록·연결 토큰 (제거해도 남음)</span></code></pre>
+
+<h2 id="install"><span class="who user">사용자</span><br>설치하기</h2>
+<ol class="steps">
+  <li><b>배포 묶음을 받아 풉니다</b>
+    <p>담당자에게 받은 <code>Dogent-company-&lt;판&gt;.zip</code>을 아무 폴더에나 풉니다 (예: 바탕화면). 압축을 푼 뒤 실행해야 합니다. zip 안에서 바로 누르면 파일을 찾지 못합니다.</p></li>
+  <li><b><code>install.cmd</code>를 두 번 누릅니다</b>
+    <p>파란 창이 뜨고 순서대로 진행합니다: 프로그램 복사 → 바탕화면·시작 메뉴 바로 가기 → 확장 로드 안내 → 앱 실행.</p>
+    <p class="sub">"Windows의 PC 보호" 창이 뜨면 <b>추가 정보 → 실행</b>을 누릅니다. Dogent가 켜져 있으면 닫을지 묻습니다.</p></li>
+  <li><b>브라우저에 확장을 로드합니다</b>
+    <p>스크립트가 확장 관리 화면(<code>chrome://extensions</code>, <code>edge://extensions</code>)을 열고, 확장 폴더 경로를 클립보드에 넣어 둡니다.</p>
+    <ol>
+      <li>오른쪽 위(엣지는 왼쪽 아래) <b>개발자 모드</b>를 켭니다</li>
+      <li><b>압축해제된 확장 프로그램을 로드합니다</b> → 폴더 칸에 <kbd>Ctrl</kbd>+<kbd>V</kbd> → <b>폴더 선택</b></li>
+      <li>툴바의 퍼즐 조각 아이콘에서 Dogent를 고정(핀)합니다</li>
+    </ol>
+    <p>창으로 돌아가 <kbd>Enter</kbd>를 누르면 로드됐는지 확인합니다. 크롬과 엣지를 모두 쓰면 둘 다 로드합니다.</p></li>
+  <li><b>앱이 뜨면 끝</b>
+    <p>스크립트가 Dogent 앱을 띄웁니다. 앱은 처음 뜰 때 로드된 확장을 찾아 브라우저 연결을 등록합니다. 다음부터는 바탕화면의 <b>Dogent</b>로 켭니다.</p></li>
+</ol>
+
+<h2 id="first">처음 한 번 설정</h2>
+<ol class="steps">
+  <li><b>확장을 앱에 연결합니다</b>
+    <p>브라우저에서 Dogent 아이콘 → 사이드 패널 → <b>설정</b> → <b>클라이언트 연결</b> → 방식 <b>Native Messaging</b> → <b>연결 설정 저장</b>. 토큰은 자동으로 전달되므로 비워 둬도 됩니다.</p>
+    <p>앱 위쪽에 브라우저 이름(크롬, 엣지)이 보이면 연결된 것입니다. 크롬과 엣지를 모두 연결했으면 둘 다 보이고 골라 씁니다.</p>
+    <p class="sub">패널에 "pnpm bridge:install을 실행하라"는 안내가 보여도 무시해도 됩니다. 앱이 같은 일을 대신 했습니다.</p></li>
+  <li><b>모델 연결을 시험합니다</b>
+    <p>사이드 패널 → 설정 → <b>연결 시험</b> → "연결됨". <b>사용자 ID</b> 칸에는 사내 SSO ID를 넣습니다 (데스크탑 앱과 dogent 명령은 Windows 로그인 계정을 사용자 ID로 씁니다. 다르면 앱의 설정에서 고칩니다). "닿지 못했습니다"가 나오고 <b>이 주소 접근 허용</b> 버튼이 보이면 누릅니다.</p></li>
+  <li><b>업무 화면을 점검합니다</b>
+    <p>업무 화면을 열고 패널 위쪽 <b>화면 점검</b>을 누릅니다. 조작할 사이트 목록에 없으면 <b>이 사이트 허용</b>을 누릅니다. 읽지 못하는 iframe, 그림으로 그린 그리드처럼 막히는 곳을 미리 알려 줍니다.</p></li>
+</ol>
+<div class="note">문제가 생기면 화면 점검 보고서(.md)나 기록 탭의 실행 기록을 내보내 담당자에게 보내 주세요. 보고서는 기본으로 화면 글자와 입력값을 가립니다.</div>
+
+<h2 id="update">업데이트</h2>
+<ol>
+  <li>새 묶음을 풀고 <code>install.cmd</code>를 다시 누릅니다. 같은 폴더(<code>%LOCALAPPDATA%\Dogent</code>)에 덮어씁니다.</li>
+  <li>확장 관리 화면에서 Dogent 카드의 <b>새로고침 ↻</b>을 누릅니다. 폴더 경로가 같아서 확장 ID와 설정, 연결 등록이 그대로 남습니다.</li>
+  <li>앱을 다시 켭니다.</li>
+</ol>
+<p>내 스킬, 실행 기록, 연결 토큰(<code>%USERPROFILE%\.dogent</code>)은 업데이트해도 바뀌지 않습니다.</p>
+
+<h2 id="remove">제거</h2>
+<p>시작 메뉴 → <b>Dogent</b> → <b>Dogent 제거</b>. 프로그램, 바로 가기, dogent 명령, 브라우저 연결 등록을 지웁니다. 확장은 브라우저의 확장 관리 화면에서 <b>삭제</b>를 직접 누릅니다.</p>
+<p>내 스킬·설정까지 지우려면 설치 폴더에서:</p>
+<pre><code>uninstall.cmd -Purge</code></pre>
+
+<h2 id="prepare"><span class="who dev">배포 담당자</span><br>준비물</h2>
+<div class="wrap"><table>
+  <tr><th>무엇</th><th>왜</th><th>확인</th></tr>
+  <tr><td>Node.js 22 이상</td><td>빌드 전부</td><td><code>node -v</code></td></tr>
+  <tr><td>pnpm</td><td>의존성과 빌드 명령. 없으면 스크립트가 corepack으로 켭니다</td><td><code>pnpm -v</code></td></tr>
+  <tr><td>Git</td><td>저장소 받기, 묶음에 커밋 기록</td><td><code>git --version</code></td></tr>
+  <tr><td>.NET Framework 4.x</td><td>오피스 도구 컴파일 (Windows에 기본으로 들어 있음)</td><td><code>C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe</code></td></tr>
+  <tr><td>인터넷 또는 사내 미러</td><td>처음 <code>pnpm install</code> 때 패키지와 Electron을 받음</td><td><code>ELECTRON_MIRROR</code></td></tr>
+  <tr><td>API 값</td><td>회사 모드: API 제공 측에서 받은 <code>api_base_url</code>, <code>credential_key</code>, <code>model</code>, 사용자 유형</td><td><code>.env.company.local</code></td></tr>
+</table></div>
+
+<h2 id="build">빌드와 묶음</h2>
+<ol class="steps">
+  <li><b>빌드 설정 파일을 채웁니다</b> (회사 모드)
+    <pre><code>copy .env.company.example .env.company.local
+notepad .env.company.local     <span class="c">REM (api_base_url) 같은 (…) 자리를 받은 값으로</span></code></pre>
+    <p>파일이 없거나 <code>(…)</code>가 남아 있으면 <code>build.cmd</code>가 예시를 복사해 메모장을 열고 멈춥니다.</p></li>
+  <li><b><code>install\build.cmd</code>를 두 번 누릅니다</b>
+    <p>모드를 물으면 <b>1 (company)</b>. 준비물 확인 → <code>pnpm install</code>(처음 한 번) → 확장 → 터미널 클라이언트 → 오피스 도구 → 데스크탑 실행본 순서로 만들고 배포 묶음을 꾸립니다.</p>
+    <p>명령으로 하면 zip까지 한 번에 만듭니다.</p>
+    <pre><code>install\build.cmd -Mode company -Zip</code></pre></li>
+  <li><b>묶음을 확인합니다</b>
+    <pre><code>release\Dogent-company-0.1.0\
+  extension\          Dogent.exe          dogent-office.exe   dogent.mjs
+  install.cmd         install.ps1         uninstall.cmd       uninstall.ps1
+  설치안내.html       build-info.txt      <span class="c">← 모드·커밋·만든 때·든 것</span>
+release\Dogent-company-0.1.0.zip</code></pre>
+    <p>빌드 터미널의 "빌드 설정: company" 요약에서 주소·모델·헤더 이름을 확인한 뒤 zip을 나눕니다.</p></li>
+  <li><b>(선택) 이 PC에 바로 설치</b>
+    <pre><code>install\build.cmd -Mode company -Install</code></pre></li>
+</ol>
+<div class="note risk"><b>회사 모드 묶음에는 API 키가 글자 그대로 들어 있습니다.</b> 확장·앱·클라이언트 어디서든 꺼내 볼 수 있습니다. 사내 파일 서버로만 나누고, 저장소·메일·메신저·개인 GitHub에 올리지 않습니다. <code>release\</code>와 <code>*.local</code>은 Git에서 빠져 있습니다.</div>
+<div class="note">집(Ollama)에서 시험할 때는 <code>-Mode home</code>(<code>.env.home.local</code>), 모의 모델로 흐름만 볼 때는 <code>-Mode dev</code>. 묶음 이름에 모드가 붙어 섞이지 않습니다.</div>
+
+<h2 id="manual">하나씩 빌드하기</h2>
+<p><code>build.cmd</code>가 부르는 명령과 같습니다. 한 부분만 고쳤을 때 씁니다.</p>
+<div class="wrap"><table>
+  <tr><th>부분</th><th>명령 (회사)</th><th>결과</th></tr>
+  <tr><td>확장</td><td><code>pnpm build:company</code></td><td><code>.output\chrome-mv3-company\</code></td></tr>
+  <tr><td>터미널 클라이언트</td><td><code>pnpm client:build:company</code></td><td><code>client\dist\dogent.mjs</code></td></tr>
+  <tr><td>오피스 도구</td><td><code>pnpm office:build</code></td><td><code>office\dist\dogent-office.exe</code></td></tr>
+  <tr><td>데스크탑 앱</td><td><code>pnpm desktop:pack:company</code> (오피스 도구를 먼저 빌드해야 실행본에 들어감)</td><td><code>desktop\release\Dogent-&lt;판&gt;.exe</code></td></tr>
+  <tr><td>시험</td><td><code>pnpm typecheck</code> · <code>pnpm test</code> · <code>pnpm e2e:desktop</code></td><td></td></tr>
+</table></div>
+<p>부분만 다시 묶으려면 <code>-Parts</code>를 씁니다. 빌드하지 않은 부분은 마지막으로 만든 결과물을 그대로 넣습니다.</p>
+<pre><code>install\build.cmd -Mode company -Parts extension,desktop -Zip</code></pre>
+<p>Claude Code에 붙여 쓰는 개발 PC라면 묶음 없이 등록만 합니다.</p>
+<pre><code>claude mcp add dogent -- node D:/code/samsung/dogent/bridge/hub.mjs
+claude mcp add dogent-office -- D:\code\samsung\dogent\office\dist\dogent-office.exe</code></pre>
+
+<h2 id="options">스크립트 옵션</h2>
+<div class="wrap"><table>
+  <tr><th>스크립트</th><th>옵션</th><th>뜻</th></tr>
+  <tr><td rowspan="7"><code>install\build.cmd</code></td><td><code>-Mode dev|home|company</code></td><td>빌드 설정. 안 주면 묻습니다</td></tr>
+  <tr><td><code>-Parts a,b</code></td><td><code>extension</code>, <code>client</code>, <code>office</code>, <code>desktop</code> 중 빌드할 것 (기본 전부)</td></tr>
+  <tr><td><code>-Zip</code></td><td>묶음을 zip으로도</td></tr>
+  <tr><td><code>-NoPackage</code></td><td>빌드만 하고 묶지 않음</td></tr>
+  <tr><td><code>-Install</code></td><td>묶은 뒤 이 PC에 설치</td></tr>
+  <tr><td><code>-Test</code></td><td>빌드 전에 typecheck와 단위 시험</td></tr>
+  <tr><td><code>-Reinstall</code></td><td><code>pnpm install</code>을 다시</td></tr>
+  <tr><td rowspan="4"><code>install.cmd</code></td><td><code>-Target &lt;폴더&gt;</code></td><td>설치 폴더 (기본 <code>%LOCALAPPDATA%\Dogent</code>). 업데이트 때도 같은 폴더를</td></tr>
+  <tr><td><code>-Browser chrome|edge|both</code></td><td>확장을 로드할 브라우저 (기본: 설치된 것)</td></tr>
+  <tr><td><code>-NoShortcut</code></td><td>바로 가기를 만들지 않음</td></tr>
+  <tr><td><code>-Quiet</code></td><td>묻지 않고 브라우저·앱을 띄우지 않음 (복사와 등록만)</td></tr>
+  <tr><td rowspan="2"><code>uninstall.cmd</code></td><td><code>-Purge</code></td><td><code>%USERPROFILE%\.dogent</code>(내 스킬·설정·기록)도 지움</td></tr>
+  <tr><td><code>-Quiet</code></td><td>묻지 않음</td></tr>
+</table></div>
+
+<h2 id="trouble">문제 해결</h2>
+<div class="wrap"><table>
+  <tr><th>증상</th><th>원인과 조치</th></tr>
+  <tr><td>개발자 모드가 회색이거나 로드가 막힘</td><td>회사 크롬 정책(<code>DeveloperToolsAvailability</code>, <code>ExtensionInstallBlocklist</code>)이 압축해제 확장을 막고 있습니다. <code>chrome://policy</code>에서 확인하고, 엣지로 시도하거나 IT에 허용(또는 사내 배포 등록)을 요청합니다.</td></tr>
+  <tr><td>앱 위쪽에 브라우저가 안 보임</td><td>① 패널 설정의 연결 방식이 Native Messaging인지, 저장했는지 ② 확장을 앱보다 나중에 로드했다면 앱을 다시 켭니다 (켜질 때 확장을 찾아 등록) ③ 브라우저를 완전히 닫았다 다시 엽니다.</td></tr>
+  <tr><td>업데이트 뒤 연결이 끊김</td><td>확장 폴더를 다른 곳에 로드해 확장 ID가 바뀌었습니다. 확장 관리 화면의 Dogent가 <code>%LOCALAPPDATA%\Dogent\extension</code>을 가리키는지 보고, 아니면 지우고 그 폴더로 다시 로드한 뒤 앱을 다시 켭니다.</td></tr>
+  <tr><td>앱과 터미널을 함께 켜면 연결이 안 됨</td><td>브리지 포트(39217)가 겹칩니다. 터미널 클라이언트, 데스크탑 앱, Claude Code의 브리지 중 하나만 켭니다.</td></tr>
+  <tr><td>install.cmd 창이 바로 닫힘</td><td>zip 안에서 눌렀습니다. 압축을 풀고 다시 누릅니다. 그래도 닫히면 명령 창에서 <code>install.cmd</code>를 쳐서 메시지를 봅니다.</td></tr>
+  <tr><td>"스크립트를 실행할 수 없습니다"</td><td><code>.ps1</code>을 직접 눌렀습니다. 같은 이름의 <code>.cmd</code>를 누릅니다 (실행 정책을 이번 실행에만 우회).</td></tr>
+  <tr><td><code>dogent</code> 명령이 없음</td><td>PATH는 새로 연 창부터 적용됩니다. 창을 다시 엽니다. Node.js가 없으면 터미널 클라이언트는 돌지 않습니다 (앱은 됨).</td></tr>
+  <tr><td>Excel 문서를 못 엶</td><td>묶음에 <code>dogent-office.exe</code>가 있는지(<code>build-info.txt</code>), Excel이 설치돼 있는지 봅니다. 문서 보안 프로그램이 Excel 창을 요구하면 환경 변수 <code>DOGENT_OFFICE_VISIBLE=1</code>.</td></tr>
+  <tr><td>빌드: <code>pnpm install</code>이 node_modules를 지우겠다며 멈춤</td><td>저장소의 잠금 파일은 pnpm 9로 만들었습니다. 다른 판(예: 11)이면 node_modules를 다시 깔려고 합니다. 명령 창에서 <code>Y</code>로 답하거나 <code>npm install -g pnpm@9</code>. 빌드 단계는 pnpm을 거치지 않으므로 판과 상관없습니다.</td></tr>
+  <tr><td>빌드: Electron을 내려받지 못함</td><td>사내망. <code>set ELECTRON_MIRROR=&lt;사내 미러&gt;/electron/</code> 후 <code>install\build.cmd -Reinstall</code>.</td></tr>
+  <tr><td>빌드: csc.exe를 찾지 못함</td><td>.NET Framework 4.x가 꺼져 있습니다. Windows 기능에서 켜거나 <code>DOGENT_CSC</code>에 컴파일러 경로를 줍니다. 오피스 도구 없이 묶으려면 <code>-Parts extension,client,desktop</code>.</td></tr>
+  <tr><td>빌드: <code>WXT_LLM_HEADERS</code> 오류</td><td>헤더 틀이 JSON 한 줄이 아닙니다. 줄 전체를 작은따옴표로 감쌌는지, 자리표시자가 <code>{key} {userId} {userType} {systemName} {uuid}</code>뿐인지 봅니다.</td></tr>
+</table></div>
+
+<footer>Dogent · 이 안내서는 <code>docs/12-install-guide.html</code>이고, 배포 묶음에는 <code>설치안내.html</code>로 들어갑니다. 스크립트는 <code>install\</code> 폴더에 있습니다.</footer>
+</main>
+</div>
+</body>
+</html>

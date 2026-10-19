@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { homedir, userInfo } from 'node:os';
 import { join } from 'node:path';
 import type { LlmSettings } from '../../src/core';
 import { dogentConfig } from '../../dogent.config';
@@ -16,14 +16,22 @@ export interface UserConfig {
   llm?: Partial<LlmSettings>;
   /** 팀 스킬 저장소(사내 GitHub Enterprise의 dogent-skills)를 받아 둔 폴더 */
   teamSkills?: string;
+  /** 팀 스킬 저장소의 index.json 주소. 주면 git 없이 받아 온다 (빌드의 WXT_SKILLS_URL이 기본) */
+  teamSkillsUrl?: string;
+  /** 그 주소가 로그인을 요구하면 보낼 토큰 (사내 GitHub의 개인 토큰 등) */
+  teamSkillsToken?: string;
   /** 엑셀 결과를 저장할 폴더. 기본은 내려받기 폴더 */
   outputDir?: string;
   /** 확장과 잇는 WebSocket 포트 */
   bridgePort?: number;
+  /** 확장이 든 브라우저가 여럿일 때 쓸 브라우저 이름 일부 (예: edge, chrome) */
+  browser?: string;
   /** 오피스 도구(dogent-office.exe) 경로. 없으면 클라이언트 옆이나 저장소의 office/dist에서 찾는다 */
   officeExe?: string;
   /** 결과 엑셀을 Excel로 다시 저장한다. 문서 보안(NASCA) 규정상 Excel로 저장해야 할 때 켠다 */
   saveThroughExcel?: boolean;
+  /** 스킬을 만들 때 넣을 담당 부서 (처음 저장할 때 물어 기억한다) */
+  owner?: string;
 }
 
 export interface ClientConfig {
@@ -31,12 +39,28 @@ export interface ClientConfig {
   llm: LlmSettings;
   personalSkills: string;
   teamSkills?: string;
+  teamSkillsUrl?: string;
+  teamSkillsToken?: string;
   outputDir: string;
   bridgePort?: number;
   officeExe?: string;
   saveThroughExcel: boolean;
+  browser?: string;
+  owner?: string;
   /** 사용자 설정 파일 경로 */
   file: string;
+}
+
+/**
+ * 지금 로그인한 Windows 계정 이름 (도메인 계정이면 도메인을 뺀 ID, 예: CORP\hong → hong). 사내 게이트웨이의 사용자 ID가 보통 이 계정이라
+ * 설정에 따로 적지 않았을 때 대신 쓴다. 읽지 못하면 빈 값.
+ */
+export function windowsAccount(): string {
+  try {
+    return (process.env.USERNAME || userInfo().username || '').trim();
+  } catch {
+    return '';
+  }
 }
 
 /** 사용자 폴더. 시험할 때는 DOGENT_HOME으로 바꾼다. */
@@ -56,15 +80,21 @@ export function loadConfig(): ClientConfig {
     }
   }
   const llm: LlmSettings = { ...dogentConfig.llmDefaults, ...__DOGENT_BUILD__.llm, ...user.llm };
+  // 사용자 ID를 적지 않았으면 Windows 계정으로 채운다 (SSO ID가 다르면 dogent config llm.userId 로 덮어쓴다).
+  if (!llm.userId?.trim()) llm.userId = windowsAccount() || undefined;
   return {
     home,
     llm,
     personalSkills: join(home, 'skills'),
     teamSkills: user.teamSkills,
+    teamSkillsUrl: user.teamSkillsUrl?.trim() || __DOGENT_BUILD__.skillsUrl,
+    teamSkillsToken: user.teamSkillsToken,
     outputDir: user.outputDir ?? join(homedir(), 'Downloads'),
     bridgePort: user.bridgePort,
     officeExe: user.officeExe,
+    browser: user.browser,
     saveThroughExcel: user.saveThroughExcel === true,
+    owner: user.owner,
     file,
   };
 }
@@ -95,9 +125,12 @@ export function describeConfig(c: ClientConfig): string {
     `API 키         ${key}`,
     `헤더 틀        ${c.llm.headers ? Object.keys(c.llm.headers).join(', ') : '(없음, Authorization)'}`,
     `시스템 이름    ${c.llm.systemName ?? ''}`,
-    `사용자 ID      ${c.llm.userId ?? ''}`,
+    `사용자 ID      ${c.llm.userId ?? ''}${c.llm.userId && c.llm.userId === windowsAccount() ? ' (Windows 계정)' : ''}`,
+    `브라우저       ${c.browser ?? '(여럿이면 가장 나중에 연결된 것)'}`,
     `개인 스킬      ${c.personalSkills}`,
-    `팀 스킬        ${c.teamSkills ?? '(설정 안 함: dogent config teamSkills <폴더>)'}`,
+    `담당 부서      ${c.owner ?? '(스킬을 처음 저장할 때 묻습니다)'}`,
+    `팀 스킬        ${c.teamSkills ?? '(폴더 없음: dogent config teamSkills <폴더>)'}`,
+    `팀 스킬 주소   ${c.teamSkillsUrl ?? '(없음: dogent config teamSkillsUrl <index.json 주소>)'}${c.teamSkillsToken ? ' (토큰 있음)' : ''}`,
     `결과 저장      ${c.outputDir}${c.saveThroughExcel ? ' (Excel로 저장)' : ''}`,
     `오피스 도구    ${findOfficeExe(c.officeExe) ?? '(없음: pnpm office:build)'}`,
     `설정 파일      ${c.file}`,

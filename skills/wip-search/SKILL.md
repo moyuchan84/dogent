@@ -7,6 +7,7 @@ owner: 생산관리
 risk: R1
 domains:
   - localhost:4173
+tags: ["재공", "WIP", "제품코드", "검색", "생산"]
 inputs:
   - name: keyword
     label: 검색어

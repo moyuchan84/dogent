@@ -7,3 +7,6 @@ test-results
 .env.*.local
 client/dist
 office/dist
+desktop/dist
+desktop/release
+release

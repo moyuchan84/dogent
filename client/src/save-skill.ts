@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PARAM_NAME, draftSkill, lintSkill, renameParam, stepsFromRun, type AuthorStep, type HistoryEntry } from '../../src/core';
-import type { Terminal } from './terminal';
+import type { Ui } from './session';
 
 /** 단계를 한 줄로 보여 준다. */
 function describe(s: AuthorStep): string {
@@ -29,7 +29,7 @@ function describe(s: AuthorStep): string {
  * 저장한 파일 경로를 돌려준다. 그만두면 null.
  */
 export async function saveRunAsSkill(
-  term: Terminal,
+  term: Ui,
   run: { request: string; tabUrl: string; entries: HistoryEntry[] },
   personalDir: string,
   takenIds: Set<string>,

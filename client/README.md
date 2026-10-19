@@ -55,7 +55,14 @@ pnpm client "8라인 선택하고 조회해서 몇 건인지 알려줘"   # 맞�
 pnpm client run wip-check line=7라인           # 스킬을 입력값으로 바로 실행
 pnpm client run wip-adjust source=D:\조정.xlsx  # 파일 입력은 경로로
 pnpm client skills                            # [개인] [팀] [기본]
+pnpm client skills search 홀드 해제            # 말로 스킬 찾기 (조사·어미가 붙어도). 말이 없으면 지금 브라우저 화면의 사이트용 스킬
+pnpm client skills info hold-release          # 입력, 위험도, 담당, 이 PC에서의 성공률
+pnpm client skill new "라인 골라 HOLD Lot을 사유별로 정리해 줘. 라인은 매번 다름"   # 말로 스킬 만들기: 지금 화면을 보고 초안 → 말로 고치기 → 시험 → 저장
+pnpm client skill edit wip-check              # 편집기로 열고, 닫으면 품질 검사 (DOGENT_EDITOR, 기본 notepad)
 pnpm client check D:\my\SKILL.md              # 품질 검사
+pnpm client schedule add 아침재공 --at 09:00 --days 월,수,금 wip-check line=7라인   # 작업 스케줄러에 예약 (로그인해 있을 때만, 저장·상신은 안 함)
+pnpm client schedule list                     # 예약과 다음 실행 시각
+pnpm client schedule remove 아침재공
 pnpm client sync                              # 팀 스킬 저장소 git pull
 ```
 
@@ -67,6 +74,20 @@ pnpm client sync                              # 팀 스킬 저장소 git pull
 | `--wait <초>` | 확장 연결을 기다리는 시간 (기본 60) |
 
 실행 중 Ctrl+C는 멈춤, 한 번 더 누르면 끝냅니다. 결과 엑셀은 기본으로 내려받기 폴더에 저장합니다 (`config outputDir`로 바꿈).
+
+## 브라우저가 여럿일 때
+
+크롬과 엣지 둘 다 확장을 연결해 두면 둘 다 붙습니다.
+
+```bash
+pnpm client browsers                    # 연결된 브라우저 (6초 기다렸다가 보여 줌)
+pnpm client tabs --browser 크롬          # 이번만 그 브라우저
+pnpm client config browser edge         # 늘 그 브라우저
+```
+
+- 같은 종류가 둘이면 확장의 클라이언트 연결 → **이 브라우저 이름**에 이름을 붙입니다.
+- 번호는 실행마다 다시 매겨지므로 명령에는 이름을 씁니다. 대화 모드에서는 `browser 2`도 됩니다.
+- 한 번 고른 브라우저는 실행 중에 바뀌지 않습니다.
 
 ## 엑셀 (오피스 도구)
 
@@ -86,10 +107,22 @@ pnpm client excel resave <원본> <새 경로>  # Excel로 다시 저장 (문서
 | 출처 | 위치 |
 |---|---|
 | 개인 | `%USERPROFILE%\.dogent\skills\<id>\SKILL.md` (자유 요청을 저장하면 여기에 생김) |
-| 팀 | `config teamSkills`로 알려 준 폴더 (dogent-skills 저장소를 git clone한 곳, `skills/<id>/SKILL.md`) |
+| 팀 | `config teamSkillsUrl`의 `index.json` 주소에서 받아 둔 것(`%USERPROFILE%\.dogent\team-cache`, git 필요 없음), 또는 `config teamSkills`로 알려 준 폴더 (dogent-skills 저장소를 git clone한 곳, `skills/<id>/SKILL.md`) |
 | 기본 | 빌드할 때 저장소의 `skills/`를 넣은 것 |
 
 같은 id면 개인 > 팀 > 기본 순서로 앞의 것을 씁니다.
+
+팀 스킬 저장소를 주소로 받기 (확장의 "공유 스킬 저장소"와 같은 `index.json`):
+
+```bash
+pnpm client config teamSkillsUrl https://(GitHub 호스트)/(조직)/dogent-skills/raw/main/skills/index.json
+pnpm client config teamSkillsToken (개인 토큰)   # 비공개 저장소일 때 (Authorization: token …)
+pnpm client sync                                  # 지금 받기. 평소에는 한 시간에 한 번 스스로 받는다
+```
+
+- 빌드 설정의 `WXT_SKILLS_URL`이 기본 주소가 됩니다 (확장과 같은 값).
+- 목록에 적힌 파일만, 해시가 맞고 품질 검사 오류가 없는 것만 받습니다. 닿지 않으면 마지막으로 받아 둔 것을 씁니다.
+- 스킬이 많으면 말로 요청할 때 맞는 스킬과 지금 화면의 사이트를 다루는 스킬 20개만 모델에 보여 줍니다.
 
 ## 시험
 

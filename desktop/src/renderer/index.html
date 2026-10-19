@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<!-- 창은 앱에 든 파일만 쓴다. 바깥 주소로 나가지 않는다. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'">
+<title>Dogent</title>
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<div id="root"></div>
+<script src="./app.js"></script>
+</body>
+</html>

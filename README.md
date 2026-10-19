@@ -4,6 +4,17 @@
 
 현재 단계: **Phase 2 진행 중** — 크롬 확장 단독. 조회 업무(재공 확인), 승인이 필요한 신청 업무(IP 방화벽 해제 신청), 엑셀 → 웹 일괄 입력(재공 수량 조정), 화면의 엑셀 내려받기 활용(재공 내려받기), 스킬 제작 체계(녹화 → 품질 검사 → 시험 실행).
 
+## Windows에 설치하기
+
+확장·데스크탑 앱·오피스 도구·터미널 클라이언트를 한 번에 빌드해 배포 묶음을 만들고, 사용자 PC에는 `install.cmd` 하나로 설치합니다. 순서와 문제 해결은 [docs/12-install-guide.html](docs/12-install-guide.html)에 있습니다.
+
+```bat
+install\build.cmd -Mode company -Zip     :: 빌드 → release\Dogent-company-<판>\ 과 .zip
+release\Dogent-company-<판>\install.cmd  :: 사용자 PC: %LOCALAPPDATA%\Dogent 에 설치, 확장 로드 안내, 앱 실행
+```
+
+모드는 `dev`(모의 모델), `home`(`.env.home.local`), `company`(`.env.company.local`). 옵션은 `install\build.ps1` 머리말에 있습니다. 회사 모드 묶음에는 API 키가 들어가므로 사내에서만 나눕니다.
+
 ## 빠르게 돌려 보기
 
 Gemma 없이 모의 사이트와 모의 모델로 전체 흐름을 확인할 수 있습니다. 화면 캡처와 함께 단계별로 따라 하려면 [docs/08-hands-on-guide.html](docs/08-hands-on-guide.html)을 브라우저로 여세요.
@@ -150,7 +161,8 @@ pnpm build && pnpm e2e   # 빌드된 확장을 실제 Chromium에 올려 실행 
 | 폴더 | 무엇 | 어디서 도나 |
 |---|---|---|
 | `entrypoints/`, `src/ext/`, `src/page/` | 크롬 확장 (사이드 패널, 브라우저 도구, 승인 창) | 브라우저 |
-| `client/` | Dogent 클라이언트 (터미널). [client/README.md](client/README.md) | PC (Node) |
+| `desktop/` | Dogent 데스크탑 앱 (Electron, 한 파일 실행본). [desktop/README.md](desktop/README.md) | PC (Windows) |
+| `client/` | Dogent 클라이언트 (터미널) — 앱과 같은 엔진. [client/README.md](client/README.md) | PC (Node) |
 | `bridge/` | 클라이언트·Claude Code ↔ 확장을 잇는 MCP 브리지 | PC (Node) |
 | `office/` | 오피스 도구 `dogent-office.exe` (Excel COM, 문서 보안 문서). [office/README.md](office/README.md) | PC (Windows, Excel) |
 | `src/core/` | 엔진: 스킬, 실행 루프, 검사, 정책, 엑셀 | 양쪽이 함께 씀 |
@@ -229,7 +241,9 @@ bridge/        MCP 브리지, native host, 설치
 
 ## 스킬 추가
 
-가장 쉬운 방법은 녹화입니다. 사이드 패널 → **스킬 만들기**에서 업무를 한 번 해 보이면 초안이 만들어지고, 품질 검사와 시험 실행을 거쳐 SKILL.md로 내려받을 수 있습니다. 절차와 품질 기준은 [docs/06-skill-authoring.md](docs/06-skill-authoring.md)에 있습니다.
+녹화 없이 말로 만들 수도 있습니다. Dogent 앱의 **+ 말로 스킬 만들기**나 `dogent skill new "<업무 설명>"`으로, 모델이 지금 화면을 보고 초안을 쓰고 말로 고치고 시험 실행한 뒤 저장합니다 ([docs/06](docs/06-skill-authoring.md) "말로 만들기").
+
+녹화로 만들면 늘 같은 조작이 모델 없이 빠르게 돕니다. 사이드 패널 → **스킬 만들기**에서 업무를 한 번 해 보이면 초안이 만들어지고, 품질 검사와 시험 실행을 거쳐 SKILL.md로 내려받을 수 있습니다. 절차와 품질 기준은 [docs/06-skill-authoring.md](docs/06-skill-authoring.md)에 있습니다.
 
 ```bash
 pnpm skill:new my-skill "스킬 이름"   # 손으로 쓸 때의 틀
@@ -249,6 +263,8 @@ pnpm skill:lint                       # 번들된 스킬 품질 검사 (전부 A
 3. 빌드 설정 파일(`.env.company.local` 등)에 `WXT_SKILLS_URL=https://(서버)/(경로)/index.json`을 적고 빌드합니다. 사내 GitHub의 비공개 저장소라면 `WXT_SKILLS_WITH_LOGIN=true`도 적습니다(브라우저에 로그인된 세션으로 읽음). 이 호스트는 접근 허용 목록에 자동으로 들어갑니다. 이미 배포한 확장에서는 패널 → 설정의 "공유 스킬 저장소"에 적어도 되지만, 그 호스트가 허용 목록에 있어야 합니다.
 
 패널을 열 때마다 저장소를 다시 읽고, 닿지 않으면 마지막으로 받아 둔 스킬을 씁니다. 받은 스킬은 목록에 `[공유]`로 표시되며 같은 id의 번들 스킬보다 우선합니다.
+
+Dogent 앱과 터미널 클라이언트도 같은 `WXT_SKILLS_URL`(또는 `dogent config teamSkillsUrl`)에서 git 없이 한 시간마다 받아 `[팀]` 스킬로 씁니다. 받은 스킬은 앱의 검색창이나 `dogent skills search <말>`로 찾고, 지금 브라우저에 연 사이트를 다루는 스킬은 앱 목록 맨 위 **지금 화면**에 모입니다. 스킬에 `tags`(찾을 때 쓸 말)를 적어 두면 더 잘 찾힙니다 ([client/README.md](client/README.md)).
 
 - 목록에 적힌 파일만, 목록과 같은 서버에서만 읽습니다. 해시가 목록과 다르거나 품질 검사에 오류가 있는 스킬은 받지 않고 이유를 보여줍니다.
 - 스킬이 조작할 수 있는 사이트는 여전히 `sitePermissions` 안으로 제한됩니다. 새 시스템을 다루는 스킬은 확장을 다시 빌드해야 합니다.

@@ -7,6 +7,7 @@ owner: 생산관리
 risk: R1
 domains:
   - localhost:4173
+tags: ["재공", "WIP", "엑셀 다운로드", "정체 Lot", "생산"]
 inputs:
   - name: line
     label: 라인

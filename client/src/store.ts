@@ -1,6 +1,6 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import type { FilePort, PathStore, RunEvent, RunResult, SkillInputs, SkillPaths } from '../../src/core';
+import { skillStats, type FilePort, type PathStore, type RunBrief, type RunEvent, type RunResult, type SkillInputs, type SkillPaths, type SkillStats } from '../../src/core';
 
 /** 실행 기록 한 건. 사이드 패널의 기록과 같은 모양이다. */
 export interface RunRecord {
@@ -17,6 +17,24 @@ export interface RunRecord {
 export function appendRun(home: string, record: RunRecord): void {
   mkdirSync(home, { recursive: true });
   appendFileSync(join(home, 'runs.jsonl'), `${JSON.stringify(record)}\n`);
+}
+
+/** 이 PC의 실행 기록으로 낸 스킬별 성공률 (사이드 패널 "기록" 탭과 같은 계산). 읽지 못한 줄은 건너뛴다. */
+export function readRunStats(home: string): Map<string, SkillStats> {
+  const file = join(home, 'runs.jsonl');
+  if (!existsSync(file)) return new Map();
+  const runs: RunBrief[] = [];
+  for (const line of readFileSync(file, 'utf8').split('\n')) {
+    if (!line.trim()) continue;
+    try {
+      const r = JSON.parse(line) as RunRecord;
+      const modelActions = r.events.filter((e) => e.type === 'action' && e.entry.by === 'model').length;
+      runs.push({ skillId: r.skill.id, startedAt: r.startedAt, result: r.result, modelActions });
+    } catch {
+      /* 깨진 줄 */
+    }
+  }
+  return new Map(skillStats(runs).map((s) => [s.skillId, s]));
 }
 
 /** 모델이 찾아 성공한 경로의 기억 (~/.dogent/paths.json) */

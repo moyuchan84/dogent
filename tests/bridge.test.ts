@@ -39,7 +39,7 @@ describe('브리지 (MCP ↔ 확장)', () => {
   }
 
   /** 확장 흉내: 확인 절차를 마치고 도구 호출에 답한다. */
-  function fakeExtension(port: number, token: string, answer: (tool: string) => string) {
+  function fakeExtension(port: number, token: string, answer: (tool: string) => string, hello?: { browser: string; key: string }) {
     const ws = new WebSocket(`ws://127.0.0.1:${port}`, { origin: 'chrome-extension://abcdefghijklmnopabcdefghijklmnop' });
     let expected = '';
     ws.on('message', async (data) => {
@@ -50,6 +50,7 @@ describe('브리지 (MCP ↔ 확장)', () => {
         ws.send(JSON.stringify(a.reply));
       } else if (msg.type === 'welcome') {
         expect(msg.proof).toBe(expected);
+        if (hello) ws.send(JSON.stringify({ type: 'hello', ...hello }));
       } else if (msg.type === 'call') {
         ws.send(JSON.stringify({ type: 'result', id: msg.id, ok: true, text: answer(msg.tool) }));
       }
@@ -73,6 +74,41 @@ describe('브리지 (MCP ↔ 확장)', () => {
     const unknown = await hub.handleMcp({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'rm_rf', arguments: {} } });
     expect(unknown?.error?.message).toMatch(/모르는 도구/);
     ws.close();
+  });
+
+  it('크롬과 엣지가 함께 붙으면 둘 다 두고, 고른 브라우저로만 도구를 보낸다', async () => {
+    const hub = await startHub(39354);
+    const call = async (name: string, args: Record<string, unknown> = {}) => {
+      const r = await hub.handleMcp({ jsonrpc: '2.0', id: 9, method: 'tools/call', params: { name, arguments: args } });
+      return { text: r?.result.content[0].text as string, error: !!r?.result.isError };
+    };
+    const chrome = fakeExtension(39354, 'tok', () => '크롬의 탭', { browser: 'Google Chrome 141', key: 'k-chrome' });
+    await until(() => hub.browsers()[0]?.browser === 'Google Chrome 141');
+    const edge = fakeExtension(39354, 'tok', () => '엣지의 탭', { browser: 'Microsoft Edge 141', key: 'k-edge' });
+    await until(() => hub.browsers().length === 2 && hub.browsers()[1].browser === 'Microsoft Edge 141');
+
+    // 고르지 않았으면 가장 나중에 붙은 브라우저
+    expect((await call('tabs_list')).text).toBe('엣지의 탭');
+    expect((await call('browsers_list')).text).toMatch(/\[1\] Google Chrome 141 — WebSocket\n\[2\] \(사용 중\) Microsoft Edge 141/);
+    // 이름 일부로 고른다
+    expect((await call('browser_select', { browser: 'chrome' })).text).toBe('[1] Google Chrome 141을(를) 씁니다');
+    expect((await call('tabs_list')).text).toBe('크롬의 탭');
+    expect((await call('browser_select', { browser: 'firefox' })).error).toBe(true);
+    const tools = await hub.handleMcp({ jsonrpc: '2.0', id: 10, method: 'tools/list' });
+    expect(tools?.result.tools.map((t: { name: string }) => t.name)).toEqual(expect.arrayContaining(['browsers_list', 'browser_select', 'snapshot']));
+
+    // 같은 브라우저가 다시 붙으면 이전 연결을 대신하고, 고른 것도 이어 간다.
+    const chrome2 = fakeExtension(39354, 'tok', () => '다시 붙은 크롬의 탭', { browser: 'Google Chrome 141', key: 'k-chrome' });
+    await until(() => hub.browsers().length === 2 && hub.browsers()[1].browser === 'Google Chrome 141');
+    expect(hub.browsers().map((b) => b.browser)).toEqual(['Microsoft Edge 141', 'Google Chrome 141']);
+    expect((await call('tabs_list')).text).toBe('다시 붙은 크롬의 탭');
+
+    // 고른 브라우저가 끊기면 남은 브라우저로
+    chrome2.close();
+    await until(() => hub.browsers().length === 1);
+    expect((await call('tabs_list')).text).toBe('엣지의 탭');
+    chrome.close();
+    edge.close();
   });
 
   it('토큰이 다른 확장은 연결하지 않는다', async () => {

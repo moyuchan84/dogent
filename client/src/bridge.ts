@@ -1,5 +1,5 @@
 import { userInfo } from 'node:os';
-import { createHub, loadToken } from '../../bridge/hub.mjs';
+import { createHub, loadToken, type BrowserLink } from '../../bridge/hub.mjs';
 import { DEFAULT_PORT, pipePath } from '../../bridge/protocol.mjs';
 import { McpBrowser, type McpCall } from '../../src/core';
 
@@ -16,6 +16,10 @@ export interface Bridge {
   connected(): string | null;
   /** 확장이 붙을 때까지 기다린다. 시간 안에 붙지 않으면 false */
   waitForExtension(ms: number): Promise<boolean>;
+  /** 연결된 브라우저들 (크롬, 엣지 …) */
+  browsers(): BrowserLink[];
+  /** 번호나 이름 일부로 브라우저를 고른다 */
+  select(which: string): { id: number; browser: string };
   close(): void;
 }
 
@@ -25,7 +29,8 @@ export async function openBridge(opts: { port?: number; log?: (line: string) => 
     token: loadToken(),
     port,
     pipe: process.env.DOGENT_BRIDGE_PIPE ?? pipePath(userInfo().username),
-    log: opts.log ?? (() => {}),
+    // DOGENT_BRIDGE_LOG=1이면 브리지 기록(연결, 끊김, 브라우저 이름)을 stderr로 낸다. 연결 문제를 볼 때 쓴다.
+    log: opts.log ?? (process.env.DOGENT_BRIDGE_LOG === '1' ? (l: string) => process.stderr.write(`[브리지] ${l}\n`) : () => {}),
   });
   try {
     await hub.ready;
@@ -55,6 +60,8 @@ export async function openBridge(opts: { port?: number; log?: (line: string) => 
       }
       return !!hub.connected();
     },
+    browsers: () => hub.browsers(),
+    select: (which) => hub.select(which),
     close: () => hub.close(),
   };
 }

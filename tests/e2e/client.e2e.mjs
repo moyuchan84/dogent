@@ -5,6 +5,7 @@
 // 클라이언트는 별도 프로세스(client/dist/dogent.mjs)로 띄우고, 확장은 클라이언트 안의 브리지에 WebSocket으로 붙는다.
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { createServer } from 'node:http';
 import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -45,7 +46,7 @@ const tally = { pass: 0, fail: 0 };
  */
 function client(args, { answers = [], onOutput } = {}) {
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [CLIENT, ...args, '--wait', '20'], {
+    const child = spawn(process.execPath, [CLIENT, ...args, '--wait', '45'], {
       env: { ...process.env, DOGENT_HOME: home, DOGENT_BRIDGE_TOKEN: TOKEN, DOGENT_BRIDGE_PORT: String(PORT), DOGENT_BRIDGE_PIPE: `\\\\.\\pipe\\dogent-client-e2e-${process.pid}` },
     });
     let text = '';
@@ -162,6 +163,65 @@ try {
     assert.match((await client(['skills'])).text, /\[개인\] wip-count-cli — 라인 재공 건수/);
   });
 
+  await scenario('말로 스킬 만들기: 화면을 보고 초안 → 말로 고치기 → 시험 → 저장 → 다른 라인으로 실행', async () => {
+    await open('/wip.html');
+    const r = await client(['skill', 'new', '라인을 골라 재공을 조회하고 총 몇 건인지 알려줘. 라인은 매번 다름'], {
+      // 고칠 점 / 시험 / 저장 → 담당 부서 / 스킬 ID
+      answers: ['이름을 라인별 재공 건수로 바꿔 줘', '시험', '저장', '생산관리', 'wip-count-talk'],
+    });
+    assert.equal(r.code, 0, r.text);
+    assert.match(r.text, /시작 화면: /);
+    assert.match(r.text, /라인별 재공 건수 \(wip-count/);
+    assert.match(r.text, /시험 결과: 성공/);
+    const file = join(home, 'skills', 'wip-count-talk', 'SKILL.md');
+    assert.ok(existsSync(file), r.text);
+    const source = readFileSync(file, 'utf8');
+    assert.match(source, /owner: "생산관리"/);
+    assert.match(source, /"라인"에서 \{line\}을 선택한다/);
+
+    await open('/wip.html');
+    const again = await client(['run', 'wip-count-talk', 'line=8라인']);
+    assert.equal(again.code, 0, again.text);
+    assert.match(again.text, new RegExp(`총 ${generateWip('8라인').length}건`));
+  });
+
+  await scenario('스킬 찾기: 말로 찾기, 지금 화면의 스킬, 자세히 보기, 팀 저장소를 주소로 받기', async () => {
+    const hold = await client(['skills', 'search', '홀드', '해제해줘']);
+    assert.equal(hold.code, 0, hold.text);
+    assert.match(hold.text.split('\n').find((l) => l.includes('[')) ?? '', /hold-release — Lot 홀드 해제 요청/);
+    const none = await client(['skills', 'search', '휴가', '신청']);
+    assert.equal(none.code, 1);
+    assert.match(none.text, /맞는 스킬이 없습니다\. 말로 만들려면: skill new 휴가 신청/);
+
+    await open('/wip.html');
+    const here = await client(['skills', 'search']);
+    assert.match(here.text, /wip-check — 재공 확인 \(R1\) · 지금 화면/);
+    const info = await client(['skills', 'info', 'wip-check']);
+    assert.match(info.text, /태그 재공, WIP/);
+    assert.match(info.text, /이 PC의 기록: \d+번 실행/); // 앞 시나리오에서 실행했다
+
+    // 팀 저장소: git 없이 index.json 주소로 받는다
+    const team = createServer((req, res) => {
+      const skill = readFileSync(join(ROOT, 'skills/wip-check/SKILL.md'), 'utf8').replace('id: wip-check', 'id: team-wip').replace('name: 재공 확인', 'name: 팀 재공 확인');
+      const body = { '/s/index.json': JSON.stringify({ skills: [{ id: 'team-wip', path: 'team-wip/SKILL.md' }] }), '/s/team-wip/SKILL.md': skill }[req.url];
+      res.writeHead(body ? 200 : 404).end(body);
+    }).listen(4179);
+    try {
+      await client(['config', 'teamSkillsUrl', 'http://127.0.0.1:4179/s/index.json']);
+      const synced = await client(['sync']);
+      assert.equal(synced.code, 0, synced.text);
+      assert.match(synced.text, /팀 스킬 1개를 받았습니다/);
+      assert.match((await client(['skills'])).text, /\[팀\] team-wip — 팀 재공 확인/);
+    } finally {
+      team.close();
+    }
+    // 닿지 않으면 받아 둔 것을 쓴다
+    const offline = await client(['sync']);
+    assert.match(offline.text, /팀 스킬 저장소에 닿지 못했습니다[\s\S]*받아 둔 1개를 씁니다/);
+    assert.match((await client(['skills'])).text, /\[팀\] team-wip/);
+    return '홀드·지금 화면·팀 저장소';
+  });
+
   await scenario('직접 못 읽는 엑셀(xls)은 오피스 도구가 Excel로 열어 화면 표에 채움', async () => {
     if (!existsSync(join(ROOT, 'office/dist/dogent-office.exe'))) return '건너뜀: pnpm office:build 필요';
     // 문서 보안 파일 대신, exceljs가 읽지 못하는 구형 xls로 같은 상황을 만든다.
@@ -193,6 +253,48 @@ try {
     assert.match(r.text, /adjust\.xls: 파일을 직접 읽지 못해.*Excel로 엽니다/);
     const saved = await fetch(`${SITE}/api/adjust`).then((x) => x.json());
     assert.deepEqual(saved, [rows.map((row) => row.map(String))]);
+  });
+
+  await scenario('브라우저가 둘이면 목록을 보여 주고, --browser로 고른 브라우저를 조작', async () => {
+    // 두 번째 브라우저(따로 띄운 Chromium, 확장 설치도 따로)를 같은 클라이언트에 붙인다.
+    const second = await chromium.launchPersistentContext(await mkdtemp(join(tmpdir(), 'dogent-client-2-')), {
+      channel: 'chromium',
+      headless: !HEADED,
+      args: [`--disable-extensions-except=${EXT}`, `--load-extension=${EXT}`],
+    });
+    try {
+      const w2 = second.serviceWorkers()[0] ?? (await second.waitForEvent('serviceworker'));
+      const p2 = await second.newPage();
+      await p2.goto(`chrome-extension://${new URL(w2.url()).host}/sidepanel.html`);
+      // 같은 종류의 브라우저가 둘이므로 두 번째에 이름을 붙인다 (설정 → 클라이언트 연결 → 이 브라우저 이름).
+      await p2.evaluate((v) => chrome.storage.local.set({ bridgeSettings: v }), { mode: 'ws', port: PORT, token: TOKEN, label: '두 번째 크롬' });
+      const t2 = await second.newPage();
+      await t2.goto(SITE + '/fw.html');
+      await open('/wip.html');
+
+      const list = await client(['browsers']);
+      assert.equal(list.code, 0, list.text);
+      const ids = [...list.text.matchAll(/\[(\d+)\]/g)].map((m) => m[1]);
+      assert.equal(ids.length, 2, list.text);
+      assert.match(list.text, /연결된 브라우저 2개/);
+      assert.match(list.text, /두 번째 크롬/);
+      // 이름으로 고르면 그 브라우저의 탭을 본다. 번호는 실행마다 다시 매겨지므로 명령에는 이름을 쓴다.
+      const second2 = await client(['tabs', '--browser', '두 번째']);
+      assert.equal(second2.code, 0, second2.text);
+      assert.match(second2.text, /fw\.html/);
+      assert.doesNotMatch(second2.text, /wip\.html/);
+      const first = await client(['tabs', '--browser', 'chromium']);
+      assert.equal(first.code, 0, first.text);
+      assert.match(first.text, /wip\.html/);
+      assert.doesNotMatch(first.text, /fw\.html/);
+      // 없는 브라우저를 고르면 연결된 목록을 알려 준다.
+      const bad = await client(['tabs', '--browser', 'firefox', '--wait', '2']);
+      assert.notEqual(bad.code, 0);
+      assert.match(bad.text, /"firefox"에 맞는 브라우저가 없습니다/);
+      return list.text.trim().split(/\r?\n/).slice(-2).join(' / ');
+    } finally {
+      await second.close();
+    }
   });
 
   await scenario('조작할 사이트 밖의 탭에서는 자유 요청이 막힘', async () => {

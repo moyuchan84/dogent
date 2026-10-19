@@ -7,6 +7,7 @@ owner: 생산관리
 risk: R3
 domains:
   - localhost:4173
+tags: ["재공", "수량 조정", "엑셀 입력", "일괄 입력", "생산"]
 inputs:
   - name: source
     label: 엑셀 파일 (Lot ID, 공정, 조정수량, 사유)

@@ -7,6 +7,7 @@ owner: 생산관리
 risk: R3
 domains:
   - localhost:4173
+tags: ["홀드", "HOLD", "Lot", "해제 요청", "생산"]
 inputs:
   - name: lot
     label: Lot ID
