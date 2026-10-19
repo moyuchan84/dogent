@@ -57,6 +57,8 @@ pnpm client run wip-adjust source=D:\조정.xlsx  # 파일 입력은 경로로
 pnpm client skills                            # [개인] [팀] [기본]
 pnpm client skills search 홀드 해제            # 말로 스킬 찾기 (조사·어미가 붙어도). 말이 없으면 지금 브라우저 화면의 사이트용 스킬
 pnpm client skills info hold-release          # 입력, 위험도, 담당, 이 PC에서의 성공률
+pnpm client systems                           # 사내 시스템 사전 (이름·별칭). 요청에 시스템 이름이 나오면 그 시스템 설명을 모델에 함께 보여 준다
+pnpm client systems info mes                  # 화면(메뉴 경로), 용어, 이 시스템의 스킬 (docs/05-skill-spec.md 6-1)
 pnpm client skill new "라인 골라 HOLD Lot을 사유별로 정리해 줘. 라인은 매번 다름"   # 말로 스킬 만들기: 지금 화면을 보고 초안 → 말로 고치기 → 시험 → 저장
 pnpm client skill edit wip-check              # 편집기로 열고, 닫으면 품질 검사 (DOGENT_EDITOR, 기본 notepad)
 pnpm client check D:\my\SKILL.md              # 품질 검사

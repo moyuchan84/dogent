@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ApprovalRequest, RunEvent, RunResult } from '../../../src/core';
 import { searchSkills, skillCoversUrl } from '../../../src/core/catalog';
 import type { BrowserLink } from '../../../bridge/hub.mjs';
-import type { DogentApi, ExtensionStatus, InitInfo, SkillSummary, UiMessage } from '../ipc';
+import type { DogentApi, ExtensionStatus, InitInfo, SkillSummary, SystemSummary, UiMessage } from '../ipc';
 
 declare global {
   interface Window {
@@ -35,8 +35,9 @@ export function App() {
   const [busy, setBusy] = useState(false);
   const [browsers, setBrowsers] = useState<BrowserLink[]>([]);
   const [skills, setSkills] = useState<SkillSummary[]>([]);
+  const [systems, setSystems] = useState<SystemSummary[]>([]);
   const [text, setText] = useState('');
-  const [side, setSide] = useState<'skills' | 'excel'>('skills');
+  const [side, setSide] = useState<'skills' | 'systems' | 'excel'>('skills');
   const [showSettings, setShowSettings] = useState(false);
   const [opts, setOpts] = useState({ allowWrite: false, dryRun: false });
   const [query, setQuery] = useState('');
@@ -55,6 +56,7 @@ export function App() {
     void api.init().then((i) => {
       setInfo(i);
       setSkills(i.skills);
+      void api.systems().then(setSystems);
       setBrowsers(i.browsers);
       setOpts(i.options);
     });
@@ -69,11 +71,17 @@ export function App() {
   function apply(m: UiMessage) {
     if (m.kind === 'busy') {
       setBusy(m.busy);
-      if (!m.busy) void api.skills().then(setSkills); // 자유 요청을 스킬로 저장했을 수 있다
+      if (!m.busy) {
+        void api.skills().then(setSkills); // 자유 요청을 스킬로 저장했을 수 있다
+        void api.systems().then(setSystems);
+      }
       return;
     }
     if (m.kind === 'browsers') return setBrowsers(m.browsers);
-    if (m.kind === 'skills') return void api.skills().then(setSkills);
+    if (m.kind === 'skills') {
+      void api.systems().then(setSystems);
+      return void api.skills().then(setSkills);
+    }
     setItems((prev) => {
       const next = [...prev];
       const lastRun = () => {
@@ -199,6 +207,9 @@ export function App() {
             <button className={side === 'skills' ? 'on' : ''} onClick={() => setSide('skills')}>
               스킬 {skills.length}
             </button>
+            <button className={side === 'systems' ? 'on' : ''} id="tab-systems" onClick={() => setSide('systems')} title="사내 시스템 사전: 요청에 시스템 이름이 나오면 모델에 함께 보여 줍니다">
+              시스템 {systems.length}
+            </button>
             <button className={side === 'excel' ? 'on' : ''} id="tab-excel" onClick={() => setSide('excel')}>
               엑셀 문서
             </button>
@@ -241,6 +252,22 @@ export function App() {
                   </div>
                 ))
               )}
+            </div>
+          ) : side === 'systems' ? (
+            <div className="side-list" id="system-list">
+              {systems.length === 0 && <div className="empty">시스템 사전이 비어 있습니다. 팀 저장소의 skills/systems/&lt;id&gt;/SYSTEM.md에 시스템을 적어 두면 여기에 나타납니다.</div>}
+              {systems.map((x) => (
+                <button key={x.id} className="skill" data-system={x.id} disabled={busy} onClick={() => send(`systems info ${x.id}`)} title={`${x.description}
+${x.url}`}>
+                  <span>
+                    <b>{x.name}</b>
+                    <span className="chip" data-source={x.source}>
+                      {x.source}
+                    </span>
+                  </span>
+                  <small>{x.aliases.length ? `${x.aliases.join(', ')} · ` : ''}스킬 {x.skills}개</small>
+                </button>
+              ))}
             </div>
           ) : (
             <ExcelDocs />

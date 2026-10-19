@@ -11,7 +11,7 @@ export const FREE_SKILL_ID = 'free';
  * - allowWrite가 꺼져 있으면 저장·상신 계열 버튼을 누를 수 없다.
  * - 켜져 있어도 누르기 전에 사용자 승인을 받고, 한 번의 실행에서 한 번만 누른다.
  */
-export function buildFreeSkill(pageUrl: string, allowWrite: boolean): Skill {
+export function buildFreeSkill(pageUrl: string, allowWrite: boolean, systemInfo?: string): Skill {
   let host: string;
   try {
     const url = new URL(pageUrl);
@@ -56,5 +56,11 @@ limits:
 ## 결과
 
 한 일과, 요청이 물어본 내용에 대한 답.
-`);
+${systemInfo ? `
+## 시스템 정보
+
+사내 시스템 사전의 설명입니다. 화면을 찾고 용어를 이해하는 데만 쓰고, 요청에 없는 일은 하지 않습니다.
+
+${systemInfo}
+` : ''}`);
 }

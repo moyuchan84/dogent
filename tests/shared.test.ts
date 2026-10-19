@@ -99,7 +99,7 @@ describe('공유 스킬 저장소', () => {
     const dir = mkdtempSync(join(tmpdir(), 'dogent-skills-'));
     cpSync(join(ROOT, 'skills'), dir, { recursive: true });
     execFileSync(process.execPath, [join(ROOT, 'tools/skill-index.mjs'), dir]);
-    const made = JSON.parse(readFileSync(join(dir, 'index.json'), 'utf8')) as { skills: { id: string; path: string; policy?: string }[] };
+    const made = JSON.parse(readFileSync(join(dir, 'index.json'), 'utf8')) as { systems?: { id: string; path: string }[]; skills: { id: string; path: string; policy?: string }[] };
     expect(made.skills.length).toBeGreaterThanOrEqual(5);
     expect(made.skills.find((s) => s.id === 'firewall-request')?.policy).toBe('firewall-request/policy.yaml');
 
@@ -108,8 +108,10 @@ describe('공유 스킬 저장소', () => {
       files[s.path] = readFileSync(join(dir, s.path), 'utf8');
       if (s.policy) files[s.policy] = readFileSync(join(dir, s.policy), 'utf8');
     }
+    for (const s of made.systems ?? []) files[s.path] = readFileSync(join(dir, s.path), 'utf8');
     const result = await syncSkills(INDEX, repo(files));
     expect(result.errors).toEqual([]);
     expect(result.skills.map((s) => s.id)).toEqual(made.skills.map((s) => s.id));
+    expect(result.systems.map((s) => s.id)).toEqual((made.systems ?? []).map((s) => s.id));
   });
 });

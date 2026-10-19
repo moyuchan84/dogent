@@ -202,6 +202,17 @@ try {
     await win.locator('#skill-search').fill('');
   });
 
+  await scenario('시스템 사전: 시스템 탭에 목록, 누르면 화면·용어·스킬을 대화에 보여 줌', async () => {
+    await win.locator('#tab-systems').click();
+    const mes = win.locator('[data-system=mes]');
+    assert.match(await mes.innerText(), /모의 MES[\s\S]*기본[\s\S]*재공 시스템[\s\S]*스킬 \d+개/);
+    await mes.click();
+    await win.locator('#feed').getByText('HOLD: 품질 문제', { exact: false }).first().waitFor({ timeout: 15_000 });
+    assert.match(await win.locator('#feed').innerText(), /이 시스템의 스킬: .*wip-check/);
+    await win.screenshot({ path: join(ROOT, 'test-results/desktop-systems.png') });
+    await win.locator('#tab-systems').locator('xpath=preceding-sibling::button').first().click(); // 스킬 탭으로
+  });
+
   await scenario('설정: 확장 연결 토큰과 지금 설정을 보여 줌', async () => {
     await win.locator('#open-settings').click();
     await win.locator('#settings').waitFor();

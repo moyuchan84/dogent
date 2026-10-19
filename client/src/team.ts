@@ -7,6 +7,7 @@ import { syncSkills } from '../../src/core';
  * 팀 스킬 저장소를 주소(index.json)로 받는다. git을 설치하거나 clone하지 않아도 된다 (확장의 "공유 스킬 저장소"와 같은 목록).
  *
  *   ~/.dogent/team-cache/<id>/SKILL.md, policy.yaml   받은 스킬 (loadSkills가 팀 스킬로 읽는다)
+ *   ~/.dogent/team-cache/systems/<id>/SYSTEM.md      받은 시스템 사전 (systems.ts)
  *   ~/.dogent/team-cache/meta.json                    받은 주소, 때, 받지 못한 스킬
  *
  * 목록에 적힌 파일만, 해시가 맞고 품질 검사 오류가 없는 것만 받는다 (src/core/shared.ts).
@@ -16,6 +17,8 @@ export interface TeamMeta {
   url: string;
   at: string;
   count: number;
+  /** 받은 시스템 문서 수 */
+  systems?: number;
   errors: string[];
 }
 
@@ -53,7 +56,11 @@ export async function syncTeam(home: string, url: string, opts: { token?: string
     writeFileSync(join(dir, s.id, 'SKILL.md'), s.source);
     if (s.policy) writeFileSync(join(dir, s.id, 'policy.yaml'), s.policy);
   }
-  const meta: TeamMeta = { url, at: new Date().toISOString(), count: result.skills.length, errors: result.errors };
+  for (const x of result.systems) {
+    mkdirSync(join(dir, 'systems', x.id), { recursive: true });
+    writeFileSync(join(dir, 'systems', x.id, 'SYSTEM.md'), x.source);
+  }
+  const meta: TeamMeta = { url, at: new Date().toISOString(), count: result.skills.length, systems: result.systems.length, errors: result.errors };
   writeFileSync(join(dir, 'meta.json'), JSON.stringify(meta, null, 2));
   return meta;
 }

@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { docOfSkill, parseSkill, searchSkills, shortlistSkills, skillCoversUrl, type Skill, type SkillDoc } from '../src/core';
 
 const ROOT = join(import.meta.dirname, '..');
-const bundled: Skill[] = readdirSync(join(ROOT, 'skills')).map((d) => parseSkill(readFileSync(join(ROOT, 'skills', d, 'SKILL.md'), 'utf8')));
+const bundled: Skill[] = readdirSync(join(ROOT, 'skills')).filter((d) => d !== 'systems').map((d) => parseSkill(readFileSync(join(ROOT, 'skills', d, 'SKILL.md'), 'utf8')));
 const ids = (hits: { item: Skill }[]) => hits.map((h) => h.item.id);
 const find = (q: string, url?: string) => ids(searchSkills(bundled, docOfSkill, q, { url }));
 

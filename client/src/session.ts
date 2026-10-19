@@ -5,13 +5,18 @@ import {
   FREE_SKILL_ID,
   OpenAiCompatClient,
   buildFreeSkill,
+  describeSystem,
   docOfSkill,
+  docOfSystem,
   planRequest,
   readTable,
   resolveInputs,
   runSkill,
   searchSkills,
+  searchSystems,
   shortlistSkills,
+  skillCoversUrl,
+  systemForUrl,
   type ApprovalRequest,
   type HistoryEntry,
   type RunEvent,
@@ -19,11 +24,13 @@ import {
   type SearchHit,
   type Skill,
   type SkillInputs,
+  type System,
 } from '../../src/core';
 import type { BrowserLink } from '../../bridge/hub.mjs';
 import { openBridge, type Bridge } from './bridge';
 import { composeFlow, editSkill } from './compose-skill';
 import { setConfig, type ClientConfig } from './config';
+import { loadSystems, type SystemEntry } from './systems';
 import { Office, findOfficeExe } from './office';
 import { saveRunAsSkill } from './save-skill';
 import { loadSkills, type SkillEntry } from './skills';
@@ -72,6 +79,7 @@ export class Session {
   /** 이번 실행에서 쓸 브라우저를 정했는지 */
   private chosen = false;
   private skills: SkillEntry[] = [];
+  private systems: SystemEntry[] = [];
   /** 대화 중 help에 보여 줄 글 */
   help = '';
   private abort: AbortController | null = null;
@@ -90,7 +98,12 @@ export class Session {
       __DOGENT_SKILLS__,
     );
     this.skills = skills;
-    return errors;
+    const sys = loadSystems(
+      { personal: this.cfg.personalSkills, team: this.cfg.teamSkills, teamCache: this.cfg.teamSkillsUrl ? teamCacheDir(this.cfg.home) : undefined },
+      __DOGENT_SKILLS__,
+    );
+    this.systems = sys.systems;
+    return [...errors, ...sys.errors];
   }
 
   /**
@@ -359,7 +372,7 @@ export class Session {
     skill: Skill,
     values: SkillInputs,
     filePaths: Record<string, string> = {},
-    opts: { dryRun?: boolean } = {},
+    opts: { dryRun?: boolean; /** 자유 요청에 붙일 시스템 설명 */ systemInfo?: string } = {},
   ): Promise<{ result: RunResult; entries: HistoryEntry[]; tabUrl: string }> {
     const bridge = await this.connect();
     const isFree = skill.id === FREE_SKILL_ID;
@@ -374,7 +387,7 @@ export class Session {
     if (!target.allowed) {
       throw new Error(`지금 브라우저 탭(${target.url})은 조작할 사이트 목록에 없습니다. 업무 화면 탭을 앞에 두거나 확장 설정 → 조작할 사이트에서 더하세요`);
     }
-    const active = isFree ? buildFreeSkill(target.url, this.flags.allowWrite) : skill;
+    const active = isFree ? buildFreeSkill(target.url, this.flags.allowWrite, opts.systemInfo) : skill;
     const scale = Math.max(1, this.cfg.llm.timeoutScale || 1);
     const scaled = { ...active, limits: { ...active.limits, timeout_sec: active.limits.timeout_sec * scale } };
     const events: RunEvent[] = [];
@@ -426,6 +439,64 @@ export class Session {
     return { result, entries: events.flatMap((e) => (e.type === 'action' ? [e.entry] : [])), tabUrl: target.url };
   }
 
+  /**
+   * 요청에 나온 시스템(named)과 지금 화면의 시스템을 찾아 모델에 보여 줄 설명을 만든다.
+   * 시스템 사전이 비어 있으면 아무것도 하지 않는다.
+   */
+  private async systemsFor(text: string): Promise<{ named: System[]; systemInfo?: string }> {
+    if (!this.systems.length) return { named: [] };
+    const all = this.systems.map((e) => e.system);
+    const named = searchSystems(all, text, 2);
+    const here = systemForUrl(all, await this.currentUrl());
+    const context = [...new Set([...named, ...(here ? [here] : [])])];
+    return { named, systemInfo: context.length ? context.map(describeSystem).join('\n\n') : undefined };
+  }
+
+  /** 시스템 화면이 이미 열려 있으면 그대로, 아니면 사용자에게 묻고 시스템 주소로 이동한다. 못 가면 false */
+  private async openSystem(system: System): Promise<boolean> {
+    const bridge = await this.connect();
+    const now = await bridge.browser.target().catch(() => null);
+    if (now && skillCoversUrl(docOfSystem(system), now.url)) return true;
+    if (!this.flags.yes && !(await this.term.confirm(`지금 탭에서 ${system.name}(${system.url})을 엽니다. 진행할까요?`, true))) return false;
+    try {
+      const r = await bridge.browser.navigate(system.url);
+      if (!r.ok) throw new Error(r.message);
+      return true;
+    } catch (e) {
+      this.term.print(`${system.name}을 열지 못했습니다: ${(e as Error).message}`);
+      return false;
+    }
+  }
+
+  /** systems — 시스템 사전 목록 */
+  listSystems(): void {
+    this.reloadSkills();
+    if (!this.systems.length) {
+      this.term.print('시스템 사전이 비어 있습니다. 팀 저장소의 skills/systems/<id>/SYSTEM.md 또는 개인 폴더(' + this.cfg.personalSkills + '/systems)에 SYSTEM.md를 두세요 (docs/05-skill-spec.md)');
+      return;
+    }
+    for (const e of this.systems) {
+      const x = e.system;
+      this.term.print(`  [${e.source}] ${x.id} — ${x.name}${x.aliases.length ? ` (${x.aliases.join(', ')})` : ''}`);
+    }
+    this.term.print('  자세히: systems info <ID>');
+  }
+
+  /** systems info <id> */
+  systemInfo(id: string): boolean {
+    this.reloadSkills();
+    const e = this.systems.find((x) => x.system.id === id);
+    if (!e) {
+      this.term.print(`"${id}" 시스템이 없습니다. systems로 목록을 보세요`);
+      return false;
+    }
+    const skills = this.skills.filter((k) => skillCoversUrl(docOfSkill(k.skill), e.system.url)).map((k) => k.skill.id);
+    this.term.print(
+      [`[${e.source}] ${describeSystem(e.system)}`, ...(e.path ? [`파일: ${e.path}`] : []), `사이트: ${e.system.domains.join(', ')}`, `이 시스템의 스킬: ${skills.length ? skills.join(', ') : '(없음)'}`].join('\n'),
+    );
+    return true;
+  }
+
   /** dogent run <id> 이름=값 … */
   async runSkillById(id: string, pairs: string[]): Promise<boolean> {
     const entry = this.skills.find((e) => e.skill.id === id);
@@ -443,12 +514,16 @@ export class Session {
   /** 말로 한 요청: 맞는 스킬을 고르고 입력값을 뽑는다. 없으면 지금 화면에서 자유 요청으로 한다. */
   async request(text: string): Promise<boolean> {
     this.reloadSkills();
+    const { named, systemInfo } = await this.systemsFor(text);
+    if (named.length) this.term.print(`시스템: ${named.map((m) => m.name).join(', ')}`);
     this.term.print('요청을 해석하는 중…');
     let plan: { skill_id: string | null; inputs: Record<string, unknown> };
     try {
       // 스킬이 많으면 말이 맞는 것과 지금 화면의 사이트를 다루는 것만 모델에 보여 준다 (프롬프트가 길어지지 않게)
-      const candidates = shortlistSkills(this.skills, (e) => docOfSkill(e.skill), text, { url: await this.currentUrl() });
-      plan = await planRequest(text, candidates.map((e) => e.skill), this.llm());
+      const base = shortlistSkills(this.skills, (e) => docOfSkill(e.skill), text, { url: await this.currentUrl() });
+      // 요청에 나온 시스템을 다루는 스킬도 후보에 넣는다 (그 시스템 화면이 아직 열려 있지 않아도)
+      const extra = this.skills.filter((e) => !base.includes(e) && named.some((m) => skillCoversUrl(docOfSkill(e.skill), m.url)));
+      plan = await planRequest(text, [...base, ...extra].map((e) => e.skill), this.llm(), undefined, systemInfo);
     } catch (e) {
       this.term.print(`요청을 해석하지 못했습니다: ${(e as Error).message}`);
       return false;
@@ -467,8 +542,10 @@ export class Session {
 
     this.term.print('맞는 스킬이 없어 지금 브라우저 화면에서 자유 요청으로 합니다.');
     if (!this.flags.yes && !(await this.term.confirm('진행할까요?', true))) return false;
+    // 요청에 시스템 이름이 있는데 그 화면이 열려 있지 않으면 시스템의 주소로 간다 (조작할 사이트 목록 안일 때만 이동된다)
+    if (named[0] && !(await this.openSystem(named[0]))) return false;
     const free = buildFreeSkill('http://localhost/', this.flags.allowWrite);
-    const run = await this.execute(free, { request: text });
+    const run = await this.execute(free, { request: text }, {}, { systemInfo });
     if (run.result.status !== 'done') return false;
     // 잘 된 자유 요청은 개인 스킬로 저장할 수 있다.
     if (await this.term.confirm('\n이 실행을 스킬로 저장할까요? 다음부터 같은 요청을 스킬로 빠르게 합니다.', false)) {
@@ -539,7 +616,7 @@ export class Session {
 
   /** 대화: 요청을 한 줄씩 받는다. */
   async repl(): Promise<void> {
-    this.term.print(`Dogent 클라이언트 (${__DOGENT_BUILD__.mode}). 할 일을 말해 주세요. skills, 찾기 <말>, skills info <id>, skill new, skill edit <id>, sync, tabs, browsers, browser <이름>, help, exit`);
+    this.term.print(`Dogent 클라이언트 (${__DOGENT_BUILD__.mode}). 할 일을 말해 주세요. skills, 찾기 <말>, skills info <id>, systems, skill new, skill edit <id>, sync, tabs, browsers, browser <이름>, help, exit`);
     for (;;) {
       const line = await this.term.ask('\n무엇을 할까요? > ');
       if (line === null) return;
@@ -558,6 +635,12 @@ export class Session {
   skillList(): SkillEntry[] {
     this.reloadSkills();
     return this.skills;
+  }
+
+  /** 시스템 사전 (개인 > 팀 > 기본). 화면의 시스템 목록에 쓴다. */
+  systemList(): SystemEntry[] {
+    this.reloadSkills();
+    return this.systems;
   }
 
   /** 연결된 브라우저 목록 (기다리지 않음). 화면의 브라우저 고르기에 쓴다. */
@@ -581,6 +664,8 @@ export class Session {
     else if (text === 'skills') this.listSkills();
     else if (/^(skills\s+search|찾기)(\s|$)/.test(text)) await this.searchSkills(text.replace(/^(skills\s+search|찾기)\s*/, ''));
     else if (/^skills\s+info\s+\S/.test(text)) this.skillInfo(text.replace(/^skills\s+info\s+/, '').trim());
+    else if (text === 'systems') this.listSystems();
+    else if (/^systems\s+info\s+\S/.test(text)) this.systemInfo(text.replace(/^systems\s+info\s+/, '').trim());
     else if (text === 'sync') await this.refreshTeam({ force: true });
     else if (text === 'tabs') await this.tabs();
     else if (text === 'browsers') await this.listBrowsers();

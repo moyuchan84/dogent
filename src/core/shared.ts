@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { lintSkill } from './lint';
+import { lintSystem } from './systems';
 
 /**
  * 공유 스킬 저장소.
@@ -20,6 +21,8 @@ const relativePath = z
   .refine((p) => !/^[a-z][a-z0-9+.-]*:|^\/|(^|\/)\.\.(\/|$)|\\/i.test(p), '목록 파일 기준의 상대 경로여야 합니다');
 
 export const SkillIndex = z.object({
+  /** 사내 시스템 사전 (SYSTEM.md). 없어도 된다 */
+  systems: z.array(z.object({ id: z.string().min(1), path: relativePath, sha256: z.string().optional() })).default([]),
   skills: z.array(
     z.object({
       id: z.string().min(1),
@@ -42,6 +45,8 @@ export interface SharedSkill {
 
 export interface SyncResult {
   skills: SharedSkill[];
+  /** 받아서 검사를 통과한 시스템 문서 */
+  systems: { id: string; source: string }[];
   /** 받지 못했거나 검사에서 떨어진 스킬. 이 스킬들은 목록에 나타나지 않는다. */
   errors: string[];
 }
@@ -65,6 +70,7 @@ export async function syncSkills(indexUrl: string, ports: SyncPorts): Promise<Sy
   if (!index.success) throw new Error(`스킬 목록의 형식이 잘못되었습니다:\n${z.prettifyError(index.error)}`);
 
   const skills: SharedSkill[] = [];
+  const systems: SyncResult['systems'] = [];
   const errors: string[] = [];
   const seen = new Set<string>();
   const get = async (path: string, expected: string | undefined) => {
@@ -90,5 +96,18 @@ export async function syncSkills(indexUrl: string, ports: SyncPorts): Promise<Sy
       errors.push(`${entry.id}: ${(e as Error).message}`);
     }
   }
-  return { skills, errors };
+  for (const entry of index.data.systems) {
+    try {
+      if (seen.has(`system:${entry.id}`)) throw new Error('목록에 같은 id가 두 번 있습니다');
+      seen.add(`system:${entry.id}`);
+      const source = await get(entry.path, entry.sha256);
+      const report = lintSystem(source);
+      if (!report.system) throw new Error(report.errors.join(' / '));
+      if (report.system.id !== entry.id) throw new Error(`파일의 id는 "${report.system.id}"입니다`);
+      systems.push({ id: entry.id, source });
+    } catch (e) {
+      errors.push(`시스템 ${entry.id}: ${(e as Error).message}`);
+    }
+  }
+  return { skills, systems, errors };
 }

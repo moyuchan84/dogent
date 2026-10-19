@@ -45,7 +45,7 @@ beforeEach(() => {
 
 describe('스킬 품질 검사', () => {
   it('번들된 스킬은 모두 A등급이고 전 단계가 모델 없이 실행된다', () => {
-    for (const id of readdirSync(SKILLS)) {
+    for (const id of readdirSync(SKILLS).filter((d) => d !== 'systems')) {
       const policy = join(SKILLS, id, 'policy.yaml');
       const report = lintSkill(
         readFileSync(join(SKILLS, id, 'SKILL.md'), 'utf8'),

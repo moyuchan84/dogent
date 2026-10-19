@@ -98,6 +98,7 @@ footer { margin-top: 40px; color: var(--muted); font-size: 13px; }
     <tr><td>말로 스킬 만들기</td><td>지금 브라우저 화면을 보고 초안 → 말로 고치기 → 시험 실행 → 개인 스킬로 저장. 터미널 <code>dogent skill new</code>와 앱 버튼 (<code>src/core/compose.ts</code>)</td><td><span class="tag t-ok">e2e 통과</span> 사내 모델 품질은 미확인</td></tr>
     <tr><td>스킬 찾기</td><td>스킬에 <code>tags</code>를 적고, 이름·태그·설명으로 찾음(조사·어미가 붙어도). <code>dogent skills search [&lt;말&gt;]</code>, <code>skills info &lt;ID&gt;</code>(입력·위험도·담당·이 PC 성공률). 말이 없으면 지금 브라우저 화면의 사이트용 스킬. 앱은 검색창과 맨 위 "지금 화면" 묶음. 맞는 스킬이 없으면 말로 만들기로 안내 (<code>src/core/catalog.ts</code>)</td><td><span class="tag t-ok">테스트·e2e 통과</span></td></tr>
     <tr><td>팀 스킬 저장소를 주소로 받기</td><td><code>teamSkillsUrl</code>(빌드의 <code>WXT_SKILLS_URL</code>)의 <code>index.json</code>에서 git 없이 한 시간마다 받아 <code>~/.dogent/team-cache</code>에 둠. 닿지 않으면 받아 둔 것을 씀. git clone 폴더(<code>teamSkills</code>)가 있으면 같은 ID는 그쪽 우선 (<code>client/src/team.ts</code>)</td><td><span class="tag t-ok">e2e 통과</span> <span class="tag t-warn">사내 GitHub 주소·토큰 방식 미확인</span></td></tr>
+    <tr><td>시스템 사전</td><td>사내 시스템 하나를 <code>SYSTEM.md</code>(별칭·주소·화면 메뉴 경로·용어·주의사항)로 적어 두면, 요청에 시스템 이름("재공 시스템 들어가서 …")이 나올 때 그 설명을 요청 해석과 자유 요청에 함께 넘김. 화면이 안 열려 있으면 시스템 주소를 열지 물음. 팀 저장소 <code>skills/systems/</code>로 배포. <code>dogent systems</code>, 앱의 "시스템" 탭 (<code>src/core/systems.ts</code>)</td><td><span class="tag t-ok">테스트·e2e 통과</span> <span class="tag t-warn">사내 Gemma가 설명을 잘 따르는지 미확인</span></td></tr>
   </table></div>
 
   <h2>4. 아직 구현하지 않은 것</h2>

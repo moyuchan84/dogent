@@ -6,7 +6,7 @@ import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { BrowserWindow, app, ipcMain, shell } from 'electron';
-import type { RunEvent } from '../../src/core';
+import { docOfSkill, skillCoversUrl, type RunEvent } from '../../src/core';
 import { loadToken } from '../../client/src/bridge';
 import { describeConfig, loadConfig, setConfig } from '../../client/src/config';
 import { Session, type SessionOptions, type Ui } from '../../client/src/session';
@@ -179,6 +179,7 @@ ipcMain.handle('dogent:stop', () => {
   ui.cancelAll();
 });
 ipcMain.handle('dogent:skills', () => skillSummaries());
+ipcMain.handle('dogent:systems', () => session.systemList().map((e) => ({ id: e.system.id, name: e.system.name, description: e.system.description, aliases: e.system.aliases, url: e.system.url, source: e.source, skills: session.skillList().filter((k) => skillCoversUrl(docOfSkill(k.skill), e.system.url)).length })));
 ipcMain.handle('dogent:page', () => session.currentPage());
 ipcMain.handle('dogent:browsers', () => session.browsersNow());
 ipcMain.handle('dogent:select-browser', (_e, which: string) => work(() => session.useBrowser(which)));

@@ -222,6 +222,45 @@ try {
     return '홀드·지금 화면·팀 저장소';
   });
 
+  await scenario('시스템 사전: 목록·자세히, 요청에 시스템 이름이 있으면 찾아서 함께 쓰고 팀 저장소의 시스템도 받음', async () => {
+    const list = await client(['systems']);
+    assert.equal(list.code, 0, list.text);
+    assert.match(list.text, /\[기본\] mes — 모의 MES \(생산 관리\) \(MES, 재공 시스템/);
+    const info = await client(['systems', 'info', 'mes']);
+    assert.match(info.text, /재공 현황 조회 \[재공 > 재공 현황\]/);
+    assert.match(info.text, /HOLD: 품질 문제/);
+    assert.match(info.text, /이 시스템의 스킬: .*wip-check/);
+    assert.equal((await client(['systems', 'info', 'nope'])).code, 1);
+
+    // 맞는 스킬이 없는 요청이라도 시스템 이름이 나오면 그 시스템을 찾아 자유 요청에 설명을 붙인다
+    await open('/wip.html');
+    const r = await client(['MES에서 8라인을 선택하고 조회해서 총 몇 건인지 알려줘', '--yes']);
+    assert.equal(r.code, 0, r.text);
+    assert.match(r.text, /시스템: 모의 MES \(생산 관리\)/);
+    assert.match(r.text, /맞는 스킬이 없어 지금 브라우저 화면에서 자유 요청으로 합니다/);
+    assert.match(r.text, new RegExp(`총 ${generateWip('8라인').length}건`));
+
+    // 시스템 이름이 없는 요청에는 붙이지 않는다
+    const plain = await client(['8라인을 선택하고 조회해서 총 몇 건인지 알려줘', '--yes']);
+    assert.doesNotMatch(plain.text, /시스템:/);
+
+    // 팀 저장소 목록의 시스템 문서를 받는다 (개인 폴더의 같은 id가 먼저)
+    const sys = readFileSync(join(ROOT, 'skills/systems/mes/SYSTEM.md'), 'utf8').replace('id: mes', 'id: team-mes').replace('name: 모의 MES (생산 관리)', 'name: 팀 MES');
+    const team = createServer((req, res) => {
+      const body = { '/t/index.json': JSON.stringify({ systems: [{ id: 'team-mes', path: 'systems/team-mes/SYSTEM.md' }], skills: [] }), '/t/systems/team-mes/SYSTEM.md': sys }[req.url];
+      res.writeHead(body ? 200 : 404).end(body);
+    }).listen(4180);
+    try {
+      await client(['config', 'teamSkillsUrl', 'http://127.0.0.1:4180/t/index.json']);
+      const synced = await client(['sync']);
+      assert.equal(synced.code, 0, synced.text);
+      assert.match((await client(['systems'])).text, /\[팀\] team-mes — 팀 MES/);
+    } finally {
+      team.close();
+    }
+    return '목록·자세히·요청에서 찾기·팀 저장소';
+  });
+
   await scenario('직접 못 읽는 엑셀(xls)은 오피스 도구가 Excel로 열어 화면 표에 채움', async () => {
     if (!existsSync(join(ROOT, 'office/dist/dogent-office.exe'))) return '건너뜀: pnpm office:build 필요';
     // 문서 보안 파일 대신, exceljs가 읽지 못하는 구형 xls로 같은 상황을 만든다.

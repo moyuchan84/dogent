@@ -40,6 +40,18 @@ export interface InitInfo {
 }
 
 /** 창에서 쓰는 API (preload가 window.dogent로 내놓는다) */
+/** 왼쪽 시스템 목록의 한 줄 */
+export interface SystemSummary {
+  id: string;
+  name: string;
+  description: string;
+  aliases: string[];
+  url: string;
+  source: '개인' | '팀' | '기본';
+  /** 이 시스템의 사이트를 다루는 스킬 수 */
+  skills: number;
+}
+
 export interface DogentApi {
   init(): Promise<InitInfo>;
   send(text: string): Promise<void>;
@@ -47,6 +59,7 @@ export interface DogentApi {
   answer(id: number, value: string | null): Promise<void>;
   stop(): Promise<void>;
   skills(): Promise<SkillSummary[]>;
+  systems(): Promise<SystemSummary[]>;
   /** 지금 브라우저 탭 (확장이 붙어 있지 않으면 null) */
   page(): Promise<{ url: string; title: string } | null>;
   browsers(): Promise<BrowserLink[]>;

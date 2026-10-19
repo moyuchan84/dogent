@@ -46,11 +46,18 @@ export function llmFromEnv(mode) {
   );
 }
 
-/** 기본 스킬: skills/<id>/SKILL.md, policy.yaml */
+/** 기본 스킬: skills/<id>/SKILL.md, policy.yaml. 기본 시스템 사전: skills/systems/<id>/SYSTEM.md (키는 systems/<id>/SYSTEM.md) */
 export function bundledSkills() {
   const skills = {};
   for (const d of readdirSync(join(ROOT, 'skills'), { withFileTypes: true })) {
     if (!d.isDirectory()) continue;
+    if (d.name === 'systems') {
+      for (const x of readdirSync(join(ROOT, 'skills', 'systems'), { withFileTypes: true })) {
+        const p = join(ROOT, 'skills', 'systems', x.name, 'SYSTEM.md');
+        if (x.isDirectory() && existsSync(p)) skills[`systems/${x.name}/SYSTEM.md`] = readFileSync(p, 'utf8');
+      }
+      continue;
+    }
     for (const f of ['SKILL.md', 'policy.yaml']) {
       const p = join(ROOT, 'skills', d.name, f);
       if (existsSync(p)) skills[`${d.name}/${f}`] = readFileSync(p, 'utf8');
