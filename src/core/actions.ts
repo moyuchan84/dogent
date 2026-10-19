@@ -51,6 +51,27 @@ export const TOOL_ARGS = {
     filename: z.string().min(1),
     sheets: z.array(z.object({ name: z.string().min(1), dataset: z.string().min(1) })).min(1),
   }),
+  /** 사용자의 Excel에 열려 있는 문서 목록을 다시 본다. */
+  excel_docs: z.object({}),
+  /** 열린 엑셀 문서(이름) 또는 파일 경로의 시트를 데이터셋으로 읽는다. 첫 행은 열 이름. */
+  excel_read: z.object({
+    doc: z.string().min(1),
+    dataset: z.string().min(1),
+    sheet: z.string().optional(),
+    range: z.string().optional(),
+  }),
+  /** 데이터셋을 엑셀 문서의 시트에 쓴다. 저장은 excel_save로 따로 한다. */
+  excel_write: z.object({
+    doc: z.string().min(1),
+    dataset: z.string().min(1),
+    sheet: z.string().min(1),
+    start: z.string().optional(),
+  }),
+  /** 엑셀 문서를 Excel로 저장한다. path가 없으면 연 곳에, 있으면 다른 이름으로. */
+  excel_save: z.object({
+    doc: z.string().min(1),
+    path: z.string().optional(),
+  }),
   /** 화면(ref를 주면 그 요소)에 보이는 글을 읽는다. 게시글·공지처럼 글 내용이 필요할 때 쓴다. */
   read_text: z.object({ ref: ref.optional() }),
   /**
@@ -71,7 +92,7 @@ export type ToolName = keyof typeof TOOL_ARGS;
 
 /** 모델 없이 실행할 수 있는 단계의 첫머리. 예: "select로 ...", "click으로 ..." */
 const DIRECT_STEP =
-  /^(navigate|click|close_tab|type|select|extract_table|download_table|fill_table|transform|write_excel|read_text|summarize|finish)(?:으로|로)\s/;
+  /^(navigate|click|close_tab|type|select|extract_table|download_table|fill_table|transform|write_excel|excel_docs|excel_read|excel_write|excel_save|read_text|summarize|finish)(?:으로|로)\s/;
 
 /**
  * 단계가 "도구로 ..."로 시작하고 `{...}` 인자가 적혀 있으면 그 도구 이름과 인자 원문을 돌려준다.

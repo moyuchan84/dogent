@@ -1,10 +1,13 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { basename } from 'node:path';
 import {
   DatasetStore,
   FREE_SKILL_ID,
   OpenAiCompatClient,
   buildFreeSkill,
+  noBrowser,
+  officeIntent,
+  skillUsesOffice,
   describeSystem,
   docOfSkill,
   docOfSystem,
@@ -34,7 +37,7 @@ import { openBridge, type Bridge } from './bridge';
 import { composeFlow, editSkill } from './compose-skill';
 import { setConfig, type ClientConfig } from './config';
 import { loadSystems, type SystemEntry } from './systems';
-import { Office, findOfficeExe } from './office';
+import { Office, OfficeDocs, findOfficeExe, looksLikePath } from './office';
 import { saveRunAsSkill } from './save-skill';
 import { loadSkills, type SkillEntry } from './skills';
 import { appendRun, filePathStore, folderFiles, readRunStats } from './store';
@@ -230,6 +233,14 @@ export class Session {
     return new OpenAiCompatClient(this.cfg.llm);
   }
 
+  private officeDocs: OfficeDocs | null = null;
+
+  /** 에이전트의 엑셀 도구가 쓰는 통로. 오피스 도구가 없으면 null (그러면 엑셀 도구는 꺼진다) */
+  private officePort(): OfficeDocs | null {
+    if (!findOfficeExe(this.cfg.officeExe)) return null;
+    return (this.officeDocs ??= new OfficeDocs(() => this.officeTool()));
+  }
+
   /** 오피스 도구를 처음 쓸 때 띄운다. */
   async officeTool(): Promise<Office> {
     if (this.office) return this.office;
@@ -243,6 +254,14 @@ export class Session {
    * 파일 입력의 엑셀을 읽는다. 먼저 파일을 직접 읽고, 안 되면(문서 보안이 걸린 파일 등) 사용자의 Excel로 연다.
    */
   private async readInputFile(path: string): Promise<{ columns: string[]; rows: (string | number)[][] }> {
+    // 파일이 아니라 사용자의 Excel에 열려 있는 문서의 이름이면 그 문서를 읽는다 (문서 공유망에서 연 문서 등)
+    if (!looksLikePath(path) && !existsSync(path)) {
+      const port = this.officePort();
+      if (!port) throw new Error(`"${path}" 파일이 없습니다 (열린 엑셀 문서를 쓰려면 오피스 도구가 필요합니다)`);
+      this.term.print(`  열려 있는 엑셀 문서 "${path}"을(를) 읽습니다`);
+      const t = await port.read(path, {});
+      return { columns: t.columns, rows: t.rows };
+    }
     try {
       const data = readFileSync(path);
       return await readTable(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer, basename(path));
@@ -275,10 +294,12 @@ export class Session {
     }
     const path = sub;
     if (!path) {
-      this.term.print('dogent excel <파일> | dogent excel docs | dogent excel resave <원본> <저장할 경로>');
+      this.term.print('dogent excel <파일 또는 열린 문서 이름> | dogent excel docs | dogent excel resave <원본> <저장할 경로>');
       return false;
     }
-    const { workbook, sheets } = await office.open(path);
+    // 파일이 아니라 열려 있는 문서의 이름이면 그 문서를 잡는다 (닫아도 사용자의 문서는 닫히지 않는다)
+    const byName = !looksLikePath(path) && !existsSync(path);
+    const { workbook, sheets } = byName ? await office.attach(path) : await office.open(path);
     try {
       for (const s of sheets) this.term.print(`  시트 ${s.name}: ${s.range} (${s.rows}행 × ${s.columns}열)`);
       const t = await office.read(workbook, { maxRows: 5 });
@@ -358,7 +379,7 @@ export class Session {
     for (const i of skill.inputs) {
       if (form[i.name] !== undefined && form[i.name] !== '') continue;
       if (!i.required || i.default !== undefined) continue;
-      const hint = [i.description, i.type === 'enum' && i.values ? `보기: ${i.values.join(', ')}` : '', i.type === 'file' ? '엑셀 파일 경로' : '']
+      const hint = [i.description, i.type === 'enum' && i.values ? `보기: ${i.values.join(', ')}` : '', i.type === 'file' ? '엑셀 파일 경로 또는 열린 문서 이름' : '']
         .filter(Boolean)
         .join(' · ');
       const a = await this.term.ask(`  ${i.label ?? i.name}${hint ? ` (${hint})` : ''}: `);
@@ -383,10 +404,22 @@ export class Session {
     skill: Skill,
     values: SkillInputs,
     filePaths: Record<string, string> = {},
-    opts: { dryRun?: boolean; /** 자유 요청에 붙일 시스템 설명 */ systemInfo?: string } = {},
+    opts: {
+      dryRun?: boolean;
+      /** 자유 요청에 붙일 시스템 설명 */
+      systemInfo?: string;
+      /** 브라우저 없이 엑셀 도구만으로 한다 (자유 요청) */
+      excelOnly?: boolean;
+      /** 브라우저 화면과 함께 엑셀 도구도 쓴다 (자유 요청) */
+      excel?: boolean;
+    } = {},
   ): Promise<{ result: RunResult; entries: HistoryEntry[]; tabUrl: string }> {
-    const bridge = await this.connect();
     const isFree = skill.id === FREE_SKILL_ID;
+    const excelOnly = isFree && !!opts.excelOnly;
+    const bridge = excelOnly ? null : await this.connect();
+    // 엑셀 도구는 자유 요청이 엑셀을 말하거나, 스킬이 엑셀을 쓸 때만 붙인다 (그렇지 않은 실행이 오피스 도구를 띄우지 않게)
+    const office = isFree ? (excelOnly || opts.excel ? this.officePort() : null) : skillUsesOffice(skill) ? this.officePort() : null;
+    if (excelOnly && !office) throw new Error('오피스 도구(dogent-office.exe)가 없어 엑셀 문서를 다룰 수 없습니다. pnpm office:build로 만들거나 dogent config officeExe <경로>로 알려 주세요');
     const datasets = new DatasetStore();
     for (const spec of skill.inputs) {
       const path = filePaths[spec.name];
@@ -394,11 +427,11 @@ export class Session {
       const table = await this.readInputFile(path);
       datasets.set(spec.dataset, table.columns, table.rows);
     }
-    const target = await bridge.browser.target();
+    const target = bridge ? await bridge.browser.target() : { url: '', title: '엑셀', allowed: true };
     if (!target.allowed) {
       throw new Error(`지금 브라우저 탭(${target.url})은 조작할 사이트 목록에 없습니다. 업무 화면 탭을 앞에 두거나 확장 설정 → 조작할 사이트에서 더하세요`);
     }
-    const active = isFree ? buildFreeSkill(target.url, this.flags.allowWrite, opts.systemInfo) : skill;
+    const active = isFree ? buildFreeSkill(bridge ? target.url : null, this.flags.allowWrite, opts.systemInfo, !!office) : skill;
     const scale = Math.max(1, this.cfg.llm.timeoutScale || 1);
     const scaled = { ...active, limits: { ...active.limits, timeout_sec: active.limits.timeout_sec * scale } };
     const events: RunEvent[] = [];
@@ -411,7 +444,8 @@ export class Session {
     try {
       result = await runSkill(scaled, values, {
         llm: this.llm(),
-        browser: bridge.browser,
+        browser: bridge ? bridge.browser : noBrowser(),
+        office: office ?? undefined,
         datasets,
         signal: this.abort.signal,
         dryRun: !isFree && skill.risk === 'R3' && (opts.dryRun ?? this.flags.dryRun),
@@ -426,10 +460,13 @@ export class Session {
           ask: async (q) => (await this.term.ask(`\n  질문: ${q}\n  답: `)) ?? '',
           // 승인은 확장의 승인 창에서 받는다. 어떤 클라이언트가 붙어도 확장이 지키는 통제다 (docs/09 D6).
           approve: async (request) => {
+            if (!bridge) return false;
             if (this.term.approval) this.term.approval(request);
             else this.term.print(describeApproval(request));
             return bridge.browser.approve(request);
           },
+          // 엑셀 문서를 바꾸거나 저장하기 전에 사용자에게 묻는다. --yes로도 건너뛰지 않는다.
+          confirm: (message) => this.term.confirm(`\n  ${message}`, false),
         },
         loginWaitMs: LOGIN_WAIT_MS,
         onEvent: (e) => {
@@ -443,6 +480,7 @@ export class Session {
       result = { status: 'error', message: (e as Error).message, lastStep: 0, actions: 0, files: [], datasets: [], outputs: {}, elapsedMs: 0 };
     } finally {
       this.abort = null;
+      await this.officeDocs?.release().catch(() => {});
     }
     if (this.term.result) this.term.result(result, saved);
     else this.term.print(describeResult(result, saved));
@@ -570,20 +608,43 @@ export class Session {
       return result.status === 'done' || result.status === 'dryrun';
     }
 
-    this.term.print('맞는 스킬이 없어 지금 브라우저 화면에서 자유 요청으로 합니다.');
+    // 엑셀 문서를 말하는 요청인지 가린다. 엑셀만 필요하면 브라우저 연결을 기다리지 않고 엑셀 도구로만 한다.
+    const asked = urlInText(text);
+    const office = this.officePort();
+    const docs = office ? await office.docs().catch(() => []) : [];
+    const intent = officeIntent(text, { openDocs: docs.map((d) => d.name), hasUrl: !!asked, hasSystem: named.length > 0 });
+    if (intent.excel && !office) {
+      this.term.print('엑셀 문서가 필요한 요청 같지만 오피스 도구(dogent-office.exe)가 없습니다. pnpm office:build로 만들거나 dogent config officeExe <경로>로 알려 주세요');
+      if (!intent.web) return false;
+    }
+    const excelOnly = intent.excel && !intent.web && !!office;
+    const withExcel = intent.excel && !!office;
+    if (withExcel) {
+      this.term.print(docs.length ? `열려 있는 엑셀 문서 ${docs.length}개: ${docs.map((d) => d.name).join(', ')}` : '사용자의 Excel에 열려 있는 문서가 없습니다 (파일 경로를 요청에 쓰면 그 파일을 엽니다)');
+    }
+    this.term.print(
+      excelOnly
+        ? '맞는 스킬이 없어 엑셀 도구로 자유 요청을 합니다 (브라우저는 쓰지 않습니다).'
+        : withExcel
+          ? '맞는 스킬이 없어 지금 브라우저 화면과 엑셀 도구로 자유 요청을 합니다.'
+          : '맞는 스킬이 없어 지금 브라우저 화면에서 자유 요청으로 합니다.',
+    );
     if (!this.flags.yes && !(await this.term.confirm('진행할까요?', true))) return false;
     // 요청에 주소나 시스템 이름이 있으면 열려 있는 탭을 두고 새 탭에서 시작한다 (조작할 사이트 목록 안일 때만 열린다)
-    const asked = urlInText(text);
-    if (asked) {
+    if (excelOnly) {
+      /* 브라우저를 쓰지 않는다 */
+    } else if (asked) {
       const now = await (await this.connect()).browser.target().catch(() => null);
       if (!sameUrl(now?.url, asked) && !(await this.openStart(asked, asked))) return false;
     } else if (named[0]) {
       const now = await (await this.connect()).browser.target().catch(() => null);
       if (!(now && skillCoversUrl(docOfSystem(named[0]), now.url)) && !(await this.openStart(named[0].url, named[0].name))) return false;
     }
-    const free = buildFreeSkill('http://localhost/', this.flags.allowWrite);
-    const run = await this.execute(free, { request: text }, {}, { systemInfo });
+    const free = buildFreeSkill(excelOnly ? null : 'http://localhost/', this.flags.allowWrite);
+    const run = await this.execute(free, { request: text }, {}, { systemInfo, excelOnly, excel: withExcel });
     if (run.result.status !== 'done') return false;
+    // 엑셀만 다룬 실행은 화면 절차가 없어 스킬로 저장하지 않는다.
+    if (excelOnly) return true;
     // 잘 된 자유 요청은 개인 스킬로 저장할 수 있다.
     if (await this.term.confirm('\n이 실행을 스킬로 저장할까요? 다음부터 같은 요청을 스킬로 빠르게 합니다.', false)) {
       const file = await saveRunAsSkill(this.term, { request: text, tabUrl: run.tabUrl, entries: run.entries }, this.cfg.personalSkills, new Set(this.skills.map((e) => e.skill.id)));

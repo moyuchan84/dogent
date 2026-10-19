@@ -11,14 +11,17 @@ export const FREE_SKILL_ID = 'free';
  * - allowWrite가 꺼져 있으면 저장·상신 계열 버튼을 누를 수 없다.
  * - 켜져 있어도 누르기 전에 사용자 승인을 받고, 한 번의 실행에서 한 번만 누른다.
  */
-export function buildFreeSkill(pageUrl: string, allowWrite: boolean, systemInfo?: string): Skill {
-  let host: string;
-  try {
-    const url = new URL(pageUrl);
-    if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error();
-    host = url.host;
-  } catch {
-    throw new Error('현재 탭은 조작할 수 없는 페이지입니다. 업무 화면이 열린 탭에서 실행해 주세요');
+export function buildFreeSkill(pageUrl: string | null, allowWrite: boolean, systemInfo?: string, office = false): Skill {
+  // pageUrl이 null이면 브라우저 없이 엑셀 도구만 쓰는 요청이다. 허용 도메인이 없으므로 화면 동작은 모두 막힌다.
+  let host = '(브라우저 없음)';
+  if (pageUrl !== null) {
+    try {
+      const url = new URL(pageUrl);
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error();
+      host = url.host;
+    } catch {
+      throw new Error('현재 탭은 조작할 수 없는 페이지입니다. 업무 화면이 열린 탭에서 실행해 주세요');
+    }
   }
   return parseSkill(`---
 id: ${FREE_SKILL_ID}
@@ -42,15 +45,16 @@ limits:
 
 ## 단계
 
-1. 현재 화면에서 다음 요청을 수행한다: {request}
-   - 화면을 보고 필요한 동작을 한 번에 하나씩 한다. 이미 되어 있는 일은 다시 하지 않는다.
+1. ${pageUrl === null ? '열려 있는 엑셀 문서로' : '현재 화면에서'} 다음 요청을 수행한다: {request}
+   - ${pageUrl === null ? '브라우저 화면은 없다. 엑셀 도구로 문서를 읽고 가공하고 쓴다.' : '화면을 보고 필요한 동작을 한 번에 하나씩 한다.'} 이미 되어 있는 일은 다시 하지 않는다.${office && pageUrl !== null ? `
+   - 요청이 엑셀 문서를 말하면 엑셀 도구로 읽고 쓴다. 화면과 엑셀 사이의 값은 데이터셋으로 옮긴다.` : ''}
    - 요청한 일을 모두 했으면 finish로 끝낸다. summary에는 무엇을 했는지와, 요청이 물어본 내용에 대해 화면에 보이는 답을 적는다.
    - 화면에 이미 답이 보이는 질문이면 아무것도 조작하지 않고 finish로 답한다.
 
 ## 예외
 
 - 요청이 모호해서 무엇을 할지 정할 수 없으면 ask_user로 묻는다.
-- 요청한 일을 이 화면에서 할 수 없으면 abort로 이유를 알린다.
+- 요청한 일을 ${pageUrl === null ? '엑셀 문서로' : '이 화면에서'} 할 수 없으면 abort로 이유를 알린다.
 - 요청에 없는 저장, 삭제, 상신은 하지 않는다.
 
 ## 결과

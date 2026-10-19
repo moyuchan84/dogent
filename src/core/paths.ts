@@ -19,7 +19,7 @@ import type { CachedAction, PageSnapshot, PathStore, RunResult, SkillPaths } fro
 /** 한 단계에 저장하는 동작 수의 한도. 이보다 길면 헤맨 것으로 보고 저장하지 않는다. */
 const MAX_PATH_ACTIONS = 8;
 /** 저장하지 않는 도구. 끝내는 말과 질문은 그때그때 모델이 정한다. */
-const NEVER = new Set(['finish', 'abort', 'ask_user']);
+const NEVER = new Set(['finish', 'abort', 'ask_user', 'excel_docs', 'excel_read', 'excel_write', 'excel_save']);
 const REF_KEYS = ['ref', 'next_ref', 'add_ref'];
 /** 값이 아니라 이름을 담는 인자. 입력값과 무관한 글자로 본다. */
 const NAME_KEYS = new Set(['dataset', 'source', 'target', 'name', 'row']);

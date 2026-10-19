@@ -7,6 +7,8 @@ export * from './check';
 export * from './dataset';
 export * from './excel';
 export * from './free';
+export * from './no-browser';
+export * from './office-intent';
 export * from './llm';
 export * from './loop';
 export * from './paths';

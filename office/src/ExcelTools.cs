@@ -328,6 +328,15 @@ namespace Dogent.Office
             if (File.Exists(path) && !Flag(a, "overwrite", false)) throw new IOException("이미 있는 파일입니다: " + path + ". 덮어쓰려면 overwrite를 true로");
             string dir = Path.GetDirectoryName(path);
             if (!Directory.Exists(dir)) throw new DirectoryNotFoundException("폴더가 없습니다: " + dir);
+            if (attached.Contains(id))
+            {
+                // 사용자의 Excel에서 잡은 문서는 SaveAs를 하면 사용자 창의 파일 이름이 바뀐다. 복사본만 저장한다 (같은 형식만).
+                if (!string.Equals(Path.GetExtension(path), Path.GetExtension((string)wb.Name), StringComparison.OrdinalIgnoreCase))
+                    throw new ArgumentException("사용자의 Excel 문서는 같은 형식(" + Path.GetExtension((string)wb.Name) + ")으로만 다른 이름 저장(사본)을 할 수 있습니다");
+                wb.SaveCopyAs(path);
+                log("사본을 저장했습니다: " + path);
+                return new Dictionary<string, object> { { "saved", path } };
+            }
             wb.SaveAs(Filename: path, FileFormat: FormatOf(path));
             paths[id] = path;
             log("저장했습니다: " + path);

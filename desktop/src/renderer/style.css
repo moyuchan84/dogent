@@ -175,11 +175,24 @@ label.check input {
 }
 .body {
   display: grid;
-  grid-template-columns: 280px minmax(0, 1fr);
+  grid-template-columns: 280px 6px minmax(0, 1fr);
   min-height: 0;
 }
-.side {
+/* 목록 너비를 끄는 손잡이. 눈에 띄는 선은 .side의 테두리가 맡고, 이 줄은 잡기 쉽게 넓게만 둔다 */
+.splitter {
+  cursor: col-resize;
+  background: var(--sunken);
   border-right: 1px solid var(--line);
+  touch-action: none;
+  outline: none;
+}
+.splitter:hover,
+.splitter:focus-visible,
+.splitter.drag {
+  background: var(--accent);
+  opacity: 0.55;
+}
+.side {
   background: var(--sunken);
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);

@@ -52,7 +52,7 @@ skills/
 
 `ip`는 IPv4 주소 또는 CIDR(`10.1.2.0/24`), `port`는 1~65535의 숫자 또는 범위(`8000-8010`)만 받습니다.
 
-`file`은 xlsx 또는 csv 파일입니다. 첫 시트의 첫 행을 컬럼 이름으로 읽어 `dataset`에 적은 이름의 데이터셋으로 넣습니다. 파일은 사용자 PC에서 읽고, 내용은 모델에 보내지 않습니다(모델에는 컬럼 이름과 샘플 몇 행만 보임).
+`file`은 xlsx 또는 csv 파일입니다. 첫 시트의 첫 행을 컬럼 이름으로 읽어 `dataset`에 적은 이름의 데이터셋으로 넣습니다. 파일 경로 대신 **사용자의 Excel에 열려 있는 문서의 이름**(예: 문서 공유망에서 읽기·편집으로 연 문서)을 줘도 됩니다. 파일은 사용자 PC에서 읽고, 내용은 모델에 보내지 않습니다(모델에는 컬럼 이름과 샘플 몇 행만 보임).
 
 ## 3. 본문
 
@@ -117,7 +117,7 @@ skills/
 
 ### 3.3 모델 없이 바로 실행되는 단계
 
-단계의 첫머리가 **`도구로`** (`navigate로`, `click으로`, `type으로`, `select로`, `close_tab으로`, `extract_table로`, `download_table로`, `fill_table로`, `transform으로`, `write_excel로`, `read_text로`, `summarize로`, `finish로`)로 시작하고 `` `{...}` `` 인자가 적혀 있으면, 루프가 **모델을 부르지 않고** 그 동작을 그대로 실행합니다.
+단계의 첫머리가 **`도구로`** (`navigate로`, `click으로`, `type으로`, `select로`, `close_tab으로`, `extract_table로`, `download_table로`, `fill_table로`, `transform으로`, `write_excel로`, `excel_docs로`, `excel_read로`, `excel_write로`, `excel_save로`, `read_text로`, `summarize로`, `finish로`)로 시작하고 `` `{...}` `` 인자가 적혀 있으면, 루프가 **모델을 부르지 않고** 그 동작을 그대로 실행합니다.
 
 - 모든 단계를 이렇게 쓰면 스킬 전체가 모델 호출 없이 돕니다. 로컬 gemma3:4b로 약 4분 걸리던 재공 확인이 수 초에 끝나고, 결과도 매번 같습니다.
 - 통제는 똑같이 적용됩니다. 허용 도메인, 저장·상신 승인, 제출 전 대조를 그대로 거칩니다.
@@ -188,7 +188,11 @@ skills/
 | `download_table` | `ref`, `dataset`, `timeout_sec` | 화면의 엑셀·CSV 내려받기 버튼을 눌러 받은 파일을 데이터셋에 담는다 (4.2절) |
 | `fill_table` | `ref`, `dataset`, `add_ref` | 입력 칸이 있는 표의 빈 행에 데이터셋을 통째로 채운다. 입력 칸 없는 그리드는 붙여 넣는다 (4.1절). `risk`가 R2 이상인 스킬만 가능 |
 | `transform` | `source`, `target`, `steps` | `filter`, `group`, `sort`, `select`, `limit` |
-| `write_excel` | `filename`, `sheets` | |
+| `write_excel` | `filename`, `sheets` | 새 엑셀 파일을 결과 폴더에 저장 |
+| `excel_docs` | | 사용자의 Excel에 열린 문서 목록 (클라이언트 + 오피스 도구가 있을 때) |
+| `excel_read` | `doc`, `dataset`, `sheet`, `range` | 열린 문서(이름) 또는 파일 경로의 시트를 데이터셋으로 읽는다. 문서 보안 문서도 사용자의 Excel로 읽는다 |
+| `excel_write` | `doc`, `dataset`, `sheet`, `start` | 데이터셋을 문서의 시트에 쓴다 (저장은 안 함). **R3 스킬 또는 저장·상신 허용일 때만**, 쓰기 전에 사용자 허락을 받는다. 시험 실행이면 쓰기 직전에 멈춘다 |
+| `excel_save` | `doc`, `path` | Excel로 저장. `path` 없이는 열린 곳에 저장해 원본이 바뀌므로 R3/저장·상신 허용에 허락이 필요하고, `path`(전체 경로)를 주면 다른 이름 저장(사용자 Excel의 문서는 같은 형식의 사본만, 창의 문서 이름은 안 바뀜) |
 | `ask_user` | `question` | |
 | `next_step` | | 검사 줄이 없는 단계에서만 |
 | `read_text` | `ref` | 화면(ref를 주면 그 요소)에 보이는 글을 읽는다. 입력 칸 값과 비밀번호는 담지 않는다 |

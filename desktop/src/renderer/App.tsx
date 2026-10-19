@@ -27,6 +27,41 @@ const STATUS: Record<RunResult['status'], string> = {
   dryrun: '시험 실행 (제출 전 멈춤)',
 };
 
+/** 왼쪽 목록의 너비. 끌어서 바꾸고, 다시 열면 그대로 쓴다. */
+const SIDE_KEY = 'dogent.sideWidth';
+const SIDE_DEFAULT = 280;
+const SIDE_MIN = 200;
+const sideMax = () => Math.max(SIDE_MIN, Math.min(640, Math.round(window.innerWidth * 0.6)));
+const clampSide = (w: number) => Math.min(sideMax(), Math.max(SIDE_MIN, Math.round(w)));
+
+function useSideWidth() {
+  const [width, setWidth] = useState(() => {
+    try {
+      const saved = Number(localStorage.getItem(SIDE_KEY));
+      return saved ? clampSide(saved) : SIDE_DEFAULT;
+    } catch {
+      return SIDE_DEFAULT;
+    }
+  });
+  const set = (w: number, keep = true) => {
+    const next = clampSide(w);
+    setWidth(next);
+    if (!keep) return;
+    try {
+      localStorage.setItem(SIDE_KEY, String(next));
+    } catch {
+      /* 저장 못 해도 이번 실행에서는 그대로 쓴다 */
+    }
+  };
+  // 창을 줄이면 목록이 화면을 다 차지하지 않게 맞춘다
+  useEffect(() => {
+    const onResize = () => setWidth((w) => clampSide(w));
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  return [width, set] as const;
+}
+
 const EXAMPLES = ['7라인 재공 확인해줘', '8라인을 선택하고 조회해서 총 몇 건인지 알려줘', 'skills', 'browsers'];
 
 export function App() {
@@ -41,6 +76,7 @@ export function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [opts, setOpts] = useState({ allowWrite: false, dryRun: false });
   const [query, setQuery] = useState('');
+  const [sideWidth, setSideWidth] = useSideWidth();
   const [page, setPage] = useState<{ url: string; title: string } | null>(null);
   const feedEnd = useRef<HTMLDivElement>(null);
 
@@ -201,7 +237,7 @@ export function App() {
         </button>
       </header>
 
-      <div className="body">
+      <div className="body" style={{ gridTemplateColumns: `${sideWidth}px 6px minmax(0, 1fr)` }}>
         <aside className="side">
           <nav className="side-tabs">
             <button className={side === 'skills' ? 'on' : ''} onClick={() => setSide('skills')}>
@@ -273,6 +309,47 @@ ${x.url}`}>
             <ExcelDocs />
           )}
         </aside>
+
+        <div
+          className="splitter"
+          id="side-splitter"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="목록 너비 조절"
+          aria-valuemin={SIDE_MIN}
+          aria-valuemax={sideMax()}
+          aria-valuenow={sideWidth}
+          tabIndex={0}
+          title="끌어서 목록 너비를 바꿉니다 (두 번 누르면 처음 너비)"
+          onPointerDown={(e) => {
+            e.preventDefault();
+            const el = e.currentTarget;
+            el.setPointerCapture(e.pointerId);
+            el.classList.add('drag');
+            const left = el.parentElement!.getBoundingClientRect().left;
+            const move = (ev: PointerEvent) => setSideWidth(ev.clientX - left, false);
+            const up = (ev: PointerEvent) => {
+              el.releasePointerCapture(ev.pointerId);
+              el.classList.remove('drag');
+              el.removeEventListener('pointermove', move);
+              el.removeEventListener('pointerup', up);
+              el.removeEventListener('pointercancel', up);
+              setSideWidth(ev.clientX - left);
+            };
+            el.addEventListener('pointermove', move);
+            el.addEventListener('pointerup', up);
+            el.addEventListener('pointercancel', up);
+          }}
+          onDoubleClick={() => setSideWidth(SIDE_DEFAULT)}
+          onKeyDown={(e) => {
+            const step = e.shiftKey ? 48 : 16;
+            if (e.key === 'ArrowLeft') setSideWidth(sideWidth - step);
+            else if (e.key === 'ArrowRight') setSideWidth(sideWidth + step);
+            else if (e.key === 'Home') setSideWidth(SIDE_DEFAULT);
+            else return;
+            e.preventDefault();
+          }}
+        />
 
         <main className="main">
           <div className="feed" id="feed">

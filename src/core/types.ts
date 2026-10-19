@@ -170,6 +170,34 @@ export interface ApprovalRequest {
 export interface UiPort {
   ask(question: string): Promise<string>;
   approve(request: ApprovalRequest): Promise<boolean>;
+  /** 엑셀 문서를 바꾸기 전에 사용자의 허락을 받는다. 없으면 바꾸지 않는다. */
+  confirm?(message: string): Promise<boolean>;
+}
+
+/** 사용자 Excel에 열려 있는 문서 하나 */
+export interface OfficeDoc {
+  name: string;
+  /** 전체 경로나 주소 */
+  fullName: string;
+  readOnly: boolean;
+}
+
+/**
+ * 엑셀 문서를 다루는 통로. 문서는 이름(열린 문서) 또는 경로로 가리킨다.
+ * 구현은 사용자의 Excel을 거치므로 문서 보안(NASCA)이 걸린 문서도 다룰 수 있다.
+ */
+export interface OfficePort {
+  /** 사용자의 Excel에 지금 열려 있는 문서 */
+  docs(): Promise<OfficeDoc[]>;
+  /** 시트의 표를 읽는다 (첫 행은 열 이름). sheets는 문서의 시트 이름들, total은 표 전체 행 수 */
+  read(
+    doc: string,
+    opts: { sheet?: string; range?: string },
+  ): Promise<{ sheet: string; sheets: string[]; columns: string[]; rows: Cell[][]; total: number }>;
+  /** 시트에 표를 쓴다 (저장은 하지 않는다). 시트가 없으면 만든다 */
+  write(doc: string, sheet: string, table: { columns: string[]; rows: Cell[][] }, start?: string): Promise<string>;
+  /** Excel로 저장한다. path가 없으면 연 곳에, 있으면 그 경로에 다른 이름으로. 저장한 곳을 돌려준다 */
+  save(doc: string, path?: string): Promise<string>;
 }
 
 export interface FilePort {

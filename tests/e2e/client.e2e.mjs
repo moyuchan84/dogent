@@ -343,6 +343,23 @@ try {
     assert.deepEqual(saved, [rows.map((row) => row.map(String))]);
   });
 
+  await scenario('엑셀 요청: 맞는 스킬이 없고 엑셀만 필요하면 브라우저 없이 엑셀 도구로 자유 요청', async () => {
+    if (!existsSync(join(ROOT, 'office/dist/dogent-office.exe'))) return '건너뜀: pnpm office:build 필요';
+    const ExcelJS = (await import('exceljs')).default;
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('목록');
+    ws.addRow(['LOT', '수량']);
+    for (const r of [['A1', 10], ['A2', 20], ['A3', 30]]) ws.addRow(r);
+    const file = join(home, 'lots.xlsx');
+    await wb.xlsx.writeFile(file);
+    const r = await client([`${file} 파일을 엑셀로 열어서 정리해줘`, '--yes']);
+    assert.equal(r.code, 0, r.text);
+    assert.match(r.text, /엑셀 도구로 자유 요청을 합니다 \(브라우저는 쓰지 않습니다\)/);
+    assert.match(r.text, /엑셀에서 3행을 읽었습니다/);
+    assert.doesNotMatch(r.text, /확장 연결됨/);
+    return '브라우저 연결 없이 완료';
+  });
+
   await scenario('브라우저가 둘이면 목록을 보여 주고, --browser로 고른 브라우저를 조작', async () => {
     // 두 번째 브라우저(따로 띄운 Chromium, 확장 설치도 따로)를 같은 클라이언트에 붙인다.
     const second = await chromium.launchPersistentContext(await mkdtemp(join(tmpdir(), 'dogent-client-2-')), {

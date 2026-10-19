@@ -152,6 +152,13 @@ function freeReply(user) {
   if (history.slice(-2).filter((h) => h.includes('→ 실패')).length === 2) {
     return { thought: '두 번 연속 실패', tool: 'abort', args: { reason: history.at(-1).split('→ 실패: ')[1] ?? '실패' } };
   }
+  // 엑셀 도구를 쓸 수 있는 요청: 요청의 경로(없으면 열린 첫 문서)를 읽어 행 수를 보고한다.
+  if (user.includes('## 열려 있는 엑셀 문서') && /엑셀|xlsx/.test(request)) {
+    const doc = /([A-Za-z]:\\[^\s]+?\.xlsx)/.exec(request)?.[1] ?? /^- (\S+)/m.exec(section(user, '## 열려 있는 엑셀 문서', '## 현재 화면'))?.[1];
+    if (!doc) return { thought: '문서 없음', tool: 'abort', args: { reason: '열려 있는 엑셀 문서가 없습니다' } };
+    if (!did(/excel_read .*→ 성공/)) return { thought: '엑셀 읽기', tool: 'excel_read', args: { doc, dataset: 'sheet' } };
+    return { thought: '보고', tool: 'finish', args: { summary: '엑셀에서 {rows.sheet}행을 읽었습니다.' } };
+  }
   const line = /(\d+라인)/.exec(request)?.[1];
   const lineSel = ref('combobox', '라인');
   if (line && lineSel && lineSel.value !== line) {

@@ -25,6 +25,7 @@ pnpm office:build        # office/dist/dogent-office.exe
 | `excel_user_workbooks` | 사용자의 Excel에 지금 열린 문서 |
 | `excel_attach` | 사용자의 Excel에 이미 열린 문서를 잡음 (아래 EDM) |
 
+- `excel_attach`로 잡은 사용자의 문서를 다른 이름으로 저장하면 사용자 창의 파일 이름이 바뀌지 않도록 **사본(SaveCopyAs)만** 만듭니다. 그래서 같은 형식(`.xlsx` → `.xlsx`)만 됩니다.
 - 사용자가 띄운 Excel과 섞이지 않도록 전용 Excel을 숨겨서 띄우고, 끝날 때 연 문서는 저장하지 않고 닫은 뒤 Excel을 끝냅니다.
 - Excel이 바빠 호출을 거절하면(문서를 여는 중, 칸 편집 중) 최대 60초 동안 다시 부릅니다.
 - 문서 보안 프로그램이 Excel 창을 요구하면 `DOGENT_OFFICE_VISIBLE=1`로 띄웁니다.

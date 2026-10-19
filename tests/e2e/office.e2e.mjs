@@ -191,6 +191,16 @@ try {
       assert.equal(rows.total_rows, 3);
       await office.ok('excel_write', { workbook: r.workbook, sheet: '재공', start: 'F1', rows: [['확인'], ['완료']] });
       await office.ok('excel_save', { workbook: r.workbook });
+      // 다른 이름으로 저장은 사본만 만든다. 사용자 창의 문서 이름이 바뀌면 안 된다.
+      const copy = join(dir, `edm-사본-${Date.now()}.xlsx`);
+      await office.ok('excel_write', { workbook: r.workbook, sheet: '재공', start: 'G1', rows: [['사본만']] });
+      await office.ok('excel_save', { workbook: r.workbook, path: copy });
+      const copied = new ExcelJS.Workbook();
+      await copied.xlsx.readFile(copy);
+      assert.equal(copied.getWorksheet('재공').getCell('G1').value, '사본만');
+      const csv = await office.call('excel_save', { workbook: r.workbook, path: join(dir, 'x.csv') });
+      assert.equal(csv.error, true, '다른 형식의 사본 저장은 거절');
+      assert.match(csv.text, /같은 형식/);
       await office.ok('excel_close', { workbook: r.workbook });
       const listed = await office.ok('excel_user_workbooks');
       assert.ok(listed.some((b) => b.name === edmName), '사용자 문서가 그대로 열려 있음');
