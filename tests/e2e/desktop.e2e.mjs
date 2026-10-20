@@ -255,6 +255,41 @@ try {
     await win.locator('#settings').getByRole('button', { name: '닫기' }).click();
   });
 
+  await scenario('커넥터: 설치 명령을 붙이면 미리보기 → 더하기 → 연결 시험 → 목록에서 권한을 바꾸고 빼기', async () => {
+    await win.locator('#tab-connectors').click();
+    assert.match(await win.locator('#connector-list').innerText(), /연결한 커넥터가 없습니다/);
+    await win.locator('#add-connector').click();
+    const mock = join(ROOT, 'tools/mock-mcp.mjs').replaceAll(String.fromCharCode(92), '/');
+    const node = process.execPath.replaceAll(String.fromCharCode(92), '/');
+    await win.locator('#connect-text').fill('hello');
+    await win.locator('#connect-dialog [role=alert]').waitFor();
+    assert.equal(await win.locator('#connect-submit').isDisabled(), true);
+    await win.locator('#connect-text').fill(`claude mcp add mock-mes -- "${node}" "${mock}"`);
+    const preview = win.locator('#connect-preview');
+    await preview.waitFor();
+    assert.match(await preview.innerText(), /mock-mes[\s\S]*이 PC에서 실행[\s\S]*서버를 쓸 때마다 이 PC에서 실행/);
+    await win.screenshot({ path: join(ROOT, 'test-results/desktop-connect-preview.png') });
+    await win.locator('#connect-submit').click();
+    const result = win.locator('#connect-result');
+    await result.waitFor({ timeout: 30_000 });
+    assert.match(await result.innerText(), /mock-mes\s+연결됨 · 도구 \d+개/);
+    await win.screenshot({ path: join(ROOT, 'test-results/desktop-connect-result.png') });
+    await result.getByRole('button', { name: '완료' }).click();
+    const card = win.locator('[data-connector=mock-mes]');
+    assert.match(await card.innerText(), /이 PC/);
+    await card.locator('.conn-main').click();
+    await card.locator('.tool-row').first().waitFor({ timeout: 30_000 });
+    assert.match(await card.innerText(), /연결됨 · 도구/);
+    const select = card.locator('.tool-row select').first();
+    await select.selectOption('deny');
+    await win.waitForTimeout(500);
+    await win.screenshot({ path: join(ROOT, 'test-results/desktop-connectors.png') });
+    await card.getByRole('button', { name: '빼기' }).click();
+    await card.getByRole('button', { name: '정말 빼기' }).click();
+    await win.locator('#connector-list').getByText('연결한 커넥터가 없습니다').waitFor();
+    await win.locator('#tab-connectors').locator('xpath=preceding-sibling::button').first().click();
+  });
+
   await scenario('결과 확인용: 7라인 건수가 모의 사이트와 같음', async () => {
     await open('/wip.html');
     await win.locator('[data-skill=wip-count-app]').click();

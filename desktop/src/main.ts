@@ -9,6 +9,8 @@ import { BrowserWindow, app, ipcMain, shell } from 'electron';
 import { docOfSkill, skillCoversUrl, type RunEvent } from '../../src/core';
 import { loadToken } from '../../client/src/bridge';
 import { describeConfig, loadConfig, setConfig } from '../../client/src/config';
+import { addServers, parsePasted, patchServer, probeServer, removeServer, serverRows, serverRow } from '../../client/src/connectors';
+import { loadMcpConfig } from '../../client/src/mcp-hub';
 import { Session, type SessionOptions, type Ui } from '../../client/src/session';
 import { findInstalledExtensions, registerNativeHost, registeredIds } from '../../bridge/register.mjs';
 import type { ExtensionStatus, SkillSummary, UiMessage } from './ipc';
@@ -193,6 +195,33 @@ ipcMain.handle('dogent:set-config', async (_e, key: string, value: string) => {
   setConfig(key, value);
   await renewSession();
   return describeConfig(loadConfig());
+});
+
+ipcMain.handle('dogent:connectors', () => serverRows(loadMcpConfig()));
+ipcMain.handle('dogent:connect-preview', (_e, text: string) => {
+  const p = parsePasted(text);
+  if (p.kind === 'skill') return p;
+  const have = loadMcpConfig().servers;
+  return { kind: 'mcp', servers: Object.entries(p.entries).map(([n, s]) => serverRow(n, s)), replaces: Object.keys(p.entries).filter((n) => have[n]), scope: p.scope };
+});
+ipcMain.handle('dogent:connect-add', async (_e, text: string) => {
+  const p = parsePasted(text);
+  if (p.kind !== 'mcp') throw new Error('커넥터가 아닌 내용입니다');
+  addServers(p.entries);
+  return Promise.all(Object.entries(p.entries).map(([n, s]) => probeServer(n, s)));
+});
+ipcMain.handle('dogent:connect-probe', (_e, name: string) => {
+  const s = loadMcpConfig().servers[name];
+  if (!s) throw new Error(`서버 "${name}"이(가) 없습니다`);
+  return probeServer(name, s);
+});
+ipcMain.handle('dogent:connect-patch', (_e, name: string, patch: Parameters<typeof patchServer>[1]) => {
+  patchServer(name, patch);
+  return serverRows(loadMcpConfig());
+});
+ipcMain.handle('dogent:connect-remove', (_e, name: string) => {
+  removeServer(name);
+  return serverRows(loadMcpConfig());
 });
 
 function createWindow(): void {

@@ -1,6 +1,11 @@
 // 메인 프로세스 ↔ 창 사이에 오가는 메시지 모양. 양쪽이 같이 쓴다.
 import type { BrowserLink } from '../../bridge/hub.mjs';
 import type { ApprovalRequest, RunEvent, RunResult } from '../../src/core';
+import type { ProbeResult, ServerRow } from '../../client/src/connectors';
+import type { Permission } from '../../client/src/mcp-hub';
+
+export type { ProbeResult, ServerRow, ToolRow } from '../../client/src/connectors';
+export type { Permission };
 
 export type UiMessage =
   | { kind: 'print'; text: string }
@@ -52,6 +57,11 @@ export interface SystemSummary {
   skills: number;
 }
 
+/** 커넥터 붙여 넣기의 미리보기: 무엇을 더하게 되는지 */
+export type ConnectPreview =
+  | { kind: 'mcp'; servers: ServerRow[]; replaces: string[]; scope?: string }
+  | { kind: 'skill'; url: string; agent?: string };
+
 export interface DogentApi {
   init(): Promise<InitInfo>;
   send(text: string): Promise<void>;
@@ -71,6 +81,15 @@ export interface DogentApi {
   /** 확장 연결(Native Messaging 등록) 상태. register를 주면 그 확장 ID도 허용해 등록한다. */
   extension(register?: string): Promise<ExtensionStatus>;
   setConfig(key: string, value: string): Promise<string>;
+  /** 커넥터(MCP 서버) */
+  connectors(): Promise<ServerRow[]>;
+  /** 붙여 넣은 글을 읽어 무엇을 더할지 보여 준다 (아직 저장하지 않는다) */
+  connectPreview(text: string): Promise<ConnectPreview>;
+  /** 미리보기대로 저장하고 연결을 시험한다 */
+  connectAdd(text: string): Promise<ProbeResult[]>;
+  connectProbe(name: string): Promise<ProbeResult>;
+  connectPatch(name: string, patch: { disabled?: boolean; keywords?: string[]; permission?: { tool: string; value: Permission | 'default' } }): Promise<ServerRow[]>;
+  connectRemove(name: string): Promise<ServerRow[]>;
   onUi(listener: (message: UiMessage) => void): () => void;
 }
 

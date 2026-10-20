@@ -1,3 +1,5 @@
+import type { Skill } from './skill';
+
 export type Cell = string | number;
 
 export interface Dataset {
@@ -121,6 +123,15 @@ export interface DownloadedFile {
   data: ArrayBuffer;
 }
 
+/** 브라우저 탭 하나. allowed는 Dogent가 조작할 수 있는 사이트인지다. */
+export interface TabInfo {
+  id: number;
+  url: string;
+  title: string;
+  current: boolean;
+  allowed: boolean;
+}
+
 export interface BrowserPort {
   snapshot(): Promise<PageSnapshot>;
   navigate(url: string): Promise<ActResult>;
@@ -131,6 +142,12 @@ export interface BrowserPort {
   click(ref: number, confirm?: ConfirmPolicy): Promise<ActResult>;
   /** 에이전트가 따라 들어간 새 창을 닫고 원래 창으로 돌아간다. */
   closeTab?(): Promise<ActResult>;
+  /** 브라우저의 탭 목록 (current는 지금 조작 대상) */
+  tabs?(): Promise<TabInfo[]>;
+  /** 새 탭에서 주소를 열고 그 탭을 조작 대상으로 삼는다. 조작할 사이트 목록 밖이면 실패한다. */
+  openTab?(url: string): Promise<ActResult>;
+  /** 다른 탭을 조작 대상으로 삼는다 */
+  selectTab?(tab: number): Promise<ActResult>;
   type(ref: number, text: string): Promise<ActResult>;
   select(ref: number, value: string): Promise<ActResult>;
   waitFor(text: string, timeoutMs: number): Promise<boolean>;
@@ -200,6 +217,30 @@ export interface OfficePort {
   save(doc: string, path?: string): Promise<string>;
 }
 
+/** 외부 도구(MCP 서버 등) 하나. name은 "서버.도구" 모양이다. */
+export interface ExternalTool {
+  name: string;
+  description: string;
+  /** 인자의 JSON 스키마 (MCP inputSchema) */
+  schema?: { properties?: Record<string, { type?: string; description?: string; enum?: unknown[] }>; required?: string[] };
+  /** 읽기만 하는 도구 (MCP의 readOnlyHint). 아니면 바꾸는 도구로 본다 */
+  readOnly: boolean;
+  /** allow: 묻지 않고 부름, ask: 부르기 전에 사용자에게 묻는다, deny: 부르지 않는다 */
+  permission: 'allow' | 'ask' | 'deny';
+}
+
+/** 외부 도구를 부르는 통로. 도구 목록은 실행을 시작할 때 정해진다. */
+export interface ToolPort {
+  list(): ExternalTool[];
+  call(name: string, args: Record<string, unknown>): Promise<{ text: string; isError: boolean }>;
+}
+
+/** 다른 스킬을 부르는 통로 (run_skill). 스킬 목록은 실행을 시작할 때 정해진다. */
+export interface SkillCatalogPort {
+  list(): Skill[];
+  get(id: string): Skill | undefined;
+}
+
 export interface FilePort {
   save(filename: string, data: ArrayBuffer): Promise<void>;
 }
@@ -263,9 +304,16 @@ export type RunEvent =
   | { type: 'observe'; n: number; url: string; title: string }
   /** raw는 형식에 맞지 않았던 모델 응답의 앞부분이다. 왜 다시 물었는지 기록에서 볼 수 있게 남긴다. */
   | { type: 'llm_retry'; n: number; reason: string; raw?: string }
+  /** 모델을 한 번 부를 때 보낸 글자 수와 걸린 시간. 프롬프트를 줄인 효과를 재는 데 쓴다. */
+  | { type: 'llm_usage'; n: number; systemChars: number; userChars: number; replyChars: number; ms: number }
   | { type: 'blocked'; n: number; tool: string; reason: string }
   | { type: 'action'; entry: HistoryEntry }
   | { type: 'step_done'; step: number }
+  /** run_skill로 다른 스킬을 따로 실행하기 시작함 */
+  | { type: 'sub_start'; skill: string; name: string; inputs: Record<string, string | number> }
+  /** 따로 실행 중인 스킬의 동작 하나. 부모의 동작 기록(action)과 섞이지 않게 따로 낸다. */
+  | { type: 'sub_action'; skill: string; entry: HistoryEntry }
+  | { type: 'sub_end'; skill: string; status: RunStatus; message: string }
   | { type: 'approval'; n: number; request: ApprovalRequest; approved: boolean; dryRun: boolean }
   /** 로그인 화면을 만나 사람이 로그인하기를 기다리기 시작함 */
   | { type: 'login_wait'; url: string; timeoutSec: number }

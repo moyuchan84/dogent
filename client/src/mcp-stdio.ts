@@ -1,12 +1,18 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createInterface } from 'node:readline';
-import type { McpCall } from '../../src/core';
+import { MCP_CLIENT_INFO, MCP_PROTOCOL_VERSION, McpPeer } from './mcp-peer';
+
+export type { McpToolInfo } from './mcp-peer';
+
+let stdioUsed = false;
+/** 이 프로세스가 stdio MCP 서버를 띄웠는지 (끝낼 때 process.exit()를 피하려고 본다) */
+export const stdioMcpUsed = () => stdioUsed;
 
 /**
  * 다른 프로그램으로 도는 MCP 서버(stdio)에 붙는다. 오피스 도구(dogent-office.exe)처럼
  * 클라이언트 밖의 도구를 같은 방식으로 더할 때 쓴다 (docs/09 D2).
  */
-export class StdioMcp {
+export class StdioMcp extends McpPeer {
   private nextId = 1;
   private pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
   private exited: Error | null = null;
@@ -15,6 +21,7 @@ export class StdioMcp {
     private child: ChildProcessWithoutNullStreams,
     name: string,
   ) {
+    super();
     createInterface({ input: child.stdout }).on('line', (line) => {
       let msg: { id?: number; result?: unknown; error?: { message: string } };
       try {
@@ -36,14 +43,25 @@ export class StdioMcp {
   }
 
   /** 서버를 띄우고 MCP 시작 인사를 마친다. */
-  static async start(command: string, args: string[] = [], opts: { name?: string; log?: (line: string) => void } = {}): Promise<StdioMcp> {
+  static async start(
+    command: string,
+    args: string[] = [],
+    opts: { name?: string; log?: (line: string) => void; env?: Record<string, string>; cwd?: string; shell?: boolean } = {},
+  ): Promise<StdioMcp> {
     const name = opts.name ?? command;
-    const child = spawn(command, args, { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
+    stdioUsed = true;
+    const child = spawn(command, args, {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      windowsHide: true,
+      env: opts.env ? { ...process.env, ...opts.env } : process.env,
+      cwd: opts.cwd,
+      shell: opts.shell,
+    });
     const failed = new Promise<never>((_, reject) => child.once('error', (e) => reject(new Error(`${name}을(를) 실행하지 못했습니다: ${e.message}`))));
     createInterface({ input: child.stderr }).on('line', (l) => opts.log?.(l));
     const mcp = new StdioMcp(child, name);
     await Promise.race([
-      mcp.request('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'dogent-client', version: '0.1.0' } }),
+      mcp.request('initialize', { protocolVersion: MCP_PROTOCOL_VERSION, capabilities: {}, clientInfo: MCP_CLIENT_INFO }),
       failed,
     ]);
     child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' })}\n`);
@@ -58,12 +76,6 @@ export class StdioMcp {
       this.child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id, method, params })}\n`);
     });
   }
-
-  /** tools/call. 도구가 실패하면 isError가 true다. */
-  call: McpCall = async (name, args) => {
-    const r = (await this.request('tools/call', { name, arguments: args })) as { content: { text: string }[]; isError?: boolean };
-    return { text: r.content[0]?.text ?? '', isError: !!r.isError };
-  };
 
   /** 입력을 닫아 서버가 스스로 정리하고 끝나게 한다. 오래 걸리면 끝낸다. */
   async close(waitMs = 15_000): Promise<void> {

@@ -37,6 +37,7 @@ import { BatchView } from './Batch';
 import { History } from './History';
 import { Inspect } from './Inspect';
 import { Sites } from './Sites';
+import { SkillPicker } from './SkillPicker';
 import { Connect } from './Connect';
 import { hostAccess } from '@/src/ext/sites';
 import { download, targetTab } from './util';
@@ -684,10 +685,26 @@ export function App() {
         </div>
         {notice && <p className="notice">{notice}</p>}
 
-        <label>
-          스킬
+        <div className="field">
+          <span className="field-label">스킬</span>
+          <SkillPicker
+            skills={skills}
+            value={skillId}
+            freeId={FREE_SKILL_ID}
+            disabled={running}
+            tagOf={(id) => (isDraft(id) ? '초안' : isShared(id) ? '공유' : '')}
+            onPick={(id) => {
+              setSkillId(id);
+              setForm({});
+              setPicked({});
+              setBatch(null);
+            }}
+          />
           <select
             id="skill"
+            className="sr-only"
+            aria-hidden
+            tabIndex={-1}
             value={skillId}
             disabled={running}
             onChange={(e) => {
@@ -705,7 +722,7 @@ export function App() {
               </option>
             ))}
           </select>
-        </label>
+        </div>
         {settings.skillsUrl && (
           <p className="hint" id="shared-status">
             {syncing
@@ -724,7 +741,6 @@ export function App() {
             공유 스킬 {e}
           </p>
         ))}
-        {skill && <p className="hint">{skill.description}</p>}
         {skill?.inputs.map((i) => (
           <label key={i.name}>
             {i.label ?? i.name}
@@ -811,7 +827,7 @@ export function App() {
           </details>
         )}
         {batch && <BatchView batch={batch} running={running} onReport={downloadBatchReport} onClear={() => setBatch(null)} />}
-        <div className="row">
+        <div className="row run-bar">
           {running ? (
             <button id="stop" className="danger" onClick={() => abortRef.current?.abort()}>
               중지
@@ -842,9 +858,9 @@ export function App() {
                       {h.by === 'skill' && <span className="chip">모델 호출 없음</span>}
                       {h.by === 'cache' && <span className="chip">기억한 경로</span>}
                       <b>{h.tool}</b>
-                      <code>{JSON.stringify(h.args).slice(0, 90)}</code>
+                      <code title={JSON.stringify(h.args)}>{JSON.stringify(h.args)}</code>
                     </div>
-                    {h.thought && <div className="thought">{h.thought}</div>}
+                    {h.thought && h.by !== 'skill' && <div className="thought">{h.thought}</div>}
                     <div className="outcome">{h.result}</div>
                   </li>
                 );

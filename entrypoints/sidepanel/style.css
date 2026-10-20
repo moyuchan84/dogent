@@ -1,27 +1,41 @@
+/* Dogent 확장 사이드 패널. 데스크탑 앱과 같은 따뜻한 중립색을 쓴다 (desktop/src/renderer/style.css). */
 :root {
-  --bg: #f6f7f9;
-  --surface: #fff;
-  --ink: #16202c;
-  --muted: #5b6878;
-  --line: #dfe4ea;
-  --accent: #1a56c4;
-  --ok-soft: #e3f4ec;
-  --warn-soft: #fdf1dc;
+  --bg: #faf9f5;
+  --surface: #ffffff;
+  --sunken: #f0eee6;
+  --hover: #e8e5db;
+  --ink: #1f1e1d;
+  --muted: #6b6a64;
+  --line: #e4e1d6;
+  --accent: #2b5fc7;
+  --accent-ink: #ffffff;
+  --accent-soft: #e8eefb;
+  --ok: #1f7a4d;
+  --ok-soft: #e4f3ea;
+  --warn: #8a5300;
+  --warn-soft: #fbefd8;
   --risk: #b3261e;
-  --risk-soft: #fbe9e7;
+  --risk-soft: #fbe9e6;
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #11161c;
-    --surface: #1a212a;
-    --ink: #e7ecf2;
-    --muted: #9aa7b6;
-    --line: #2c3743;
+    --bg: #262624;
+    --surface: #30302e;
+    --sunken: #1f1e1d;
+    --hover: #3a3936;
+    --ink: #f1efe8;
+    --muted: #a3a198;
+    --line: #3f3e3a;
     --accent: #7aa7f5;
-    --ok-soft: #16332a;
+    --accent-ink: #14213a;
+    --accent-soft: #223250;
+    --ok: #6fd3a0;
+    --ok-soft: #1c3a2d;
+    --warn: #f0b860;
     --warn-soft: #3a2c12;
     --risk: #f28b82;
-    --risk-soft: #3d1c1a;
+    --risk-soft: #44201d;
+    color-scheme: dark;
   }
 }
 * {
@@ -31,8 +45,9 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--ink);
-  font: 14px/1.55 'Malgun Gothic', '맑은 고딕', system-ui, sans-serif;
+  font: 14px/1.6 'Pretendard', 'Malgun Gothic', '맑은 고딕', system-ui, sans-serif;
   word-break: keep-all;
+  -webkit-font-smoothing: antialiased;
 }
 .app {
   padding: 12px;
@@ -65,8 +80,8 @@ h2 {
 .card {
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 14px;
+  border-radius: 14px;
+  padding: 14px 14px 12px;
 }
 label {
   display: block;
@@ -93,12 +108,12 @@ select {
   display: block;
   width: 100%;
   margin-top: 4px;
-  padding: 7px 9px;
+  padding: 7px 10px;
   font: inherit;
   color: var(--ink);
   background: var(--bg);
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 8px;
 }
 input:focus,
 select:focus {
@@ -117,31 +132,34 @@ button {
   font: inherit;
   font-weight: 600;
   padding: 7px 14px;
-  border-radius: 6px;
+  border-radius: 8px;
   border: 1px solid var(--accent);
   background: var(--accent);
-  color: var(--surface);
+  color: var(--accent-ink);
   cursor: pointer;
   white-space: nowrap;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
 }
 button:disabled {
   opacity: 0.5;
   cursor: default;
 }
 button.secondary {
-  background: transparent;
-  color: var(--accent);
+  background: var(--surface);
+  color: var(--ink);
+  border-color: var(--line);
 }
 button.ghost {
   background: transparent;
   border-color: transparent;
   color: var(--muted);
-  font-weight: 400;
+  font-weight: 500;
   padding: 4px 8px;
 }
 button.danger {
   background: var(--risk);
   border-color: var(--risk);
+  color: #fff;
 }
 #run,
 #stop {
@@ -171,8 +189,8 @@ button.danger {
   gap: 6px;
 }
 .log li {
-  border-left: 3px solid var(--accent);
-  padding: 4px 0 4px 9px;
+  border-left: 2px solid var(--ok);
+  padding: 3px 0 3px 10px;
   font-size: 13px;
 }
 .log li.fail {
@@ -210,9 +228,9 @@ code {
 }
 .question {
   margin-top: 10px;
-  padding: 10px;
+  padding: 10px 12px;
   background: var(--warn-soft);
-  border-radius: 8px;
+  border-radius: 10px;
 }
 .question p {
   margin: 0;
@@ -220,7 +238,7 @@ code {
 .result {
   margin-top: 12px;
   padding: 10px 12px;
-  border-radius: 8px;
+  border-radius: 10px;
   background: var(--risk-soft);
 }
 .result.done {
@@ -265,19 +283,19 @@ textarea {
   display: block;
   width: 100%;
   margin-top: 4px;
-  padding: 7px 9px;
+  padding: 7px 10px;
   font: inherit;
   color: var(--ink);
   background: var(--bg);
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 8px;
   resize: vertical;
 }
 .approval {
   margin-top: 10px;
   padding: 12px;
   border: 2px solid var(--risk);
-  border-radius: 8px;
+  border-radius: 12px;
   background: var(--risk-soft);
 }
 .approval dl {
@@ -320,31 +338,36 @@ input[type='file'] {
   background: var(--surface);
 }
 .chip {
-  font-size: 10px;
-  padding: 0 6px;
+  font-size: 10.5px;
+  padding: 0 7px;
   border-radius: 999px;
-  background: var(--ok-soft);
+  background: var(--hover);
   color: var(--muted);
+  line-height: 16px;
 }
 
 /* 탭 */
 .tabs {
   display: flex;
-  gap: 4px;
-  border-bottom: 1px solid var(--line);
+  gap: 2px;
+  padding: 3px;
+  border-radius: 10px;
+  background: var(--hover);
 }
 .tabs button {
+  flex: 1;
   background: none;
   color: var(--muted);
   border: 0;
-  border-bottom: 2px solid transparent;
-  border-radius: 0;
-  padding: 6px 10px;
+  border-radius: 7px;
+  padding: 5px 10px;
+  font-weight: 600;
+  font-size: 13px;
 }
 .tabs button.on {
-  color: var(--accent);
-  border-bottom-color: var(--accent);
-  font-weight: 600;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 1px 2px rgba(31, 30, 29, 0.1);
 }
 
 /* 스킬 만들기 */
@@ -678,12 +701,12 @@ textarea.code {
 }
 .topbar .tabs {
   border-bottom: 0;
-  margin-top: 6px;
+  margin: 8px 0 10px;
 }
 .header-actions button.on {
-  color: var(--accent);
-  background: var(--surface);
-  border-color: var(--line);
+  color: var(--ink);
+  background: var(--hover);
+  border-color: transparent;
   font-weight: 600;
 }
 .chip.running {
@@ -750,4 +773,360 @@ label .hint {
   display: block;
   font-weight: 400;
   margin-top: 4px;
+}
+
+/* 단추 모양 */
+button:hover:not(:disabled) {
+  filter: brightness(1.06);
+}
+button.secondary:hover:not(:disabled),
+button.ghost:hover:not(:disabled) {
+  background: var(--hover);
+  filter: none;
+}
+button.ghost:hover:not(:disabled) {
+  color: var(--ink);
+}
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+input::placeholder,
+textarea::placeholder {
+  color: var(--muted);
+  opacity: 0.8;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* 요청 입력: 크게, 해석 단추는 그 옆에 */
+#request {
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: var(--surface);
+}
+#request:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+#plan {
+  align-self: stretch;
+  border-radius: 10px;
+}
+
+/* 스킬 고르기 */
+.field {
+  position: relative;
+  margin-top: 12px;
+}
+.field-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.picker {
+  margin-top: 4px;
+}
+.picker-current {
+  position: relative;
+  display: grid;
+  gap: 1px;
+  width: 100%;
+  text-align: left;
+  padding: 8px 32px 8px 12px;
+  background: var(--bg);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font-weight: 400;
+  white-space: normal;
+}
+.picker-current:hover:not(:disabled) {
+  background: var(--hover);
+  filter: none;
+}
+.picker-current[aria-expanded='true'] {
+  border-color: var(--accent);
+  background: var(--surface);
+}
+.pc-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.pc-main b {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pc-sub {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.chevron {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted);
+  font-size: 11px;
+}
+.risk {
+  flex: none;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 0 6px;
+  border-radius: 4px;
+  line-height: 16px;
+}
+.risk.R0,
+.risk.R1 {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+.risk.R2 {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+.risk.R3 {
+  background: var(--risk-soft);
+  color: var(--risk);
+}
+.tag {
+  flex: none;
+  font-size: 10.5px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--hover);
+  color: var(--muted);
+  line-height: 16px;
+}
+.picker-pop {
+  margin-top: 6px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  overflow: hidden;
+}
+.picker-search {
+  margin: 8px 8px 4px;
+  width: calc(100% - 16px);
+}
+.picker-pop ul {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  max-height: 320px;
+  overflow: auto;
+  display: grid;
+  gap: 1px;
+}
+.opt {
+  display: grid;
+  gap: 1px;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  color: var(--ink);
+  border: 0;
+  border-radius: 8px;
+  font-weight: 400;
+  padding: 7px 9px;
+  white-space: normal;
+}
+.opt:hover {
+  background: var(--hover);
+  filter: none;
+}
+.opt[aria-selected='true'] {
+  background: var(--accent-soft);
+}
+.picker-empty {
+  padding: 8px 10px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* 실행 줄: 입력이 길어도 늘 손 닿는 곳에 둔다 */
+.run-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  margin: 14px -14px -12px;
+  padding: 10px 14px;
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+  border-radius: 0 0 14px 14px;
+}
+.run-bar button {
+  padding: 9px 14px;
+  border-radius: 10px;
+}
+.log-head b {
+  font-weight: 600;
+}
+
+/* 진행 기록: 인자 원문은 한 줄로 줄이고(올리면 전체), "확인됨" 줄은 더 작게 */
+.log li,
+.log-head {
+  min-width: 0;
+}
+.log-head code {
+  flex: 1 1 100%;
+  min-width: 0;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.log li.minor {
+  padding-top: 1px;
+  padding-bottom: 1px;
+  font-size: 11.5px;
+}
+
+/* 입력 칸 안의 글은 라벨처럼 굵게 하지 않는다 */
+label input,
+label select,
+label textarea {
+  font-weight: 400;
+}
+input[type='file'] {
+  padding: 6px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+input[type='file']::file-selector-button {
+  font: inherit;
+  font-weight: 600;
+  margin-right: 10px;
+  padding: 4px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+}
+input[type='file']::file-selector-button:hover {
+  background: var(--hover);
+}
+
+/* 표: 세로줄 없이 머리글만 조용하게 */
+table {
+  width: 100%;
+}
+th,
+td {
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  padding: 5px 8px;
+}
+th {
+  background: transparent;
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 11.5px;
+}
+.tablewrap {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.tablewrap table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+.tablewrap tr:last-child td {
+  border-bottom: 0;
+}
+.stats {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+/* 비어 있는 화면과 실행 기록 */
+#history > h2 + .hint:last-child {
+  padding: 14px 0 6px;
+  text-align: center;
+}
+.run-head {
+  border-radius: 8px;
+  padding: 7px 6px;
+}
+.run-head:hover {
+  background: var(--hover);
+  filter: none;
+}
+.runs > li.fail .when {
+  color: var(--risk);
+}
+.chip.warn {
+  background: var(--risk-soft);
+  color: var(--risk);
+}
+
+/* 스킬 만들기: 녹화한 단계는 눈에 띄는 한 줄씩, 초안 목록은 구분선으로 */
+.rec-list {
+  list-style: none;
+  padding-left: 0;
+  counter-reset: rec;
+}
+.rec-list > li {
+  counter-increment: rec;
+  position: relative;
+  padding: 8px 10px 8px 34px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.rec-list > li::before {
+  content: counter(rec);
+  position: absolute;
+  left: 9px;
+  top: 8px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+}
+.draft {
+  padding: 12px 0 4px;
+}
+.draft-head {
+  justify-content: space-between;
+}
+.lint {
+  border-radius: 10px;
+}
+.notice.rec {
+  border-radius: 10px;
+  font-weight: 600;
+}
+details.batch > summary,
+.preview summary {
+  padding: 4px 0;
+  color: var(--ink);
 }

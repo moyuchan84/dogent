@@ -1,5 +1,7 @@
-import type { Skill, SkillInputs } from './skill';
-import type { ChatMessage, HistoryEntry } from './types';
+import { toolsPrompt } from './external';
+import { subagentPrompt } from './subagent';
+import { outlineSteps, type Skill, type SkillInputs } from './skill';
+import type { ChatMessage, ExternalTool, HistoryEntry } from './types';
 
 export const AGENT_SYSTEM_PROMPT = `당신은 사내 웹 시스템을 조작하는 업무 에이전트입니다. 주어진 스킬(업무 절차서)의 단계를 순서대로 수행합니다.
 
@@ -25,6 +27,9 @@ export const AGENT_SYSTEM_PROMPT = `당신은 사내 웹 시스템을 조작하�
 - navigate {"url"}: 화면 이동. 스킬의 허용 도메인만 가능합니다.
 - click {"ref", "accept_dialog"}: 요소 클릭. 누른 뒤 뜨는 확인 창은 취소하며, 결과에 창의 내용이 적힙니다. 확인을 눌러야 하는 창이면 accept_dialog=true로 다시 누릅니다. 누른 결과로 새 창이 열리면 그 뒤로는 새 창이 현재 화면입니다.
 - close_tab {}: 새로 열린 창을 닫고 원래 창으로 돌아갑니다.
+- tab_list {}: 브라우저의 탭 목록을 봅니다. 각 탭의 [번호], 제목, 주소가 나옵니다.
+- open_tab {"url"}: 새 탭에서 주소를 열고 그 탭을 조작 대상으로 삼습니다. 지금 화면을 두고 다른 사이트를 봐야 할 때 씁니다(허용 도메인만). 한 탭에서 값을 읽어 다른 사이트에 넣는 일은 값을 데이터셋이나 기록에 담고 open_tab(또는 switch_tab)으로 옮겨 가 진행합니다.
+- switch_tab {"tab"}: tab_list에 나온 번호의 탭으로 조작 대상을 바꿉니다. 탭을 바꾸면 화면 번호(ref)가 모두 새로 매겨집니다.
 - type {"ref", "text"}: 입력란에 값 입력 (기존 값을 바꿉니다).
 - select {"ref", "value"}: 선택 상자에서 옵션 선택. value는 화면에 보이는 옵션 글자입니다.
 - wait_for {"text", "timeout_sec"}: 화면에 글자가 나타날 때까지 대기.
@@ -96,6 +101,10 @@ export function buildTurnMessages(p: {
   datasets: string;
   /** 열려 있는 엑셀 문서. 엑셀 도구를 쓸 수 있을 때만 */
   office?: string;
+  /** 부를 수 있는 외부 도구(MCP). 비어 있으면 안내하지 않는다 */
+  tools?: ExternalTool[];
+  /** run_skill로 부를 수 있는 스킬. 비어 있거나 없으면 안내하지 않는다 */
+  skills?: Skill[];
   page: string;
   /** 지금 할 단계 번호(1부터)와 그 단계의 본문 */
   step: { n: number; total: number; text: string; unmet: string[] | null };
@@ -148,7 +157,7 @@ export function buildTurnMessages(p: {
 허용 도메인: ${p.skill.domains.join(', ')}
 입력값: ${JSON.stringify(p.inputs)}
 
-${p.body}
+${outlineSteps(p.body, p.step.n)}
 
 ## 지금까지의 동작
 ${historyText}
@@ -170,7 +179,11 @@ ${p.step.n}. ${p.step.text}
 ${ask}`;
 
   return [
-    { role: 'system', content: p.office === undefined ? AGENT_SYSTEM_PROMPT : AGENT_SYSTEM_PROMPT + OFFICE_PROMPT },
+    {
+      role: 'system',
+      content:
+        AGENT_SYSTEM_PROMPT + (p.office === undefined ? '' : OFFICE_PROMPT) + (p.tools?.length ? toolsPrompt(p.tools) : '') + subagentPrompt(p.skills ?? []),
+    },
     { role: 'user', content: user },
   ];
 }

@@ -17,6 +17,12 @@ export const TOOL_ARGS = {
     row,
   }),
   close_tab: z.object({}),
+  /** 브라우저의 탭 목록을 본다. */
+  tab_list: z.object({}),
+  /** 새 탭에서 주소를 연다. 이 탭이 조작 대상이 된다. 허용 도메인 안의 주소만 가능하다. */
+  open_tab: z.object({ url: z.url() }),
+  /** 다른 탭을 조작 대상으로 삼는다 (번호는 tab_list에 나온 것). */
+  switch_tab: z.object({ tab: z.coerce.number().int().nonnegative() }),
   type: z.object({ ref, text: z.string(), row }),
   select: z.object({ ref, value: z.string(), row }),
   wait_for: z.object({
@@ -72,6 +78,15 @@ export const TOOL_ARGS = {
     doc: z.string().min(1),
     path: z.string().optional(),
   }),
+  /**
+   * 외부 도구(MCP 서버)를 부른다. name은 "서버.도구", args는 그 도구의 인자.
+   * dataset을 주면 결과가 JSON 표(객체 배열)일 때 데이터셋에 담는다.
+   */
+  call_tool: z.object({
+    name: z.string().min(1),
+    args: z.record(z.string(), z.unknown()).default({}),
+    dataset: z.string().min(1).optional(),
+  }),
   /** 화면(ref를 주면 그 요소)에 보이는 글을 읽는다. 게시글·공지처럼 글 내용이 필요할 때 쓴다. */
   read_text: z.object({ ref: ref.optional() }),
   /**
@@ -83,6 +98,14 @@ export const TOOL_ARGS = {
     source: z.string().min(1).default('page'),
     name: z.string().regex(/^[a-z_][a-z0-9_]*$/).default('summary'),
   }),
+  /**
+   * 이미 있는 스킬 하나를 따로 실행하고 결과 요약만 받는다 (서브에이전트).
+   * 자식은 부모보다 권한이 넓어지지 않으며(subagent.ts), 자식 안에서는 다시 부를 수 없다.
+   */
+  run_skill: z.object({
+    id: z.string().min(1),
+    inputs: z.record(z.string(), z.unknown()).default({}),
+  }),
   ask_user: z.object({ question: z.string().min(1) }),
   finish: z.object({ summary: z.string().min(1) }),
   abort: z.object({ reason: z.string().min(1) }),
@@ -92,7 +115,7 @@ export type ToolName = keyof typeof TOOL_ARGS;
 
 /** 모델 없이 실행할 수 있는 단계의 첫머리. 예: "select로 ...", "click으로 ..." */
 const DIRECT_STEP =
-  /^(navigate|click|close_tab|type|select|extract_table|download_table|fill_table|transform|write_excel|excel_docs|excel_read|excel_write|excel_save|read_text|summarize|finish)(?:으로|로)\s/;
+  /^(navigate|open_tab|click|close_tab|type|select|extract_table|download_table|fill_table|transform|write_excel|excel_docs|excel_read|excel_write|excel_save|call_tool|run_skill|read_text|summarize|finish)(?:으로|로)\s/;
 
 /**
  * 단계가 "도구로 ..."로 시작하고 `{...}` 인자가 적혀 있으면 그 도구 이름과 인자 원문을 돌려준다.
@@ -283,20 +306,31 @@ function pickObject(text: string): { value: Record<string, unknown> } | { error:
   return fallback ? { value: fallback } : { error: `JSON 문법 오류: ${firstError}` };
 }
 
-export function parseAction(text: string, snap?: PageSnapshot): ParseResult {
+/**
+ * external은 쓸 수 있는 외부 도구 이름들. 모델이 call_tool로 감싸지 않고 도구 이름을 바로 tool에 적어도
+ * call_tool로 받아 준다. 예: {"tool":"mes.lot_status","args":{"lot":"L1"}}
+ */
+export function parseAction(text: string, snap?: PageSnapshot, external: string[] = []): ParseResult {
   const picked = pickObject(text);
   if ('error' in picked) return { ok: false, error: picked.error };
   const raw = normalizeEnvelope(picked.value);
   const env = Envelope.safeParse(raw);
   if (!env.success) return { ok: false, error: z.prettifyError(env.error) };
-  if (!(env.data.tool in TOOL_ARGS)) {
-    return {
-      ok: false,
-      error: `알 수 없는 도구 "${env.data.tool}". 사용 가능: ${Object.keys(TOOL_ARGS).join(', ')}`,
-    };
-  }
-  const tool = env.data.tool as ToolName;
+  let called = env.data.tool;
   let rawArgs = env.data.args;
+  if (!(called in TOOL_ARGS)) {
+    const ext = external.find((n) => n.toLowerCase() === called);
+    if (!ext) {
+      return {
+        ok: false,
+        error: `알 수 없는 도구 "${env.data.tool}". 사용 가능: ${[...Object.keys(TOOL_ARGS), ...external].join(', ')}`,
+      };
+    }
+    const { dataset, ...inner } = rawArgs;
+    rawArgs = { name: ext, args: inner, ...(typeof dataset === 'string' ? { dataset } : {}) };
+    called = 'call_tool';
+  }
+  const tool = called as ToolName;
   if (snap && 'ref' in rawArgs) {
     const resolved = resolveRef(tool, rawArgs.ref, snap, rawArgs.row);
     if ('error' in resolved) return { ok: false, error: resolved.error };

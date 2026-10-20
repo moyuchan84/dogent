@@ -16,6 +16,8 @@ function section(text, from, to) {
 
 function planReply(user) {
   const request = section(user, '## 사용자 요청');
+  // MCP 서버(mock-mes)를 말하는 요청은 맞는 스킬이 없다 (재공이라는 말이 들어 있어도 스킬이 아니라 도구로 처리한다)
+  if (/mock-mes/.test(request)) return { skill_id: null, inputs: {}, reason: 'MCP 서버 도구로 처리하는 요청' };
   // "DR5 검색해서 정리해줘", "'NV2-1T'로 검색해 정체 위주로 정리"
   const search = /['"“]?([A-Za-z0-9가-힣-]+)['"”]?\s*(?:으로|로)?\s*검색/.exec(request);
   if (search && user.includes('wip-search')) {
@@ -152,6 +154,15 @@ function freeReply(user) {
   if (history.slice(-2).filter((h) => h.includes('→ 실패')).length === 2) {
     return { thought: '두 번 연속 실패', tool: 'abort', args: { reason: history.at(-1).split('→ 실패: ')[1] ?? '실패' } };
   }
+  // MCP 도구 요청: 도구 이름을 tool에 바로 적어 부르고(call_tool로 받아 줌), 결과 표의 행 수를 보고한다.
+  if (/mock-mes/.test(request)) {
+    if (/홀드/.test(request)) {
+      if (!did(/call_tool/)) return { thought: '홀드', tool: 'mock-mes.lot_hold', args: { lot: /\b(A\d)\b/.exec(request)?.[1] ?? 'A1' } };
+      return { thought: '보고', tool: 'finish', args: { summary: `홀드 요청 결과: ${history.at(-1)?.split('→ ')[1] ?? ''}` } };
+    }
+    if (!did(/call_tool .*→ 성공/)) return { thought: '목록 조회', tool: 'mock-mes.lot_list', args: { line: 'P1', dataset: 'lots' } };
+    return { thought: '보고', tool: 'finish', args: { summary: 'MES에서 {rows.lots}건을 확인했습니다.' } };
+  }
   // 엑셀 도구를 쓸 수 있는 요청: 요청의 경로(없으면 열린 첫 문서)를 읽어 행 수를 보고한다.
   if (user.includes('## 열려 있는 엑셀 문서') && /엑셀|xlsx/.test(request)) {
     const doc = /([A-Za-z]:\\[^\s]+?\.xlsx)/.exec(request)?.[1] ?? /^- (\S+)/m.exec(section(user, '## 열려 있는 엑셀 문서', '## 현재 화면'))?.[1];
@@ -193,6 +204,7 @@ function agentReply(user) {
 
 function planAction(user) {
   const inputs = JSON.parse(/^입력값: (.*)$/m.exec(user)?.[1] ?? '{}');
+  // 본문은 단계 개요만 싣기 때문에, 주소는 지금 할 단계에서 찾고 없으면 이 모의 사이트 주소를 쓴다
   const skillBody = section(user, '입력값:', '## 지금까지의 동작');
   const history = section(user, '## 지금까지의 동작', '## 데이터셋').trim().split('\n');
   const datasets = section(user, '## 데이터셋', '## 현재 화면');
@@ -216,7 +228,7 @@ function planAction(user) {
   const act = (step, thought, tool, args) => ({ step, thought, tool, args });
 
   if (!page.includes('# 재공 현황 조회')) {
-    const url = /https?:\/\/[^\s"`]+/.exec(skillBody)?.[0];
+    const url = /https?:\/\/[^\s"`]+/.exec(skillBody)?.[0] ?? /https?:\/\/[^\s"`]+/.exec(section(user, '## 지금 할 단계'))?.[0] ?? 'http://localhost:4173/wip.html';
     if (did(/navigate .*→ 성공/)) return act(1, '이동했지만 조회 화면이 아님', 'abort', { reason: '재공 현황 조회 화면을 열지 못했습니다' });
     return act(1, '조회 화면으로 이동', 'navigate', { url });
   }

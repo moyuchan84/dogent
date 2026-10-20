@@ -37,6 +37,7 @@ import { openBridge, type Bridge } from './bridge';
 import { composeFlow, editSkill } from './compose-skill';
 import { setConfig, type ClientConfig } from './config';
 import { loadSystems, type SystemEntry } from './systems';
+import { McpHub, enabledServers, loadMcpConfig, mentionedServers } from './mcp-hub';
 import { Office, OfficeDocs, findOfficeExe, looksLikePath } from './office';
 import { saveRunAsSkill } from './save-skill';
 import { loadSkills, type SkillEntry } from './skills';
@@ -234,6 +235,21 @@ export class Session {
   }
 
   private officeDocs: OfficeDocs | null = null;
+  private mcp: McpHub | null = null;
+
+  /**
+   * ~/.dogent/mcp.json의 MCP 서버들을 처음 쓸 때 띄운다. 서버가 없으면 null.
+   * 세션이 끝날 때까지 두고 쓴다 (대화 중 요청마다 다시 띄우지 않는다).
+   */
+  private async toolPort(): Promise<McpHub | null> {
+    if (this.mcp) return this.mcp.list().length ? this.mcp : null;
+    const cfg = loadMcpConfig();
+    if (enabledServers(cfg).length === 0) return null;
+    this.term.print('MCP 서버를 연결하는 중…');
+    this.mcp = await McpHub.open(cfg);
+    for (const f of this.mcp.failed) this.term.print(`MCP 서버 ${f.server}을(를) 시작하지 못했습니다: ${f.reason} (dogent mcp test 로 확인하세요)`);
+    return this.mcp.list().length ? this.mcp : null;
+  }
 
   /** 에이전트의 엑셀 도구가 쓰는 통로. 오피스 도구가 없으면 null (그러면 엑셀 도구는 꺼진다) */
   private officePort(): OfficeDocs | null {
@@ -412,11 +428,19 @@ export class Session {
       excelOnly?: boolean;
       /** 브라우저 화면과 함께 엑셀 도구도 쓴다 (자유 요청) */
       excel?: boolean;
+      /** 브라우저 없이 연결된 MCP 도구만으로 한다 (자유 요청) */
+      toolsOnly?: boolean;
+      /** 요청이 말한 다른 사이트들의 주소(host). 자유 요청의 허용 도메인에 더해 open_tab으로 오갈 수 있게 한다 */
+      extraHosts?: string[];
     } = {},
   ): Promise<{ result: RunResult; entries: HistoryEntry[]; tabUrl: string }> {
     const isFree = skill.id === FREE_SKILL_ID;
     const excelOnly = isFree && !!opts.excelOnly;
-    const bridge = excelOnly ? null : await this.connect();
+    const noWeb = excelOnly || (isFree && !!opts.toolsOnly);
+    const bridge = noWeb ? null : await this.connect();
+    // MCP 도구는 자유 요청이거나 스킬이 call_tool을 쓸 때 붙인다
+    const tools = isFree || /\bcall_tool\b/.test(skill.body) ? await this.toolPort() : null;
+    if (opts.toolsOnly && !tools) throw new Error('연결된 MCP 도구가 없습니다 (dogent mcp list)');
     // 엑셀 도구는 자유 요청이 엑셀을 말하거나, 스킬이 엑셀을 쓸 때만 붙인다 (그렇지 않은 실행이 오피스 도구를 띄우지 않게)
     const office = isFree ? (excelOnly || opts.excel ? this.officePort() : null) : skillUsesOffice(skill) ? this.officePort() : null;
     if (excelOnly && !office) throw new Error('오피스 도구(dogent-office.exe)가 없어 엑셀 문서를 다룰 수 없습니다. pnpm office:build로 만들거나 dogent config officeExe <경로>로 알려 주세요');
@@ -427,11 +451,11 @@ export class Session {
       const table = await this.readInputFile(path);
       datasets.set(spec.dataset, table.columns, table.rows);
     }
-    const target = bridge ? await bridge.browser.target() : { url: '', title: '엑셀', allowed: true };
+    const target = bridge ? await bridge.browser.target() : { url: '', title: excelOnly ? '엑셀' : 'MCP 도구', allowed: true };
     if (!target.allowed) {
       throw new Error(`지금 브라우저 탭(${target.url})은 조작할 사이트 목록에 없습니다. 업무 화면 탭을 앞에 두거나 확장 설정 → 조작할 사이트에서 더하세요`);
     }
-    const active = isFree ? buildFreeSkill(bridge ? target.url : null, this.flags.allowWrite, opts.systemInfo, !!office) : skill;
+    const active = isFree ? buildFreeSkill(bridge ? target.url : null, this.flags.allowWrite, opts.systemInfo, !!office, !!tools, opts.extraHosts) : skill;
     const scale = Math.max(1, this.cfg.llm.timeoutScale || 1);
     const scaled = { ...active, limits: { ...active.limits, timeout_sec: active.limits.timeout_sec * scale } };
     const events: RunEvent[] = [];
@@ -446,6 +470,9 @@ export class Session {
         llm: this.llm(),
         browser: bridge ? bridge.browser : noBrowser(),
         office: office ?? undefined,
+        tools: tools ?? undefined,
+        // 다른 스킬을 run_skill로 부를 수 있게 한다. 자식은 부모보다 권한이 넓어지지 않는다 (core/subagent.ts)
+        skills: { list: () => this.skills.map((e) => e.skill), get: (id) => this.skills.find((e) => e.skill.id === id)?.skill },
         datasets,
         signal: this.abort.signal,
         dryRun: !isFree && skill.risk === 'R3' && (opts.dryRun ?? this.flags.dryRun),
@@ -612,26 +639,33 @@ export class Session {
     const asked = urlInText(text);
     const office = this.officePort();
     const docs = office ? await office.docs().catch(() => []) : [];
-    const intent = officeIntent(text, { openDocs: docs.map((d) => d.name), hasUrl: !!asked, hasSystem: named.length > 0 });
+    // 시스템 이름이 MCP 서버 이름과 겹치면(MES 등) 화면 단서가 따로 없는 한 서버로 처리한다
+    const viaServer = mentionedServers(loadMcpConfig(), text).length > 0;
+    const intent = officeIntent(text, { openDocs: docs.map((d) => d.name), hasUrl: !!asked, hasSystem: named.length > 0 && !viaServer });
     if (intent.excel && !office) {
       this.term.print('엑셀 문서가 필요한 요청 같지만 오피스 도구(dogent-office.exe)가 없습니다. pnpm office:build로 만들거나 dogent config officeExe <경로>로 알려 주세요');
       if (!intent.web) return false;
     }
     const excelOnly = intent.excel && !intent.web && !!office;
     const withExcel = intent.excel && !!office;
+    // 요청이 MCP 서버(이름이나 keywords)를 말하고 엑셀·화면은 필요 없으면 브라우저 연결을 기다리지 않는다
+    const toolsOnly = !excelOnly && !intent.excel && !intent.web && mentionedServers(loadMcpConfig(), text).length > 0;
+    const noWeb = excelOnly || toolsOnly;
     if (withExcel) {
       this.term.print(docs.length ? `열려 있는 엑셀 문서 ${docs.length}개: ${docs.map((d) => d.name).join(', ')}` : '사용자의 Excel에 열려 있는 문서가 없습니다 (파일 경로를 요청에 쓰면 그 파일을 엽니다)');
     }
     this.term.print(
       excelOnly
         ? '맞는 스킬이 없어 엑셀 도구로 자유 요청을 합니다 (브라우저는 쓰지 않습니다).'
-        : withExcel
+        : toolsOnly
+          ? '맞는 스킬이 없어 연결된 MCP 도구로 자유 요청을 합니다 (브라우저는 쓰지 않습니다).'
+          : withExcel
           ? '맞는 스킬이 없어 지금 브라우저 화면과 엑셀 도구로 자유 요청을 합니다.'
           : '맞는 스킬이 없어 지금 브라우저 화면에서 자유 요청으로 합니다.',
     );
     if (!this.flags.yes && !(await this.term.confirm('진행할까요?', true))) return false;
     // 요청에 주소나 시스템 이름이 있으면 열려 있는 탭을 두고 새 탭에서 시작한다 (조작할 사이트 목록 안일 때만 열린다)
-    if (excelOnly) {
+    if (noWeb) {
       /* 브라우저를 쓰지 않는다 */
     } else if (asked) {
       const now = await (await this.connect()).browser.target().catch(() => null);
@@ -640,11 +674,20 @@ export class Session {
       const now = await (await this.connect()).browser.target().catch(() => null);
       if (!(now && skillCoversUrl(docOfSystem(named[0]), now.url)) && !(await this.openStart(named[0].url, named[0].name))) return false;
     }
-    const free = buildFreeSkill(excelOnly ? null : 'http://localhost/', this.flags.allowWrite);
-    const run = await this.execute(free, { request: text }, {}, { systemInfo, excelOnly, excel: withExcel });
+    const free = buildFreeSkill(noWeb ? null : 'http://localhost/', this.flags.allowWrite);
+    // 요청이 말한 사이트(주소, 시스템 이름)는 새 탭으로 오가며 쓸 수 있게 허용 도메인에 더한다 (확장의 조작할 사이트 목록은 그대로 지킨다)
+    const hostOf = (u: string) => {
+      try {
+        return new URL(u).host;
+      } catch {
+        return '';
+      }
+    };
+    const extraHosts = [...named.map((m) => hostOf(m.url)), ...(asked ? [hostOf(asked)] : [])].filter(Boolean);
+    const run = await this.execute(free, { request: text }, {}, { systemInfo, excelOnly, toolsOnly, excel: withExcel, extraHosts });
     if (run.result.status !== 'done') return false;
-    // 엑셀만 다룬 실행은 화면 절차가 없어 스킬로 저장하지 않는다.
-    if (excelOnly) return true;
+    // 화면 없이 도구만 다룬 실행은 화면 절차가 없어 스킬로 저장하지 않는다.
+    if (noWeb) return true;
     // 잘 된 자유 요청은 개인 스킬로 저장할 수 있다.
     if (await this.term.confirm('\n이 실행을 스킬로 저장할까요? 다음부터 같은 요청을 스킬로 빠르게 합니다.', false)) {
       const file = await saveRunAsSkill(this.term, { request: text, tabUrl: run.tabUrl, entries: run.entries }, this.cfg.personalSkills, new Set(this.skills.map((e) => e.skill.id)));
@@ -778,6 +821,7 @@ export class Session {
   }
 
   async close(): Promise<void> {
+    await this.mcp?.close().catch(() => {});
     await this.office?.shutdown().catch(() => {});
     this.bridge?.close();
   }
