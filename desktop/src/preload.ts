@@ -19,6 +19,12 @@ const api: DogentApi = {
   token: () => ipcRenderer.invoke('dogent:token'),
   extension: (register) => ipcRenderer.invoke('dogent:extension', register),
   setConfig: (key, value) => ipcRenderer.invoke('dogent:set-config', key, value),
+  connectors: () => ipcRenderer.invoke('dogent:connectors'),
+  connectPreview: (text) => ipcRenderer.invoke('dogent:connect-preview', text),
+  connectAdd: (text) => ipcRenderer.invoke('dogent:connect-add', text),
+  connectProbe: (name) => ipcRenderer.invoke('dogent:connect-probe', name),
+  connectPatch: (name, patch) => ipcRenderer.invoke('dogent:connect-patch', name, patch),
+  connectRemove: (name) => ipcRenderer.invoke('dogent:connect-remove', name),
   onUi: (listener) => {
     const handler = (_e: unknown, message: UiMessage) => listener(message);
     ipcRenderer.on('dogent:ui', handler);

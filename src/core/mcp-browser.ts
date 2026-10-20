@@ -1,4 +1,4 @@
-import type { ActResult, ApprovalRequest, BrowserPort, ConfirmPolicy, DownloadedFile, PageSnapshot, TableData } from './types';
+import type { ActResult, ApprovalRequest, BrowserPort, ConfirmPolicy, DownloadedFile, PageSnapshot, TabInfo, TableData } from './types';
 
 /** MCP 도구 하나를 부른다. 도구가 실패하면 isError가 true다. */
 export type McpCall = (name: string, args: Record<string, unknown>) => Promise<{ text: string; isError: boolean }>;
@@ -46,6 +46,18 @@ export class McpBrowser implements BrowserPort {
 
   closeTab(): Promise<ActResult> {
     return this.port('closeTab');
+  }
+
+  tabs(): Promise<TabInfo[]> {
+    return this.port('tabs');
+  }
+
+  openTab(url: string): Promise<ActResult> {
+    return this.port('openTab', url);
+  }
+
+  selectTab(tab: number): Promise<ActResult> {
+    return this.port('selectTab', tab);
   }
 
   type(ref: number, text: string): Promise<ActResult> {

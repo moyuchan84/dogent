@@ -360,6 +360,46 @@ try {
     return '브라우저 연결 없이 완료';
   });
 
+  await scenario('MCP 서버: 등록·확인, 요청이 서버를 말하면 브라우저 없이 도구로 처리, 바꾸는 도구는 묻고 부름', async () => {
+    const mock = join(ROOT, 'tools/mock-mcp.mjs');
+    const log = join(home, 'mcp-calls.log');
+    const added = await client(['mcp', 'add', 'mock-mes', process.execPath, mock, '--yes', '--no-test']);
+    assert.equal(added.code, 0, added.text);
+    // 시험 서버가 부른 기록을 남기도록 환경 변수를 설정 파일에 더한다 (mcp add는 환경 변수를 받지 않는다)
+    const file = join(home, 'mcp.json');
+    const cfg = JSON.parse(readFileSync(file, 'utf8'));
+    cfg.servers['mock-mes'].env = { MOCK_MCP_LOG: log };
+    writeFileSync(file, JSON.stringify(cfg));
+
+    const test = await client(['mcp', 'test']);
+    assert.equal(test.code, 0, test.text);
+    assert.match(test.text, /mock-mes\.lot_list\s+\[읽기, 바로 부름\]/);
+    assert.match(test.text, /mock-mes\.lot_hold\s+\[바꿈, 묻고 부름\]/);
+
+    // 읽기 도구: 묻지 않고 부르고, 결과 표를 데이터셋으로 보고. 브라우저 연결은 없다.
+    const read = await client(['mock-mes에서 P1 재공 목록 확인해줘', '--yes']);
+    assert.equal(read.code, 0, read.text);
+    assert.match(read.text, /MCP 도구로 자유 요청을 합니다 \(브라우저는 쓰지 않습니다\)/);
+    assert.match(read.text, /MES에서 3건을 확인했습니다/);
+    assert.doesNotMatch(read.text, /확장 연결됨/);
+
+    // 바꾸는 도구: 거절하면 서버를 부르지 않는다
+    const refused = await client(['mock-mes에서 A2 홀드해줘', '--yes'], { answers: ['n'] });
+    assert.match(refused.text, /허락하지 않았습니다/, refused.text);
+    assert.doesNotMatch(readFileSync(log, 'utf8'), /lot_hold/);
+    // 허락하면 부른다
+    const allowed = await client(['mock-mes에서 A2 홀드해줘', '--yes'], { answers: ['y'] });
+    assert.equal(allowed.code, 0, allowed.text);
+    assert.match(readFileSync(log, 'utf8'), /lot_hold \{"lot":"A2"\}/);
+
+    // 권한을 금지로 바꾸면 모델에 보이지 않고 부를 수 없다
+    assert.equal((await client(['mcp', 'deny', 'mock-mes', 'lot_hold'])).code, 0);
+    const denied = await client(['mock-mes에서 A3 홀드해줘', '--yes']);
+    assert.doesNotMatch(readFileSync(log, 'utf8'), /A3/, denied.text);
+    assert.equal((await client(['mcp', 'remove', 'mock-mes'])).code, 0);
+    return '도구 목록·권한·거절·허락';
+  });
+
   await scenario('브라우저가 둘이면 목록을 보여 주고, --browser로 고른 브라우저를 조작', async () => {
     // 두 번째 브라우저(따로 띄운 Chromium, 확장 설치도 따로)를 같은 클라이언트에 붙인다.
     const second = await chromium.launchPersistentContext(await mkdtemp(join(tmpdir(), 'dogent-client-2-')), {

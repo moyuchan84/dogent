@@ -80,9 +80,11 @@ export function lintSkill(source: string, policySource?: string): LintReport {
         inputs.has(name) ? (inputs.get(name)!.type === 'number' ? '1' : 'x') : whole,
       );
 
+  // run_skill로 부른 스킬이 만드는 데이터셋은 이름을 알 수 없어, 그 뒤로는 데이터셋 존재 검사를 하지 않는다.
+  let unknownDatasets = false;
   const needDataset = (name: string, step: number) => {
     usedDatasets.add(name);
-    if (!datasets.has(name)) error('E05', `데이터셋 "${name}"을 쓰지만 앞 단계에서 만들지 않았습니다`, step);
+    if (!datasets.has(name) && !unknownDatasets) error('E05', `데이터셋 "${name}"을 쓰지만 앞 단계에서 만들지 않았습니다`, step);
   };
 
   skill.steps.forEach((text, idx) => {
@@ -126,7 +128,7 @@ export function lintSkill(source: string, policySource?: string): LintReport {
     }
 
     if (tool && args) {
-      if (tool === 'navigate' && !hostAllowed(String(args.url), skill.domains)) {
+      if ((tool === 'navigate' || tool === 'open_tab') && !hostAllowed(String(args.url), skill.domains)) {
         error('E06', `${args.url} 은(는) domains(${skill.domains.join(', ')})에 없는 주소입니다`, n);
       }
       if (tool === 'click' && typeof args.ref === 'string' && SUBMIT_PATTERN.test(args.ref)) {
@@ -141,11 +143,13 @@ export function lintSkill(source: string, policySource?: string): LintReport {
         const blocked = downloadBlocked(args.ref);
         if (blocked) error('E04', `${blocked}. 저장·상신은 click 단계로 적고 R3로 선언하세요`, n);
       }
+      if (tool === 'run_skill') unknownDatasets = true;
       if (tool === 'transform') needDataset(args.source, n);
       if (tool === 'fill_table') needDataset(args.dataset, n);
       if (tool === 'write_excel') for (const s of args.sheets) needDataset(s.dataset, n);
       if (tool === 'excel_write') needDataset(args.dataset, n);
       if (tool === 'extract_table' || tool === 'download_table' || tool === 'excel_read') datasets.add(args.dataset);
+      if (tool === 'call_tool' && args.dataset) datasets.add(args.dataset);
       if (tool === 'transform') datasets.add(args.target);
       if (tool === 'summarize') {
         if (args.source !== 'page') needDataset(args.source, n);

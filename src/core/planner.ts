@@ -14,6 +14,17 @@ JSON 객체 하나로만 답합니다.
 - 입력의 설명을 보고 요청의 어느 부분이 그 값인지 고릅니다. 예: 설명이 "검색창에 넣을 값"이면 "P8-DR5 검색해서 정리해줘"에서 "P8-DR5".
 - 선택값(enum)은 보기 중 하나를 그대로 씁니다.`;
 
+/** 후보가 이보다 많으면 스킬 고르기와 값 뽑기를 나눠 묻는다 (입력 설명이 긴 프롬프트를 피하려고). */
+export const TWO_STAGE_MIN = 8;
+
+export const PICK_SYSTEM_PROMPT = `당신은 스킬 선택기입니다. 사용자의 요청에 맞는 스킬 하나를 목록에서 고릅니다.
+
+JSON 객체 하나로만 답합니다.
+{"skill_id": "<스킬 id 또는 null>", "reason": "<한 문장>"}
+
+- 맞는 스킬이 없으면 skill_id를 null로 둡니다.
+- 목록에 없는 id를 지어내지 않습니다.`;
+
 const Plan = z.object({
   skill_id: z.string().nullable(),
   inputs: z.record(z.string(), z.union([z.string(), z.number()])).default({}),
@@ -30,6 +41,26 @@ export async function planRequest(
   /** 요청에 나온 사내 시스템의 설명 (systems.ts describeSystem). 용어와 별칭을 이해하는 데 쓴다 */
   systemInfo?: string,
 ): Promise<Plan> {
+  if (skills.length > TWO_STAGE_MIN) {
+    // 1단계: 이름과 설명 한 줄씩만 보고 고른다. 2단계: 고른 스킬의 입력만 보고 값을 뽑는다.
+    const index = skills.map((s) => `- ${s.id}: ${s.name} — ${s.description}`).join('\n');
+    const note = systemInfo ? `## 사내 시스템 설명 (참고)\n${systemInfo}\n\n` : '';
+    const picked = await llm.complete(
+      [
+        { role: 'system', content: PICK_SYSTEM_PROMPT },
+        { role: 'user', content: `${note}## 스킬 목록\n${index}\n\n## 사용자 요청\n${request}` },
+      ],
+      signal,
+    );
+    const pickedJson = extractJson(picked);
+    if (!pickedJson) throw new Error('모델이 스킬 선택 결과를 JSON으로 주지 않았습니다');
+    const choice = Plan.pick({ skill_id: true, reason: true }).parse(JSON.parse(pickedJson));
+    const one = skills.find((s) => s.id === choice.skill_id);
+    if (!one) {
+      return { skill_id: null, inputs: {}, reason: choice.skill_id ? `모델이 없는 스킬(${choice.skill_id})을 골랐습니다` : choice.reason };
+    }
+    return planRequest(request, [one], llm, signal, systemInfo);
+  }
   const catalog = skills
     .map((s) => {
       const inputs = s.inputs

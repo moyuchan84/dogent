@@ -71,6 +71,14 @@ export function describeEvent(e: RunEvent): string | null {
     }
     case 'step_done':
       return `  단계 ${e.step} 확인됨`;
+    case 'sub_start':
+      return `  ▶ 스킬 ${e.name}(${e.skill}) 실행 ${clip(JSON.stringify(e.inputs), 70)}`;
+    case 'sub_action': {
+      const h = e.entry;
+      return `      ${h.ok ? '·' : '✗'} [${e.skill}] 단계 ${h.step} ${h.tool} → ${clip(h.result.replace(/\s+/g, ' '), 90)}`;
+    }
+    case 'sub_end':
+      return `  ◀ 스킬 ${e.skill} ${e.status === 'done' ? '끝남' : e.status}: ${clip(e.message.replace(/\s+/g, ' '), 110)}`;
     case 'approval':
       return `  "${e.request.button}" ${e.dryRun ? '직전에 멈춤 (시험 실행)' : e.approved ? '승인됨' : '승인하지 않음'}`;
     case 'login_wait':

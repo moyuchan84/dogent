@@ -2,12 +2,15 @@ import { directParts, parseAction, type Action } from './actions';
 import { capture, evalCheck, stepCaptures, stepCheck, stripCheckLines, type Clause } from './check';
 import { DatasetStore } from './dataset';
 import { buildWorkbook, readDownloadedTable } from './excel';
+import { tableFromText } from './external';
 import { extractPages } from './pages';
+import { FREE_SKILL_ID } from './free';
 import { PathMemo } from './paths';
 import { SUBMIT_PATTERN, checkAction, findElement, hostAllowed, optionsOf } from './policy';
 import { buildSummarizeMessages, buildTurnMessages } from './prompt';
 import { checkInputRules, extractSteps, fillTemplate, fillValue, type Skill, type SkillInputs } from './skill';
 import { renderSnapshot } from './snapshot';
+import { listForPrompt, prepareChild, summarizeChild } from './subagent';
 import { transform } from './transform';
 import type {
   ActResult,
@@ -20,6 +23,8 @@ import type {
   FilePort,
   HistoryEntry,
   OfficePort,
+  ToolPort,
+  SkillCatalogPort,
   LlmPort,
   PageSnapshot,
   PathStore,
@@ -36,6 +41,12 @@ export interface RunDeps {
   files: FilePort;
   /** 엑셀 문서를 다루는 통로. 주면 excel_* 도구를 쓸 수 있다. */
   office?: OfficePort;
+  /** 외부 도구(MCP 서버)를 부르는 통로. 주면 call_tool을 쓸 수 있다. */
+  tools?: ToolPort;
+  /** 다른 스킬을 부르는 통로. 주면 run_skill을 쓸 수 있다. */
+  skills?: SkillCatalogPort;
+  /** run_skill로 불린 스킬이면 1. 불린 스킬 안에서는 다시 부를 수 없다. */
+  depth?: number;
   datasets?: DatasetStore;
   onEvent?: (e: RunEvent) => void;
   signal?: AbortSignal;
@@ -97,14 +108,16 @@ type Fill = { table: string; dataset: string };
 const cellText = (cell: string | number) => (typeof cell === 'number' ? String(cell) : cell.trim());
 
 export async function runSkill(skill: Skill, inputs: SkillInputs, deps: RunDeps): Promise<RunResult> {
-  await deps.browser.setActive?.(true).catch(() => {});
+  // 부모가 이미 조작 중 표시를 켜 두었으므로, 불린 스킬은 켜고 끄지 않는다 (끄면 부모의 표시가 사라진다).
+  const nested = (deps.depth ?? 0) > 0;
+  if (!nested) await deps.browser.setActive?.(true).catch(() => {});
   try {
     const memo = deps.paths ? await PathMemo.open(skill, inputs, deps.paths) : null;
     const result = await run(skill, inputs, deps, memo);
     await memo?.commit(result).catch(() => {});
     return result;
   } finally {
-    await deps.browser.setActive?.(false).catch(() => {});
+    if (!nested) await deps.browser.setActive?.(false).catch(() => {});
   }
 }
 
@@ -115,12 +128,21 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps, memo: PathM
   const started = Date.now();
   // 이 실행에서 쓸 수 있는 엑셀 문서(실행을 시작할 때 열려 있던 것). 모델이 excel_docs로 다시 볼 수 있다.
   const officeNote = office ? describeDocs(await office.docs().catch(() => [])) : undefined;
+  // 이 실행에서 부를 수 있는 외부 도구 (금지한 것은 모델에 보이지 않는다)
+  const toolList = (deps.tools?.list() ?? []).filter((t) => t.permission !== 'deny');
+  const toolNames = toolList.map((t) => t.name);
   // 로그인을 기다린 시간. 스킬의 제한 시간에서 뺀다.
   let waited = 0;
   const history: HistoryEntry[] = [];
   /** 동작마다 하기 직전 화면의 지문. 같은 동작을 되풀이해도 화면이 바뀌고 있으면 막힌 것이 아니다. */
   const screens: string[] = [];
   const savedFiles: string[] = [];
+  const depth = deps.depth ?? 0;
+  // run_skill로 불린 스킬들이 쓴 동작 수. 부모의 최대 동작 수에서 뺀다.
+  let childActions = 0;
+  // 자유 요청이면 부를 수 있는 스킬을 모델에게 보여 준다. 정해진 스킬은 "run_skill로 ..." 단계로 직접 부른다.
+  const callableSkills =
+    depth === 0 && deps.skills && skill.id === FREE_SKILL_ID ? listForPrompt(skill, deps.skills, Object.values(inputs).join(' ')) : [];
   const body = fillTemplate(skill, inputs);
   const steps = extractSteps(body);
   // 검사 줄은 루프가 평가하므로 모델에게는 보여주지 않는다.
@@ -269,13 +291,18 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps, memo: PathM
       history,
       datasets: datasets.describe(),
       office: officeNote,
+      tools: toolList,
+      skills: callableSkills,
       page,
       changes,
       step: { n: current, total: steps.length, text: withOutputs(promptSteps[current - 1]), unmet: unmetNow(snap) },
     });
     for (let attempt = 0; ; attempt++) {
+      const sent = Date.now();
       const text = await llm.complete(messages, signal);
-      const parsed = parseAction(text, snap);
+      const sizeOf = (role: string) => messages.filter((m) => m.role === role).reduce((sum, m) => sum + m.content.length, 0);
+      emit({ type: 'llm_usage', n, systemChars: sizeOf('system'), userChars: sizeOf('user'), replyChars: text.length, ms: Date.now() - sent });
+      const parsed = parseAction(text, snap, toolNames);
       if (parsed.ok) return parsed.action;
       if (attempt >= MAX_FORMAT_RETRIES) {
         throw new Error(`모델이 형식에 맞는 응답을 내지 못했습니다: ${parsed.error}`);
@@ -318,6 +345,25 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps, memo: PathM
       case 'close_tab': {
         if (!browser.closeTab) return { ok: false, result: '이 환경에서는 창을 닫을 수 없습니다' };
         return acted(await browser.closeTab());
+      }
+      case 'tab_list': {
+        if (!browser.tabs) return { ok: false, result: '이 환경에서는 탭 목록을 볼 수 없습니다' };
+        const tabs = await browser.tabs();
+        if (tabs.length === 0) return { ok: true, result: '열린 탭이 없습니다' };
+        return {
+          ok: true,
+          result: tabs
+            .map((t) => `[${t.id}]${t.current ? ' (지금 대상)' : ''} ${t.title || '(제목 없음)'} — ${t.url}${t.allowed ? '' : ' · 조작할 수 없는 사이트'}`)
+            .join('\n'),
+        };
+      }
+      case 'open_tab': {
+        if (!browser.openTab) return { ok: false, result: '이 환경에서는 새 탭을 열 수 없습니다. navigate를 쓰세요' };
+        return acted(await browser.openTab(action.args.url));
+      }
+      case 'switch_tab': {
+        if (!browser.selectTab) return { ok: false, result: '이 환경에서는 탭을 바꿀 수 없습니다' };
+        return acted(await browser.selectTab(action.args.tab));
       }
       case 'type':
         return acted(await browser.type(action.args.ref, action.args.text));
@@ -424,6 +470,74 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps, memo: PathM
         const saved = await office.save(doc, action.args.path);
         return { ok: true, result: `${saved}에 저장함` };
       }
+      case 'call_tool': {
+        const { name, args, dataset } = action.args;
+        const list = deps.tools?.list() ?? [];
+        const tool = list.find((t) => t.name.toLowerCase() === name.toLowerCase());
+        if (!deps.tools || !tool) {
+          return { ok: false, result: `외부 도구 "${name}"이(가) 없습니다. 쓸 수 있는 도구: ${list.filter((t) => t.permission !== 'deny').map((t) => t.name).join(', ') || '(없음)'}` };
+        }
+        if (tool.permission === 'deny') return { ok: false, result: `${tool.name}은(는) 사용이 금지된 도구입니다` };
+        const what = `외부 도구 ${tool.name}을(를) 부릅니다: ${clipText(JSON.stringify(args), 300)}`;
+        if (!tool.readOnly && deps.dryRun) return { ok: true, result: `시험 실행이라 하지 않았습니다: ${what}`, end: 'dryrun' };
+        if (tool.permission === 'ask' && (!ui.confirm || !(await ui.confirm(`${what}. 진행할까요?`)))) {
+          return { ok: false, result: `사용자가 허락하지 않았습니다: ${what}` };
+        }
+        const r = await deps.tools.call(tool.name, args);
+        if (r.isError) return { ok: false, result: `도구 오류: ${clipText(r.text, 1000)}` };
+        const table = dataset ? tableFromText(r.text) : null;
+        if (dataset && table) {
+          const ds = datasets.set(dataset, table.columns, table.rows);
+          return { ok: true, result: `${tool.name} 결과를 "${ds.name}"에 담음: ${ds.rows.length}행, 컬럼 ${JSON.stringify(ds.columns)}` };
+        }
+        const note = dataset ? '\n(결과가 JSON 표(객체 배열)가 아니라 데이터셋에 담지 못했습니다)' : '';
+        return { ok: true, result: (clipText(r.text, READ_TEXT_MAX) || '(결과가 비어 있습니다)') + note };
+      }
+      case 'run_skill': {
+        const prep = prepareChild(action.args, {
+          parent: skill,
+          depth,
+          catalog: deps.skills,
+          stepsLeft: skill.limits.max_steps - history.length - childActions - 1,
+          msLeft: skill.limits.timeout_sec * 1000 - (Date.now() - started - waited),
+        });
+        if (!prep.ok) return { ok: false, result: prep.reason };
+        const child = prep.skill;
+        emit({ type: 'sub_start', skill: child.id, name: child.name, inputs: prep.inputs });
+        // 자식이 탭을 바꿨으면 끝난 뒤 부모가 보던 탭으로 되돌린다.
+        const before = (await browser.tabs?.().catch(() => null))?.find((t) => t.current);
+        // 자식은 자기 데이터셋을 쓰고, 끝난 뒤 부모의 데이터셋에 합친다 (부모의 데이터셋을 덮어쓰지 않게).
+        const childData = new DatasetStore();
+        const r = await runSkill(child, prep.inputs, {
+          ...deps,
+          datasets: childData,
+          skills: undefined,
+          depth: depth + 1,
+          // 자식의 동작은 부모의 동작 기록(action)과 섞이지 않게 sub_action으로 낸다. end는 부모의 것만 실행의 끝이다.
+          onEvent: (e) => {
+            if (e.type === 'action') emit({ type: 'sub_action', skill: child.id, entry: e.entry });
+            else if (e.type === 'approval' || e.type === 'login_wait' || e.type === 'login_done') emit(e);
+          },
+        });
+        childActions += r.actions;
+        savedFiles.push(...r.files);
+        const renamed: string[] = [];
+        for (const ds of childData.list()) {
+          let name = ds.name;
+          for (let i = 2; datasets.list().some((d) => d.name === name); i++) name = `${ds.name}_${i}`;
+          if (name !== ds.name) renamed.push(`${ds.name}→${name}`);
+          datasets.set(name, ds.columns, ds.rows);
+        }
+        for (const [k, v] of Object.entries(r.outputs)) outputs[`${child.id.replace(/-/g, '_')}_${k}`] = v;
+        if (before && browser.selectTab) {
+          const now = (await browser.tabs?.().catch(() => null))?.find((t) => t.current);
+          if (now && now.id !== before.id) await browser.selectTab(before.id).catch(() => {});
+        }
+        emit({ type: 'sub_end', skill: child.id, status: r.status, message: r.message });
+        const text = summarizeChild(child, r, renamed);
+        if (r.status === 'dryrun') return { ok: true, result: text, end: 'dryrun' };
+        return { ok: r.status === 'done', result: text };
+      }
       case 'read_text': {
         if (!browser.readText) return { ok: false, result: '이 환경에서는 화면 글을 읽을 수 없습니다' };
         const text = await browser.readText(action.args.ref);
@@ -476,7 +590,7 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps, memo: PathM
         tool: parts.tool,
         args: JSON.parse(withOutputs(parts.literal, true)),
       });
-      const parsed = parseAction(reply, snap);
+      const parsed = parseAction(reply, snap, toolNames);
       return parsed.ok ? parsed.action : null;
     } catch {
       return null;
@@ -486,7 +600,7 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps, memo: PathM
   let strikes = 0;
   let firstFailure = '';
   try {
-    for (let n = 1; n <= skill.limits.max_steps; n++) {
+    for (let n = 1; n + childActions <= skill.limits.max_steps; n++) {
       if (signal?.aborted) return end('stopped', '사용자가 중지했습니다');
       if (Date.now() - started - waited > skill.limits.timeout_sec * 1000) {
         return end('aborted', `제한 시간 ${skill.limits.timeout_sec}초를 넘었습니다`);

@@ -1,0 +1,499 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dogent 사용 가이드</title>
+<style>
+:root {
+  --bg: #f4f6fa; --paper: #ffffff; --ink: #152033; --muted: #5a6577; --line: #d9dfe8;
+  --accent: #1f5fd6; --accent-soft: #e6eefc; --ok: #1d7a4c; --ok-soft: #e1f3e9;
+  --warn: #8a5a00; --warn-soft: #fff4d6; --risk: #b3261e; --risk-soft: #fbe8e6;
+  --code-bg: #eef1f7;
+  --sans: "IBM Plex Sans KR", "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif;
+  --mono: "JetBrains Mono", Consolas, "D2Coding", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f141d; --paper: #171e2a; --ink: #e5eaf2; --muted: #9aa6b8; --line: #2a3445;
+    --accent: #78a6ff; --accent-soft: #1b2944; --ok: #6fd3a0; --ok-soft: #163425;
+    --warn: #f8dc8c; --warn-soft: #3a2e10; --risk: #ff8b80; --risk-soft: #3c1d1a; --code-bg: #1d2636;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f141d; --paper: #171e2a; --ink: #e5eaf2; --muted: #9aa6b8; --line: #2a3445;
+  --accent: #78a6ff; --accent-soft: #1b2944; --ok: #6fd3a0; --ok-soft: #163425;
+  --warn: #f8dc8c; --warn-soft: #3a2e10; --risk: #ff8b80; --risk-soft: #3c1d1a; --code-bg: #1d2636;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.7 var(--sans); }
+.layout { max-width: 1180px; margin: 0 auto; padding: 24px 16px 80px; display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 32px; }
+nav { position: sticky; top: 16px; align-self: start; font-size: 13.5px; max-height: calc(100vh - 32px); overflow-y: auto; }
+nav b { display: block; margin-bottom: 8px; font-size: 14px; }
+nav a { display: block; padding: 4px 10px; color: var(--muted); text-decoration: none; border-left: 2px solid var(--line); }
+nav a:hover { color: var(--accent); border-left-color: var(--accent); }
+main { min-width: 0; }
+h1 { font-size: 28px; margin: 0 0 4px; }
+h2 { font-size: 21px; margin: 48px 0 12px; padding-top: 12px; border-top: 1px solid var(--line); scroll-margin-top: 12px; }
+h3 { font-size: 16px; margin: 24px 0 6px; }
+p { margin: 8px 0; }
+.sub { color: var(--muted); }
+code { font-family: var(--mono); font-size: 0.88em; background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+pre { background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; overflow-x: auto; font: 13px/1.55 var(--mono); margin: 10px 0; }
+pre code { background: none; padding: 0; font-size: inherit; }
+table { width: 100%; border-collapse: collapse; background: var(--paper); border: 1px solid var(--line); font-size: 14px; margin: 10px 0; }
+th, td { text-align: left; vertical-align: top; padding: 8px 12px; border-bottom: 1px solid var(--line); }
+th { background: var(--accent-soft); font-weight: 700; white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
+.wrap { overflow-x: auto; }
+.tag { display: inline-block; font-size: 12px; font-weight: 700; padding: 1px 8px; border-radius: 999px; white-space: nowrap; }
+.t-ok { background: var(--ok-soft); color: var(--ok); }
+.t-warn { background: var(--warn-soft); color: var(--warn); }
+.t-risk { background: var(--risk-soft); color: var(--risk); }
+.t-info { background: var(--accent-soft); color: var(--accent); }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin: 16px 0; }
+.card { background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+.card b { display: block; font-size: 22px; }
+.card.ok b { color: var(--ok); } .card.warn b { color: var(--warn); } .card.risk b { color: var(--risk); }
+.card span { color: var(--muted); font-size: 13px; }
+.note { border-left: 4px solid var(--accent); background: var(--accent-soft); padding: 10px 14px; border-radius: 0 8px 8px 0; margin: 12px 0; }
+.note.warn { border-left-color: var(--warn); background: var(--warn-soft); }
+.note.risk { border-left-color: var(--risk); background: var(--risk-soft); }
+.note.ok { border-left-color: var(--ok); background: var(--ok-soft); }
+.flow { display: flex; flex-wrap: wrap; gap: 6px; align-items: stretch; margin: 12px 0; }
+.flow > div { background: var(--paper); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; font-size: 13.5px; flex: 1 1 130px; }
+.flow > div b { display: block; color: var(--accent); font-size: 12px; }
+.flow > i { align-self: center; color: var(--muted); font-style: normal; }
+.arch { display: grid; gap: 10px; margin: 12px 0; }
+.arch .row { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
+.arch .box { background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; font-size: 13.5px; }
+.arch .box b { display: block; font-size: 14px; }
+.arch .box.core { border-color: var(--accent); background: var(--accent-soft); }
+.arch .arrow { text-align: center; color: var(--muted); font-size: 13px; }
+details { background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 8px 14px; margin: 10px 0; }
+summary { cursor: pointer; font-weight: 700; }
+ul, ol { padding-left: 22px; } li { margin: 3px 0; }
+footer { margin-top: 56px; color: var(--muted); font-size: 13px; }
+@media (max-width: 860px) { .layout { grid-template-columns: 1fr; } nav { position: static; max-height: none; display: flex; flex-wrap: wrap; gap: 4px; } nav b { width: 100%; } nav a { border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; } }
+</style>
+</head>
+<body>
+<div class="layout">
+<nav>
+  <b>목차</b>
+  <a href="#answer">0. 구현 완료 여부</a>
+  <a href="#arch">1. 구조</a>
+  <a href="#features">2. 기능 목록</a>
+  <a href="#use">3. 사용법</a>
+  <a href="#flow">4. 실행 Flow</a>
+  <a href="#usecase">5. Use case</a>
+  <a href="#skills">6. 스킬 추가·작성</a>
+  <a href="#systems">7. 시스템 사전</a>
+  <a href="#mcp">8. MCP·커넥터</a>
+  <a href="#client">9. 외부 클라이언트</a>
+  <a href="#issues">10. 미완·알려진 문제</a>
+  <a href="#next">11. 확장·개선 제안</a>
+</nav>
+<main>
+
+<h1>Dogent 사용 가이드와 개선 방향</h1>
+<p class="sub">2026-10-21 기준 · 브랜치 <code>feature/tool-registry</code> (마지막 커밋 589178f) · 코드를 직접 읽고 테스트를 돌려 확인한 내용으로 작성</p>
+
+<h2 id="answer">0. 작성하던 기능은 구현이 끝났나?</h2>
+<p><b>결론: 코드는 동작하지만 "끝났다"고 하기엔 이릅니다.</b> 이번 브랜치의 작업(MCP 커넥터, 도구 레지스트리, 서브에이전트 <code>run_skill</code>, 스킬 지연 로딩 1단계)은 구현되어 테스트를 통과하지만, 커밋되지 않은 채 쌓여 있고 (이 문서를 쓴 뒤 e2e 실패는 수정함) 설계 문서가 "아직"이라고 적은 부분이 남아 있습니다.</p>
+<div class="cards">
+  <div class="card ok"><b>통과</b><span>타입체크 (<code>tsc --noEmit</code>) 오류 없음</span></div>
+  <div class="card ok"><b>373 / 373</b><span>단위 테스트 (43개 파일)</span></div>
+  <div class="card ok"><b>15 / 15</b><span>클라이언트 e2e (<code>pnpm e2e:client</code>)</span></div>
+  <div class="card warn"><b>44개 파일</b><span>미커밋 (수정 27 + 신규 17)</span></div>
+  <div class="card risk"><b>미검증</b><span>사내 화면·사내 Gemma에서의 동작</span></div>
+</div>
+
+<table>
+<tr><th>항목</th><th>상태</th><th>근거</th></tr>
+<tr><td>MCP 커넥터 (stdio·원격 HTTP/SSE, 권한, 키워드, CLI, 데스크탑 붙여넣기)</td><td><span class="tag t-ok">구현됨</span></td><td><code>client/src/mcp-*.ts</code>, <code>connectors.ts</code>, <code>tests/connectors·mcp-remote·external-tools.test.ts</code></td></tr>
+<tr><td>외부 도구 호출 <code>call_tool</code> (스킬 직접 단계로도 가능)</td><td><span class="tag t-ok">구현됨</span></td><td><code>src/core/external.ts</code>, <code>actions.ts</code></td></tr>
+<tr><td>서브에이전트 <code>run_skill</code> (안전 규칙 6개)</td><td><span class="tag t-ok">구현됨</span></td><td><code>src/core/subagent.ts</code>, <code>tests/subagent.test.ts</code></td></tr>
+<tr><td>스킬 지연 로딩 1단계 (단계 창, 계획 2단계, <code>llm_usage</code>)</td><td><span class="tag t-ok">구현됨</span></td><td><code>docs/13</code> §2 "1단계 구현 결과"</td></tr>
+<tr><td>도구 묶음, <code>skill_ref</code>/<code>refs/</code>, <code>delegate</code>, lint의 id 존재·순환 검사</td><td><span class="tag t-warn">미구현</span></td><td><code>docs/13</code> §3~4가 "아직"으로 표기</td></tr>
+<tr><td>데스크탑 "커넥터 추가" 중 <b>스킬 주소</b> 붙여넣기 (<code>npx skills add …</code>)</td><td><span class="tag t-warn">준비 중</span></td><td><code>Connectors.tsx</code>가 "아직 준비 중입니다"라고 안내</td></tr>
+<tr><td>e2e "MCP 서버" 시나리오</td><td><span class="tag t-risk">실패</span></td><td>§10-1 참조 (시스템 사전과 MCP 라우팅 충돌)</td></tr>
+<tr><td>사내 PC·사내 Gemma 검증</td><td><span class="tag t-risk">미확인</span></td><td><code>docs/11-status.html</code> §5</td></tr>
+</table>
+<div class="note warn"><b>권장 순서:</b> ① e2e 실패 1건 수정 → ② 변경을 의미 단위로 쪼개 커밋(<code>docs/13</code> §4의 0단계) → ③ 사내 PC에서 "화면 점검" 보고서와 조회 1건 실행. 이 문서는 ①~③을 하지 않은 현재 상태 기준입니다.</div>
+
+<h2 id="arch">1. 구조</h2>
+<p>Claude Code + Claude in Chrome 구조를 따라 <b>판단은 클라이언트가, 화면 조작은 브라우저 확장이</b> 맡고 둘은 MCP로 이어집니다. 엑셀(문서 보안 문서 포함)은 클라이언트가 오피스 도구로 직접 다룹니다.</p>
+<div class="arch">
+  <div class="row">
+    <div class="box core"><b>클라이언트 (터미널 <code>dogent.mjs</code> / 데스크탑 <code>Dogent.exe</code>)</b>에이전트 루프 · 스킬 · 사내 Gemma 호출 · 승인 · 실행 기록 · 예약</div>
+  </div>
+  <div class="arrow">▼ 같은 프로세스 안</div>
+  <div class="row">
+    <div class="box"><b>브리지</b>Native Messaging / WebSocket(127.0.0.1:39217) → 크롬·엣지 확장 → 사내 웹</div>
+    <div class="box"><b>오피스 도구</b><code>dogent-office.exe</code> → Excel COM → NASCA 문서·EDM에서 연 문서</div>
+    <div class="box"><b>MCP 허브 (신규)</b><code>~/.dogent/mcp.json</code>의 서버들(stdio·원격) → <code>서버.도구</code> 이름으로 모델에 노출</div>
+  </div>
+  <div class="row">
+    <div class="box"><b>스킬 저장소</b>개인 <code>~/.dogent/skills</code> &gt; 팀(<code>team-cache</code>/git) &gt; 기본(빌드 포함)</div>
+    <div class="box"><b>시스템 사전</b><code>SYSTEM.md</code>: 별칭·주소·화면 경로·용어</div>
+    <div class="box"><b>확장의 통제</b>허용 사이트 · 저장/상신 승인 창 · 로그인은 사람이</div>
+  </div>
+</div>
+<p>핵심 원칙은 <b>모델에게 맡기는 판단을 최소화</b>하는 것입니다. 무엇을 누를지·단계가 끝났는지·제출해도 되는지를 스킬 문서와 규칙이 정하고, 모델은 절차가 어긋났을 때의 복구와 목표 단계에서만 쓰입니다. 코드는 세 곳에 나뉩니다.</p>
+<table>
+<tr><th>위치</th><th>역할</th></tr>
+<tr><td><code>src/core/</code></td><td>환경 의존이 없는 핵심: 루프(<code>loop.ts</code>), 프롬프트, 계획기, 스킬 파서·lint, 정책, 서브에이전트, 외부 도구</td></tr>
+<tr><td><code>client/src/</code></td><td>터미널 클라이언트: 세션, 스킬/시스템 로딩, MCP 허브, 브리지, 오피스, 예약, doctor</td></tr>
+<tr><td><code>entrypoints/</code>, <code>desktop/</code></td><td>크롬 확장(사이드 패널·서비스 워커), Electron 데스크탑 앱</td></tr>
+</table>
+
+<h2 id="features">2. 기능 목록</h2>
+<div class="wrap"><table>
+<tr><th>영역</th><th>기능</th><th>상태</th></tr>
+<tr><td>실행</td><td>스킬 실행(<code>dogent run</code>), 말로 요청 → 스킬 자동 선택, 맞는 스킬이 없으면 <b>자유 요청</b>, 자유 요청을 개인 스킬로 저장</td><td><span class="tag t-ok">완료</span></td></tr>
+<tr><td>실행</td><td>모델 없이 바로 실행되는 단계("<code>navigate로 …</code>" + 인자), 경로 기억·자가 복구, 단계 <code>검사</code>/<code>기록</code></td><td><span class="tag t-ok">완료</span></td></tr>
+<tr><td>실행</td><td>서브에이전트 <code>run_skill</code>: 스킬이 다른 스킬을 부름 (깊이 1, 권한·도메인·예산 상속)</td><td><span class="tag t-ok">신규</span></td></tr>
+<tr><td>도구</td><td>화면: click/type/select/extract_table/download_table/fill_table/탭 관리 등 · 데이터: transform/write_excel · 글: read_text/summarize</td><td><span class="tag t-ok">완료</span></td></tr>
+<tr><td>도구</td><td>엑셀: excel_docs/read/write/save (NASCA 문서, 열린 문서 이름으로 지정)</td><td><span class="tag t-ok">완료</span></td></tr>
+<tr><td>도구</td><td>MCP 외부 도구 <code>call_tool</code>: 읽기 도구는 바로, 바꾸는 도구는 사용자에게 묻고 호출</td><td><span class="tag t-ok">신규</span></td></tr>
+<tr><td>통제</td><td>허용 도메인, R0~R3 위험 등급, 저장·상신 승인 창, 시험 실행(<code>--dry-run</code>), 입력 정책(<code>policy.yaml</code>), 중지 신호</td><td><span class="tag t-ok">완료</span></td></tr>
+<tr><td>스킬 관리</td><td>녹화로 초안, 말로 스킬 만들기, 품질 검사(등급), 스킬 찾기(태그), 팀 저장소 배포(<code>sync</code>), 성공률 표시</td><td><span class="tag t-ok">완료</span></td></tr>
+<tr><td>컨텍스트</td><td>시스템 사전(요청에 시스템 이름이 나오면 설명을 모델에 전달), 새 탭에서 시작, 단계 창/계획 2단계로 프롬프트 축소</td><td><span class="tag t-ok">완료</span></td></tr>
+<tr><td>운영</td><td>예약 실행(Windows 작업 스케줄러, CLI만), <code>dogent doctor</code>, 실행 기록 <code>runs.jsonl</code>, LLM 429 재시도</td><td><span class="tag t-ok">완료</span></td></tr>
+<tr><td>화면</td><td>터미널 · 데스크탑 앱(대화/스킬/시스템/커넥터/엑셀 탭) · 사이드 패널(스킬 선택기 SkillPicker 신규)</td><td><span class="tag t-ok">완료</span></td></tr>
+<tr><td>외부 연동</td><td>Claude Code 등 MCP 클라이언트가 Dogent 브리지를 통해 브라우저 조작 (<code>bridge/hub.mjs</code>)</td><td><span class="tag t-ok">완료</span></td></tr>
+</table></div>
+
+<h2 id="use">3. 사용법</h2>
+<h3>3-1. 빌드와 설치</h3>
+<pre><code>pnpm install
+pnpm build                  # 크롬 확장 → .output/chrome-mv3  (chrome://extensions 에서 "압축해제된 확장 프로그램" 로드)
+pnpm client:build           # 터미널 클라이언트 → client/dist/dogent.mjs
+pnpm desktop               # 데스크탑 앱 실행 (빌드 포함)
+
+# 모드: dev(모의 모델) / home(.env.home.local, Ollama) / company(.env.company.local, 사내 Gemma)
+pnpm client:build:company
+install\build.cmd -Mode company -Zip     # 사용자 PC 배포 묶음 (install.cmd 하나로 설치)</code></pre>
+<p>집에서 시험하려면 <code>pnpm mock:site</code>(모의 사내 사이트 :4173)와 <code>pnpm mock:llm</code>(모의 모델 :4174) 또는 <code>pnpm ollama:proxy</code>를 띄웁니다.</p>
+
+<h3>3-2. 연결 확인</h3>
+<pre><code>dogent browsers                 # 확장이 붙은 브라우저(크롬/엣지)
+dogent doctor [--fix]           # 안 붙을 때: 토큰·포트·Native Messaging 등록·회사 정책 점검
+dogent token                    # WebSocket 방식일 때 확장 설정에 넣을 토큰</code></pre>
+
+<h3>3-3. 터미널 클라이언트 명령</h3>
+<div class="wrap"><table>
+<tr><th>명령</th><th>설명</th></tr>
+<tr><td><code>dogent</code></td><td>대화 모드. 말로 일을 시키고 <code>exit</code>로 끝낸다</td></tr>
+<tr><td><code>dogent "7라인 재공 확인해줘"</code></td><td>요청 한 건. 맞는 스킬이 있으면 스킬로, 없으면 자유 요청</td></tr>
+<tr><td><code>dogent run wip-check line=7라인</code></td><td>스킬을 입력값과 함께 직접 실행. 파일 입력은 <code>이름=경로</code></td></tr>
+<tr><td><code>dogent skills [search 말 | info ID]</code></td><td>스킬 목록·검색·상세(입력, 위험도, 담당, 성공률)</td></tr>
+<tr><td><code>dogent skill new "업무 설명"</code> / <code>skill edit ID</code></td><td>말로 스킬 만들기 / 편집 후 자동 품질 검사</td></tr>
+<tr><td><code>dogent check SKILL.md</code></td><td>스킬·시스템 문서 품질 검사</td></tr>
+<tr><td><code>dogent sync</code></td><td>팀 스킬 저장소 받기</td></tr>
+<tr><td><code>dogent systems [info ID]</code></td><td>시스템 사전 보기</td></tr>
+<tr><td><code>dogent mcp …</code></td><td>MCP 서버 관리 (§8)</td></tr>
+<tr><td><code>dogent excel &lt;파일|문서이름&gt; | docs | resave</code></td><td>엑셀 열기·열린 문서 목록·NASCA 재저장 확인</td></tr>
+<tr><td><code>dogent schedule add 이름 --at 09:00 --days 월,수,금 스킬ID 이름=값</code></td><td>예약 실행 (로그인한 동안만, 저장·상신은 하지 않음)</td></tr>
+<tr><td><code>dogent config [키 값]</code></td><td>설정 보기·변경 (예: <code>llm.userId</code>, <code>browser edge</code>, <code>teamSkillsUrl</code>)</td></tr>
+</table></div>
+<p>공통 옵션: <code>--yes</code>(확인 생략) · <code>--allow-write</code>(자유 요청에서 저장·상신 허용, 누르기 전 승인 창) · <code>--dry-run</code>(상신 직전에 멈춤) · <code>--browser edge</code> · <code>--wait 초</code></p>
+
+<h3>3-4. 데스크탑 앱</h3>
+<ul>
+<li><b>대화</b>: 요청 입력 → 스킬 선택/입력값 확인 → 실행. 저장·상신 승인 창, 시험 실행 토글, 중지 버튼.</li>
+<li><b>스킬 탭</b>: 검색창, 맨 위 "지금 화면" 묶음, 말로 스킬 만들기. <b>시스템 탭</b>: 사전 보기. <b>엑셀 탭</b>: 열린 문서 보기.</li>
+<li><b>커넥터 탭(신규)</b>: MCP 서버 목록 → 펼치면 연결 시험과 도구별 권한 설정, "＋ 커넥터 추가"로 설치 명령 붙여넣기.</li>
+<li>왼쪽 목록 너비는 손잡이로 조절(방향키·더블클릭 지원).</li>
+</ul>
+
+<h3>3-5. 사이드 패널(확장)</h3>
+<p>툴바 아이콘 → 사이드 패널 → 스킬 선택(검색 가능한 SkillPicker) → 입력 → 실행. 설정에서 모델 주소·키·제한 시간 배율·공유 스킬 저장소 주소·<b>클라이언트 연결</b>(WebSocket/Native Messaging)을 바꿉니다. "화면 점검" 보고서로 사내 화면의 iframe·canvas·shadow DOM 호환성을 미리 수집할 수 있습니다.</p>
+
+<h2 id="flow">4. 실행 Flow</h2>
+<h3>4-1. 말로 요청했을 때</h3>
+<div class="flow">
+  <div><b>1</b>요청 입력<br>"7라인 재공 확인해서 HOLD만 정리"</div><i>→</i>
+  <div><b>2</b>맥락 모으기<br>시스템 사전 매칭, 주소, 엑셀 단서, MCP 서버 이름</div><i>→</i>
+  <div><b>3</b>스킬 고르기<br>후보 압축 → (8개 초과 시) 색인만 보고 고르기 → 입력값 뽑기</div><i>→</i>
+  <div><b>4</b>확인<br>입력값·누락 질문, "실행할까요?"</div>
+</div>
+<div class="flow">
+  <div><b>5</b>시작 탭 준비<br>스킬의 사이트가 아니면 새 탭에서 시작</div><i>→</i>
+  <div><b>6</b>에이전트 루프<br>화면 관찰 → 동작 1개 → 실행 → 검사</div><i>→</i>
+  <div><b>7</b>통제<br>도메인·R등급·승인 창</div><i>→</i>
+  <div><b>8</b>끝<br>결과 보고, <code>runs.jsonl</code> 기록, (자유 요청이면) 스킬로 저장 제안</div>
+</div>
+<p><b>맞는 스킬이 없으면</b> 자유 요청으로 갑니다. 이때 라우팅은 세 갈래입니다.</p>
+<table>
+<tr><th>요청의 단서</th><th>실행 방식</th></tr>
+<tr><td>엑셀 문서·파일 경로만</td><td>브라우저 연결 없이 엑셀 도구만 사용</td></tr>
+<tr><td>MCP 서버 이름·<code>keywords</code>가 나오고 화면·엑셀 단서는 없음</td><td>브라우저 연결을 기다리지 않고 <b>MCP 도구만</b> 사용</td></tr>
+<tr><td>그 밖 (주소, 화면 조작)</td><td>지금 브라우저 화면에서 자유 요청 (엑셀·MCP 도구는 필요하면 함께)</td></tr>
+</table>
+
+<h3>4-2. 루프 한 차례 안에서</h3>
+<pre><code>스킬 단계 N 시작
+ ├─ 단계가 "도구로 … + {인자}" 모양?  ── 예 → 모델 없이 그대로 실행 (실패하면 그 단계만 모델이 복구)
+ ├─ 아니오(목표 단계) → 모델에게 [스킬 머리 + 단계 개요 + 지금 단계 전문 + 예외/결과 + 화면 + 최근 동작 15개] 전달
+ │                      모델 → {"thought","tool","args"} JSON 하나
+ ├─ 검사: 정책(도메인, 저장·상신 버튼은 R3 + submit_steps + 승인 창)
+ ├─ 실행 후 "- 검사:" 식 충족 → 자동으로 다음 단계 / 미충족이면 같은 단계 계속
+ └─ 같은 실패 반복(MAX_STRIKES) · max_steps · timeout_sec · 중지 신호 → 중단</code></pre>
+
+<h3>4-3. 서브에이전트 (<code>run_skill</code>) Flow</h3>
+<div class="flow">
+  <div><b>부모</b>스킬 단계 또는 자유 요청이 <code>run_skill {"id","inputs"}</code></div><i>→</i>
+  <div><b>prepareChild</b>깊이 1 · R3 상속 · 도메인 포함 · 예산 차감 · 입력 검증</div><i>→</i>
+  <div><b>자식 실행</b>자기 데이터셋·경로 기억으로 <code>runSkill</code></div><i>→</i>
+  <div><b>복귀</b>결과 요약 1500자 이내만 부모 기록에. 데이터셋 병합(이름 겹치면 <code>_2</code>), 탭 복귀</div>
+</div>
+<p>스킬에서 직접 부르는 예:</p>
+<pre><code>3. run_skill로 재공을 조회한다. args는 다음을 그대로 쓴다.
+   `{"id": "wip-check", "inputs": {"line": "{line}"}}`
+   - 검사: dataset("wip")</code></pre>
+
+<h3>4-4. MCP 도구 호출 Flow</h3>
+<div class="flow">
+  <div><b>1</b>요청에 서버 이름/키워드</div><i>→</i>
+  <div><b>2</b>허브가 서버 기동·<code>tools/list</code> 읽기</div><i>→</i>
+  <div><b>3</b>모델 프롬프트에 <code>서버.도구 {"인자*"}: 설명</code> 한 줄씩</div><i>→</i>
+  <div><b>4</b><code>call_tool</code> → 권한 확인(allow/ask/deny)</div><i>→</i>
+  <div><b>5</b>결과가 JSON 배열이면 <code>dataset</code>으로 표 저장</div>
+</div>
+
+<h2 id="usecase">5. Use case</h2>
+<div class="wrap"><table>
+<tr><th>업무</th><th>사용하는 것</th><th>예시 요청 / 스킬</th><th>위험도</th></tr>
+<tr><td>UC-01 재공 조회·정리</td><td>화면 + 표 추출 + transform + 엑셀</td><td><code>wip-check</code>, <code>wip-search</code>: "7라인 재공 확인해줘"</td><td>R1</td></tr>
+<tr><td>UC-02 웹 → 엑셀 가공</td><td>다운로드 버튼 활용, 가공</td><td><code>wip-download</code></td><td>R1</td></tr>
+<tr><td>UC-03 엑셀 → 웹 일괄 입력</td><td>file 입력, <code>fill_table</code>, 입력 대조, 승인</td><td><code>wip-adjust</code> (재공 수량 조정)</td><td>R3</td></tr>
+<tr><td>UC-05 방화벽 해제 신청</td><td>입력 정책(IP/포트), 승인 창</td><td><code>firewall-request</code></td><td>R3</td></tr>
+<tr><td>HOLD 해제 요청</td><td>조회 + 목표 단계 + 승인</td><td><code>hold-release</code></td><td>R3</td></tr>
+<tr><td>UC-07 스킬 관리</td><td>녹화, 말로 만들기, 검사, 팀 배포</td><td><code>dogent skill new</code></td><td>-</td></tr>
+<tr><td>UC-06 예약 보고</td><td>Windows 작업 스케줄러</td><td><code>dogent schedule add 아침재공 --at 08:30 wip-check line=7라인</code></td><td>R1만</td></tr>
+<tr><td>화면 없이 시스템 조회 (신규)</td><td>MCP 커넥터</td><td>"mock-mes에서 P1 재공 목록 확인해줘" → <code>mock-mes.lot_list</code></td><td>읽기</td></tr>
+<tr><td>조회 + 엑셀 정리 조합 (신규)</td><td><code>run_skill</code> + transform + write_excel</td><td>"7라인 재공 확인해서 HOLD만 엑셀로 정리"</td><td>R1</td></tr>
+<tr><td>열린 NASCA 문서 활용</td><td>excel_* 도구</td><td>"열려 있는 주간 계획 엑셀 값을 화면에 입력"</td><td>쓰기는 R3</td></tr>
+</table></div>
+
+<h2 id="skills">6. 스킬 추가·작성</h2>
+<h3>6-1. 스킬은 어디서 읽나</h3>
+<table>
+<tr><th>우선순위</th><th>위치</th><th>들어오는 경로</th></tr>
+<tr><td>1 개인</td><td><code>~/.dogent/skills/&lt;id&gt;/SKILL.md</code></td><td>자유 요청 "스킬로 저장", <code>dogent skill new</code>, 직접 파일 복사</td></tr>
+<tr><td>2 팀</td><td><code>~/.dogent/team-cache/</code> 또는 <code>teamSkills</code>(git clone 폴더)</td><td><code>dogent sync</code> (index.json 주소 = <code>teamSkillsUrl</code>, 해시·품질 검사 통과한 것만 받음)</td></tr>
+<tr><td>3 기본</td><td>클라이언트 빌드에 포함 (<code>skills/</code>)</td><td>저장소에 추가 후 <code>pnpm client:build</code></td></tr>
+</table>
+<p>같은 <code>id</code>면 앞의 것이 이깁니다. 개인 스킬로 팀 스킬을 임시로 덮어써 시험할 수 있습니다.</p>
+
+<h3>6-2. 만드는 네 가지 방법</h3>
+<ol>
+<li><b>말로 만들기</b> — <code>dogent skill new "재공 조회해서 엑셀로"</code> 또는 앱 버튼. 지금 브라우저 화면을 보고 초안 → 말로 고치기 → 시험 실행 → 저장.</li>
+<li><b>자유 요청을 저장</b> — 자유 요청이 성공하면 "스킬로 저장할까요?" (자식 스킬의 동작은 섞이지 않게 처리됨).</li>
+<li><b>녹화</b> — 사이드 패널에서 조작을 녹화해 초안을 만든다 (표 페이지 넘김·일괄 입력 녹화는 미구현).</li>
+<li><b>직접 작성</b> — <code>pnpm skill:new</code>로 뼈대를 만들고 <code>SKILL.md</code>를 편집, <code>dogent check</code>/<code>pnpm skill:check</code>로 검사.</li>
+</ol>
+
+<h3>6-3. SKILL.md 최소 예시</h3>
+<pre><code>---
+id: wip-check
+name: 재공 확인
+description: 라인·공정별 재공 현황을 조회하고 정체 Lot과 공정별 집계를 엑셀로 정리한다
+version: 0.1.0
+owner: 생산관리
+risk: R1                  # R3가 아니면 저장·상신 버튼은 어느 단계에서도 누를 수 없다
+domains: [localhost:4173] # 이 밖으로는 이동·조작 불가
+tags: ["재공", "WIP", "정체 Lot"]
+inputs:
+  - name: line
+    label: 라인
+    type: string          # string|number|text|enum|ip|port|file
+    required: true
+    description: 조회할 라인 이름. 예 7라인
+limits: { max_steps: 40, timeout_sec: 300 }
+---
+
+## 단계
+1. navigate로 재공 현황 조회 화면으로 이동한다. args는 다음을 그대로 쓴다.
+   `{"url": "http://localhost:4173/wip.html"}`
+   - 확인: 화면에 "재공 현황 조회" 제목이 보인다.
+   - 검사: text("재공 현황 조회")
+2. select로 "라인"에서 {line}을 선택한다. args는 다음을 그대로 쓴다.
+   `{"ref": "라인", "value": "{line}"}`
+   - 검사: value("라인") == "{line}"
+3. 결과 중 상태가 HOLD인 Lot의 사유를 확인한다.      ← 목표 단계: 모델이 화면을 보고 판단
+
+## 예외
+- 조회 결과가 0건이면 abort로 "결과 없음"을 보고한다.
+## 결과
+- 라인, 총 건수, 정체 Lot 건수를 보고한다.</code></pre>
+
+<h3>6-4. 단계에 쓸 수 있는 것</h3>
+<table>
+<tr><th>종류</th><th>쓰는 법</th></tr>
+<tr><td>직접 단계</td><td>"<code>도구로</code>" 로 시작 + 백틱 JSON 인자 → 모델 없이 실행. 도구: navigate·open_tab·click·close_tab·type·select·extract_table·download_table·fill_table·transform·write_excel·excel_*·<b>call_tool</b>·<b>run_skill</b>·read_text·summarize·finish</td></tr>
+<tr><td>목표 단계</td><td>할 일만 문장으로. 모델이 화면을 보고 동작을 고름. 중간 단계엔 <code>- 검사:</code> 권장 (없으면 lint W01)</td></tr>
+<tr><td>자리표시자</td><td><code>{입력이름}</code> · <code>{out.이름}</code>(기록/요약 값) · <code>{rows.데이터셋}</code>(행 수)</td></tr>
+<tr><td>저장·상신</td><td><code>risk: R3</code> + <code>submit_steps</code> + (선택) <code>submit_labels</code>. 누르기 직전 승인 창</td></tr>
+<tr><td>입력 규칙</td><td>같은 폴더의 <code>policy.yaml</code> (예: 방화벽 신청의 IP/포트 규칙)</td></tr>
+</table>
+
+<h3>6-5. 팀에 배포</h3>
+<pre><code>skills/&lt;id&gt;/SKILL.md          # 사내 GitHub Enterprise의 dogent-skills 저장소에 PR → 리뷰 → 병합
+pnpm skill:index              # index.json 생성 (파일 해시 포함)
+# 사용자 PC:  dogent config teamSkillsUrl https://…/index.json   →   dogent sync  (앱은 한 시간마다 자동)</code></pre>
+
+<h2 id="systems">7. 시스템 사전 추가</h2>
+<p>사내 시스템 하나를 <code>skills/systems/&lt;id&gt;/SYSTEM.md</code>(개인·팀·기본 동일한 3단 우선순위)로 적어 두면, 요청에 "재공 시스템 들어가서…"처럼 이름이나 별칭이 나올 때 그 설명이 요청 해석과 자유 요청에 함께 들어갑니다. 화면이 안 열려 있으면 시스템 주소를 새 탭으로 열지 묻습니다.</p>
+<pre><code>---
+id: mes
+name: 모의 MES (생산 관리)
+description: 라인별 재공(WIP)과 Lot 홀드를 조회하고 처리하는 시스템
+aliases: [MES, 재공 시스템, WIP, 홀드 시스템]
+url: http://localhost:4173/portal.html
+domains: [localhost:4173]
+owner: 생산관리
+login: 로그인 화면이 뜨면 사용자가 직접 로그인한다
+screens:
+  - { name: 재공 현황 조회, path: "재공 &gt; 재공 현황", purpose: 라인·공정별 Lot과 수량 조회, url: http://localhost:4173/wip.html }
+terms:
+  HOLD: 품질 문제 등으로 공정 진행을 멈춘 Lot의 상태
+---</code></pre>
+
+<h2 id="mcp">8. MCP·커넥터를 클라이언트에서 추가해 쓰는 법</h2>
+<p>Dogent는 <b>두 방향</b>으로 MCP를 씁니다. 헷갈리지 않게 구분하세요.</p>
+<table>
+<tr><th></th><th>(A) Dogent가 MCP <b>클라이언트</b>일 때 (이 절)</th><th>(B) Dogent가 MCP <b>서버</b>일 때 (§9)</th></tr>
+<tr><td>방향</td><td>Dogent → 사내 시스템의 MCP 서버</td><td>Claude Code 등 → Dogent 브리지 → 브라우저 확장</td></tr>
+<tr><td>목적</td><td>화면 대신 API형 도구로 조회·처리</td><td>외부 에이전트가 브라우저를 조작</td></tr>
+<tr><td>설정</td><td><code>~/.dogent/mcp.json</code></td><td><code>claude mcp add dogent -- node bridge/hub.mjs</code></td></tr>
+</table>
+
+<h3>8-1. 추가하는 방법 (모두 같은 <code>mcp.json</code>에 저장됨)</h3>
+<table>
+<tr><th>방법</th><th>입력</th></tr>
+<tr><td>데스크탑 → 커넥터 탭 → ＋ 커넥터 추가</td><td>사내 마켓에서 복사한 글을 그대로 붙여넣기: <code>claude mcp add …</code> 명령, <code>{"mcpServers":{…}}</code> JSON, 또는 서버 주소(<code>http://…/mcp</code>). 더하기 전에 <b>어디로 무엇이 전송되는지·이 PC에서 실행될 명령</b>을 미리 보여 줌</td></tr>
+<tr><td>CLI (원격)</td><td><code>dogent mcp add github-mcp http://서버/mcp --transport http --header "Authorization: Bearer ${GH_TOKEN}"</code></td></tr>
+<tr><td>CLI (이 PC에서 실행)</td><td><code>dogent mcp add mes -e KEY=값 -- npx -y @회사/mes-mcp</code></td></tr>
+<tr><td>CLI (JSON)</td><td><code>dogent mcp add-json 이름 '{"type":"http","url":"http://서버/mcp"}'</code> · <code>dogent mcp import 파일|주소</code> (Claude Code·Cursor·VS Code·opencode 형식 모두 읽음)</td></tr>
+<tr><td>파일 직접 편집</td><td><code>~/.dogent/mcp.json</code> (Claude Code 형식 <code>mcpServers</code>도 읽음)</td></tr>
+</table>
+<p>더한 뒤에는 연결 시험을 자동으로 합니다(<code>--no-test</code>로 생략). 터미널이 아닌 자동 실행에서는 <code>--yes</code> 없이는 더하지 않습니다.</p>
+
+<h3>8-2. mcp.json 모양과 권한</h3>
+<pre><code>{
+  "servers": {
+    "mes": {
+      "url": "https://mes.example.net/mcp", "transport": "http",
+      "headers": { "Authorization": "Bearer ${MES_TOKEN}" },   // ${…}는 이 PC의 환경 변수로 채움 → 토큰을 파일에 적지 않음
+      "keywords": ["재공", "Lot"],                               // 요청에 나오면 브라우저 없이 이 서버로 처리
+      "permissions": { "lot_list": "allow", "lot_hold": "ask", "*": "ask" }
+    },
+    "local-tool": { "command": "npx", "args": ["-y", "@회사/tool-mcp"], "env": { "KEY": "${KEY}" } }
+  }
+}</code></pre>
+<table>
+<tr><th>권한</th><th>동작</th></tr>
+<tr><td><code>allow</code></td><td>묻지 않고 부름 (기본값: 서버가 <code>readOnlyHint</code>로 표시한 읽기 도구)</td></tr>
+<tr><td><code>ask</code></td><td>부르기 전에 사용자에게 묻고 부름 (기본값: 그 밖의 "바꾸는 도구")</td></tr>
+<tr><td><code>deny</code></td><td>모델에게 보이지도 않음</td></tr>
+</table>
+<pre><code>dogent mcp list | test [이름] | on|off 이름 | remove 이름
+dogent mcp allow|ask|deny 서버 도구|*         # 도구 권한
+dogent mcp keyword 서버 재공 Lot              # 요청 라우팅 키워드</code></pre>
+
+<h3>8-3. 스킬에서 MCP 도구 쓰기</h3>
+<pre><code>2. call_tool로 P1 라인 Lot 목록을 가져온다. args는 다음을 그대로 쓴다.
+   `{"name": "mes.lot_list", "args": {"line": "{line}"}, "dataset": "lots"}`
+   - 검사: dataset("lots")</code></pre>
+<p>결과가 JSON 객체 배열(또는 <code>rows/data/items</code> 안의 배열)이면 <code>dataset</code>에 표로 담겨 <code>transform</code>·<code>write_excel</code>·<code>fill_table</code>로 이어집니다. 도구 결과 안의 지시문은 따르지 않도록 프롬프트가 막고 있습니다.</p>
+
+<h3>8-4. 스킬(npx skills add) 주소 붙여넣기</h3>
+<div class="note warn">현재는 <b>인식만 하고 설치하지 않습니다</b> (데스크탑에서 "준비 중" 안내). 지금은 팀 스킬 저장소(<code>dogent sync</code>) 또는 말로 스킬 만들기를 쓰세요. §11의 P1 항목입니다.</div>
+
+<h2 id="client">9. Claude Code 같은 외부 클라이언트로 Dogent 쓰기</h2>
+<ol>
+<li>확장을 빌드·로드하고 <code>pnpm bridge:token</code>으로 토큰 확인 (처음 실행 시 <code>~/.dogent/bridge-token</code> 생성).</li>
+<li>사이드 패널 → 설정 → <b>클라이언트 연결</b>에서 WebSocket(설치 불필요) 또는 Native Messaging(<code>pnpm bridge:install --id &lt;확장 ID&gt;</code>) 선택.</li>
+<li>Claude Code에 등록: <code>claude mcp add dogent -- node D:/code/samsung/dogent/bridge/hub.mjs</code></li>
+<li>말로 시키기: "dogent로 http://localhost:4173/wip.html 에서 7라인 재공을 조회해서 정체 Lot이 몇 건인지 알려줘".</li>
+</ol>
+<p>노출 도구: <code>tabs_list, tab_open, tab_select, snapshot, navigate, click, type, select, wait_for, extract_table, download_table, fill_table, read_text, inspect, wait_for_login</code>. 어떤 클라이언트가 붙어도 <b>허용 사이트·저장/상신 승인 창·로그인은 사람이</b> 규칙은 확장이 그대로 지킵니다.</p>
+
+<h2 id="issues">10. 미완 항목과 알려진 문제</h2>
+<h3>10-1. e2e 실패(수정함): "MCP 서버" 시나리오 <span class="tag t-risk">수정됨</span></h3>
+<p><code>pnpm e2e:client</code> 15개 중 1개가 실패합니다. 요청 "mock-mes에서 P1 재공 목록 확인해줘"가 의도한 "브라우저 없이 MCP 도구만" 경로가 아니라 "지금 브라우저 화면에서 자유 요청" 경로로 갔습니다(결과는 MCP 도구로 정상 처리됨). 실행 결과에 <code>시스템: 팀 MES, 모의 MES</code>가 먼저 찍힌 것으로 보아, <b>시스템 사전이 "MES"를 시스템으로 인식</b>해 <code>officeIntent(..., hasSystem: true)</code>가 <code>web</code>을 켜고, <code>toolsOnly</code> 조건(<code>!intent.web</code>)이 깨진 것으로 보입니다 (<code>client/src/session.ts</code> 약 640~652행). 서버 이름이 시스템 별칭과 겹칠 때 어느 쪽이 이길지 규칙을 정해야 합니다. 예: 요청에 MCP 서버가 명시되고 URL/화면 단서가 없으면 시스템 이름만으로는 web으로 보지 않기.</p>
+<h3>10-2. 설계 문서상 미구현</h3>
+<ul>
+<li><code>delegate</code>(읽기 전용 자식 자유 요청), <code>skill_ref</code>/<code>refs/</code>, 도구 묶음 — <code>docs/13</code> §3~4.</li>
+<li>lint: <code>run_skill</code> id 존재·입력 이름·순환 검사 (현재는 깊이 1 제한이 순환을 막음).</li>
+<li>자유 요청은 <b>지금 탭과 다른 사이트</b>의 스킬을 <code>run_skill</code> 목록에 못 보여 줌.</li>
+<li>지연 로딩의 효과는 <b>추정</b>: 실모델(Gemma/Ollama)에서 전후 비교(<code>llm_usage</code>) 미실시. 본문은 30~55% 줄었지만 시스템 프롬프트(도구 설명 ≈3,800자)가 더 큼.</li>
+<li>예약은 CLI만 있음, EDM 스킬·xls·Hub·스크린샷 입력은 사내 확인 후 (<code>docs/11-status.html</code> §4).</li>
+</ul>
+<h3>10-3. 사내에서 확인되지 않은 것</h3>
+<div class="wrap"><table>
+<tr><th>항목</th><th>위험</th><th>확인법</th></tr>
+<tr><td>사내 화면 호환성 (iframe, canvas 그리드, shadow DOM)</td><td><span class="tag t-risk">큼</span></td><td>확장의 "화면 점검" 보고서</td></tr>
+<tr><td>사내 Gemma의 JSON·다단계 판단, 시스템 사전·MCP 안내를 따르는지</td><td><span class="tag t-risk">큼</span></td><td>조회 1건을 자유 요청으로 실행</td></tr>
+<tr><td>NASCA가 Excel 저장본을 재암호화하는지</td><td><span class="tag t-warn">중</span></td><td><code>dogent excel resave</code> 후 다른 PC에서 열기</td></tr>
+<tr><td>Native Messaging·압축해제 설치 정책</td><td><span class="tag t-warn">중</span></td><td><code>dogent doctor</code>, <code>chrome://policy</code></td></tr>
+<tr><td>사내 MCP 서버의 인증 방식(OAuth 등)·<code>readOnlyHint</code> 표기</td><td><span class="tag t-warn">중</span></td><td>실제 서버에 <code>dogent mcp test</code></td></tr>
+<tr><td>공용 PC에서 포트 39217 충돌, 모델 API 키 공유</td><td><span class="tag t-warn">중</span></td><td>환경 조사</td></tr>
+</table></div>
+<h3>10-4. 작업 정리</h3>
+<p>수정 27개 + 신규 17개 파일이 한 브랜치에 미커밋입니다. 커넥터(<code>client/src/mcp-*</code>, <code>connectors.ts</code>, UI), 도구 레지스트리(<code>external.ts</code>, <code>actions/loop</code>), 서브에이전트(<code>subagent.ts</code>), 지연 로딩(<code>planner/prompt/skill</code>), 스타일 대폭 변경(<code>style.css</code> ±1,000줄)이 섞여 있어 리뷰와 되돌리기가 어렵습니다. 4개 안팎으로 나눠 커밋하길 권합니다. 또한 <code>desktop.e2e.mjs</code>는 이번에 돌리지 않았습니다.</p>
+
+<h2 id="next">11. 확장·개선 제안</h2>
+<p>우선순위: <b>P0</b> 지금 막혀 있거나 신뢰에 직결 · <b>P1</b> 다음 한두 번의 작업 · <b>P2</b> 사용자가 늘면 · <b>P3</b> 장기.</p>
+
+<h3>11-1. 먼저 할 일 (P0)</h3>
+<table>
+<tr><th>#</th><th>항목</th><th>이유 / 방법</th></tr>
+<tr><td>1</td><td>e2e 실패 수정 + 커밋 정리</td><td>§10-1, §10-4. 시스템명과 MCP 서버명이 겹칠 때의 라우팅 규칙을 코드와 테스트로 고정</td></tr>
+<tr><td>2</td><td>사내 PC 1건 검증</td><td>화면 점검 보고서 → 조회 1건 → <code>mcp test</code>. 5번 항목 위험 대부분이 한 번에 드러남</td></tr>
+<tr><td>3</td><td>실모델 계측 비교</td><td><code>llm_usage</code>로 wip-check·firewall-request의 전/후 글자 수·성공률·차례 수 기록. 도구 묶음을 만들지는 이 결과로 결정</td></tr>
+<tr><td>4</td><td>MCP 보안 점검</td><td>stdio 서버는 이 PC에서 임의 명령을 실행하므로 <b>허용 목록</b>(팀 배포한 서버만)·명령 해시 고정 검토. 도구 결과를 통한 프롬프트 주입 시험 케이스 추가</td></tr>
+</table>
+
+<h3>11-2. 기능 추가 (P1~P2)</h3>
+<table>
+<tr><th>우선</th><th>기능</th><th>효과 / 설계 메모</th></tr>
+<tr><td>P1</td><td><b>스킬 주소 설치</b> (<code>npx skills add</code> 붙여넣기 완성)</td><td>이미 파싱은 있음. 받은 SKILL.md를 <code>parseSkill</code> + <code>lintSkill</code> + 해시 확인 후 개인 스킬로 저장하고 위험도(R3)·도메인을 미리 보여 주는 설치 확인창. 커넥터와 같은 경험이 완성됨</td></tr>
+<tr><td>P1</td><td>스킬이 <b>쓰는 도구를 선언</b> (<code>requires: [mcp:mes, excel]</code>)</td><td>스킬을 받았는데 그 MCP 서버가 없을 때 실행 전에 "이 서버를 연결하세요"로 안내. 마켓에서 스킬+커넥터를 한 번에 설치하는 기반. 도구 묶음 자동 선택에도 재사용</td></tr>
+<tr><td>P1</td><td>도구 묶음 + <code>skill_ref</code> + <code>delegate</code>(읽기 전용)</td><td><code>docs/13</code> 2~4단계. 단, #3 계측으로 효과가 확인된 것부터</td></tr>
+<tr><td>P1</td><td>lint 확장: <code>call_tool</code> 도구 이름·<code>run_skill</code> id·순환 검사</td><td>잘못된 스킬이 사용자 PC에서 실행 중에 깨지지 않게, 배포 관문(PR/sync)에서 막기. MCP 서버 목록 스냅샷을 선택 입력으로 받기</td></tr>
+<tr><td>P1</td><td>MCP <b>OAuth·토큰 보관</b></td><td>지금은 헤더+환경 변수. 사내 SSO형 서버를 위해 Windows 자격 증명 관리자 보관 또는 OAuth 흐름 필요</td></tr>
+<tr><td>P1</td><td>예약 화면(앱) + 실패 알림</td><td>CLI만 있어 현업이 쓰기 어렵고, 실패해도 모름. 완료·실패를 MCP(메신저/메일 커넥터)로 알리기</td></tr>
+<tr><td>P2</td><td>MCP <b>resources/prompts</b> 지원</td><td>지금은 tools만 사용. 사내 서버가 문서·템플릿을 resource로 줄 때 스킬 <code>refs</code>를 대신</td></tr>
+<tr><td>P2</td><td>스킬 <b>회귀 시험 세트</b></td><td>스킬별 화면 스냅샷 녹화본 + 기대 결과로 화면 변경 감지. 성공률 하락 시 스킬 담당자에게 알림 (docs/11 "성공률로 화면 변경 감지")</td></tr>
+<tr><td>P2</td><td>실행 기록 화면·내보내기</td><td><code>runs.jsonl</code>을 앱에서 검색·필터·재실행. 감사용 CSV, 개인정보(화면 글자) 마스킹 옵션</td></tr>
+<tr><td>P2</td><td>사이드 패널에서 MCP 커넥터 관리</td><td>지금은 데스크탑·CLI에만 있음. 패널은 Native Messaging 경유로 클라이언트 설정을 읽기만 해도 됨</td></tr>
+<tr><td>P2</td><td>스킬 버전·롤백·변경 이력</td><td>팀 스킬 갱신으로 업무가 깨졌을 때 이전 버전으로 복귀. <code>version</code> 필드 활용, 캐시 N개 보관</td></tr>
+<tr><td>P2</td><td>EDM 스킬, xls 읽기, 스크린샷 보조 입력</td><td>사내 화면을 본 뒤 (docs/11). 도구 <code>excel_attach</code>는 이미 있음</td></tr>
+<tr><td>P3</td><td>Hub (정책 배포·kill switch·기록 수집)</td><td>서버 위치·인증·운영 주체 결정 선행. MCP 서버 허용 목록도 여기서 배포</td></tr>
+<tr><td>P3</td><td>병렬 서브에이전트, 쓰기 가능한 <code>delegate</code>, 요청 분해 계획기</td><td>탭 하나 제약과 승인 흐름 때문에 별도 설계. 읽기 전용 MCP 호출부터 병렬화 가능</td></tr>
+</table>
+
+<h3>11-3. 개선하면 좋은 점</h3>
+<ul>
+<li><b>라우팅 규칙을 한 곳에</b>: 지금 <code>session.ts</code>에서 엑셀/시스템/주소/MCP 단서를 순차 if로 판단합니다. 단서 → 실행 방식(엑셀만/MCP만/브라우저+α)을 표 하나로 정의하고 단위 테스트(조합 표)로 고정하면 이번 같은 충돌을 막습니다. 판단 결과를 사용자에게 "이렇게 이해했습니다: 브라우저 없이 MCP 사용"으로 한 줄 보여 주는 것도 좋습니다.</li>
+<li><b>커넥터 도구가 많을 때</b>: 서버가 도구를 수십 개 내놓으면 시스템 프롬프트가 급증합니다. 키워드/이름 매칭으로 서버당 상위 N개만 노출하고, 나머지는 <code>search_tools</code> 도구로 찾게 하는 지연 로딩을 적용하세요 (docs/13의 L0~L3와 같은 사상).</li>
+<li><b>오류 메시지·진단</b>: <code>dogent doctor</code>를 MCP 서버(기동 실패 이유, 인증 실패, 도구 0개)까지 넓히고, 데스크탑 커넥터 탭에 같은 진단을 보여 주세요.</li>
+<li><b>문서 체계</b>: 이 문서·<code>docs/11-status.html</code>·<code>docs/13</code>·<code>README</code>에 상태가 흩어져 있습니다. 기능이 바뀌면 11번(현황) 하나만 고치도록 하고, 이 문서의 §3~§8은 사용자용 매뉴얼로 <code>DOGENT-GUIDE.html</code>(<code>pnpm guide:bundle</code>)과 합치는 것을 검토하세요.</li>
+<li><b>데스크탑 UI 변경량</b>: <code>style.css</code> ±1,000줄은 화면 전체 재디자인 수준입니다. 별도 PR로 분리하고 <code>pnpm e2e:desktop</code>을 통과시킨 뒤 병합하세요.</li>
+<li><b>성공 기준 수치화</b>: 로드맵의 "20회 반복 성공률 90%"를 사내 모델로 재는 자동 스크립트(<code>e2e:ollama</code>의 사내판)를 두면 모델 교체·프롬프트 변경의 회귀를 바로 압니다.</li>
+</ul>
+
+<footer>
+이 파일은 <code>docs/14-usage-and-roadmap.html</code>. 확인한 명령: <code>pnpm typecheck</code> 통과, <code>pnpm test</code> 373/373 통과, <code>pnpm client:build</code> + <code>pnpm e2e:client</code> 15/15 (§10-1의 실패를 수정한 뒤). <code>e2e:desktop</code>과 사내 환경은 확인하지 않았습니다.
+</footer>
+</main>
+</div>
+</body>
+</html>

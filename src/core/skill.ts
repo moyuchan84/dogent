@@ -122,6 +122,36 @@ export function extractSteps(body: string): string[] {
   return steps;
 }
 
+const OUTLINE_LINE_MAX = 80;
+
+/**
+ * 본문의 "## 단계" 절을 개요로 줄인다: 각 단계의 첫 줄만 남기고, 딸린 줄(도구·인자, 확인 조건)은 뺀다.
+ * 지금 할 단계는 프롬프트에 전문으로 따로 실리므로, 다른 단계의 인자가 모델 앞에 계속 따라다니지 않게 한다.
+ * 단계 절 밖(예외, 결과 등)은 모든 단계에 적용되므로 그대로 둔다.
+ */
+export function outlineSteps(body: string, current: number): string {
+  const lines = body.split(/\r?\n/);
+  const start = lines.findIndex((l) => /^##\s*단계\s*$/.test(l));
+  if (start < 0) return body;
+  const out = lines.slice(0, start + 1);
+  let inSteps = true;
+  let n = 0;
+  for (const line of lines.slice(start + 1)) {
+    if (inSteps && /^##\s/.test(line)) inSteps = false;
+    if (!inSteps) {
+      out.push(line);
+      continue;
+    }
+    const m = /^\d+\.\s+(.+)$/.exec(line);
+    if (!m) continue;
+    n++;
+    const head = m[1].trim();
+    const clipped = head.length > OUTLINE_LINE_MAX ? `${head.slice(0, OUTLINE_LINE_MAX)}…` : head;
+    out.push(`${n}. ${clipped}${n === current ? '  ← 지금 할 단계' : ''}`);
+  }
+  return out.join('\n');
+}
+
 /** 입력값을 검증하고 기본값을 채운다. 부족하거나 잘못된 항목은 errors로 돌려준다. */
 export function resolveInputs(
   skill: Skill,

@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import type { ApprovalRequest, RunEvent, RunResult } from '../../../src/core';
 import { searchSkills, skillCoversUrl } from '../../../src/core/catalog';
 import type { BrowserLink } from '../../../bridge/hub.mjs';
-import type { DogentApi, ExtensionStatus, InitInfo, SkillSummary, SystemSummary, UiMessage } from '../ipc';
+import type { DogentApi, ExtensionStatus, InitInfo, ServerRow, SkillSummary, SystemSummary, UiMessage } from '../ipc';
+import { ConnectDialog, ConnectorsPanel } from './Connectors';
 
 declare global {
   interface Window {
@@ -72,7 +73,9 @@ export function App() {
   const [skills, setSkills] = useState<SkillSummary[]>([]);
   const [systems, setSystems] = useState<SystemSummary[]>([]);
   const [text, setText] = useState('');
-  const [side, setSide] = useState<'skills' | 'systems' | 'excel'>('skills');
+  const [side, setSide] = useState<'skills' | 'systems' | 'connectors' | 'excel'>('skills');
+  const [servers, setServers] = useState<ServerRow[]>([]);
+  const [showConnect, setShowConnect] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [opts, setOpts] = useState({ allowWrite: false, dryRun: false });
   const [query, setQuery] = useState('');
@@ -93,6 +96,7 @@ export function App() {
       setInfo(i);
       setSkills(i.skills);
       void api.systems().then(setSystems);
+      void api.connectors().then(setServers);
       setBrowsers(i.browsers);
       setOpts(i.options);
     });
@@ -212,33 +216,15 @@ export function App() {
 
   return (
     <div className="app">
-      <header className="topbar">
-        <div className="brand">
-          <img src="./icon.svg" alt="" width={24} height={24} />
-          Dogent
-          {info && <span className="mode">{info.mode === 'production' ? '기본' : info.mode} · {info.version}</span>}
-        </div>
-        <div className="browser-pick" id="browser-pick">
-          <span className={`dot ${current ? 'on' : ''}`} />
-          {browsers.length === 0 ? (
-            <span id="browser-none">브라우저 연결 기다리는 중 · 확장의 클라이언트 연결을 켜세요</span>
-          ) : (
-            <select id="browser-select" value={current?.id ?? ''} disabled={busy} onChange={(e) => void api.selectBrowser(e.target.value)}>
-              {browsers.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.browser} ({b.via})
-                </option>
-              ))}
-            </select>
-          )}
-        </div>
-        <button className="ghost" id="open-settings" onClick={() => setShowSettings(true)}>
-          설정
-        </button>
-      </header>
-
       <div className="body" style={{ gridTemplateColumns: `${sideWidth}px 6px minmax(0, 1fr)` }}>
         <aside className="side">
+          <div className="side-head">
+            <div className="brand">
+              <img src="./icon.svg" alt="" width={22} height={22} />
+              Dogent
+              {info && <span className="mode">{info.mode === 'production' ? '기본' : info.mode} · {info.version}</span>}
+            </div>
+          </div>
           <nav className="side-tabs">
             <button className={side === 'skills' ? 'on' : ''} onClick={() => setSide('skills')}>
               스킬 {skills.length}
@@ -246,23 +232,30 @@ export function App() {
             <button className={side === 'systems' ? 'on' : ''} id="tab-systems" onClick={() => setSide('systems')} title="사내 시스템 사전: 요청에 시스템 이름이 나오면 모델에 함께 보여 줍니다">
               시스템 {systems.length}
             </button>
+            <button className={side === 'connectors' ? 'on' : ''} id="tab-connectors" onClick={() => setSide('connectors')} title="MCP 서버: 사내 시스템의 도구를 브라우저 없이 부릅니다">
+              커넥터 {servers.length}
+            </button>
             <button className={side === 'excel' ? 'on' : ''} id="tab-excel" onClick={() => setSide('excel')}>
               엑셀 문서
             </button>
           </nav>
           {side === 'skills' ? (
-            <div className="side-list" id="skill-list">
-              <button className="secondary compose" id="compose-skill" disabled={busy} onClick={() => send('스킬 만들기')} title="지금 브라우저 화면에서 하는 업무를 말로 설명하면 스킬 초안을 씁니다">
-                + 말로 스킬 만들기
+            <>
+            <div className="side-tools">
+              <button className="compose" id="compose-skill" disabled={busy} onClick={() => send('스킬 만들기')} title="지금 브라우저 화면에서 하는 업무를 말로 설명하면 스킬 초안을 씁니다">
+                <span aria-hidden>＋</span> 말로 스킬 만들기
               </button>
               <input
                 id="skill-search"
                 type="search"
                 value={query}
-                placeholder="스킬 찾기 (예: 홀드 해제, 방화벽)"
+                placeholder="스킬 찾기"
+                aria-label="스킬 찾기"
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={(e) => e.key === 'Escape' && setQuery('')}
               />
+            </div>
+            <div className="side-list" id="skill-list">
               {query.trim() ? (
                 <div style={{ display: 'grid', gap: 4 }} id="skill-hits">
                   <div className="group">찾은 스킬 {hits.length}</div>
@@ -289,6 +282,7 @@ export function App() {
                 ))
               )}
             </div>
+            </>
           ) : side === 'systems' ? (
             <div className="side-list" id="system-list">
               {systems.length === 0 && <div className="empty">시스템 사전이 비어 있습니다. 팀 저장소의 skills/systems/&lt;id&gt;/SYSTEM.md에 시스템을 적어 두면 여기에 나타납니다.</div>}
@@ -305,9 +299,30 @@ ${x.url}`}>
                 </button>
               ))}
             </div>
+          ) : side === 'connectors' ? (
+            <ConnectorsPanel servers={servers} onChange={setServers} onAdd={() => setShowConnect(true)} />
           ) : (
             <ExcelDocs />
           )}
+          <footer className="side-foot">
+            <div className="browser-pick" id="browser-pick">
+              <span className={`dot ${current ? 'on' : ''}`} />
+              {browsers.length === 0 ? (
+                <span id="browser-none">브라우저 연결을 기다리는 중</span>
+              ) : (
+                <select id="browser-select" value={current?.id ?? ''} disabled={busy} onChange={(e) => void api.selectBrowser(e.target.value)}>
+                  {browsers.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.browser} ({b.via})
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+            <button className="ghost" id="open-settings" onClick={() => setShowSettings(true)} title="모델, 브라우저 확장 연결, 저장 폴더">
+              설정
+            </button>
+          </footer>
         </aside>
 
         <div
@@ -356,9 +371,7 @@ ${x.url}`}>
             {items.length === 0 && (
               <div className="welcome">
                 <h1>무엇을 할까요?</h1>
-                <div>
-                  업무 화면 탭을 브라우저 앞에 두고 말로 시키세요. 맞는 스킬이 있으면 스킬로, 없으면 지금 화면에서 직접 합니다. 왼쪽 스킬을 눌러 입력값을 넣어 실행할 수도 있습니다.
-                </div>
+                <p>업무 화면 탭을 브라우저 앞에 두고 말로 시키세요. 맞는 스킬이 있으면 스킬로, 없으면 지금 화면에서 직접 합니다. 왼쪽에서 스킬을 골라 입력값을 넣어 실행할 수도 있습니다.</p>
                 <div className="examples">
                   {EXAMPLES.map((e) => (
                     <button key={e} className="secondary" onClick={() => send(e)}>
@@ -376,45 +389,51 @@ ${x.url}`}>
 
           <div className="composer">
             <div className="composer-inner">
-              <textarea
-                id="composer"
-                rows={2}
-                value={text}
-                placeholder="예: 8라인 재공 확인해줘   (Enter 보내기, Shift+Enter 줄바꿈)"
-                onChange={(e) => setText(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-                    e.preventDefault();
-                    send();
-                  }
-                }}
-              />
-              <div className="row">
-                <div className="opts">
-                  <label className="check">
-                    <input id="opt-write" type="checkbox" checked={opts.allowWrite} disabled={busy} onChange={(e) => setOption({ allowWrite: e.target.checked })} />
-                    자유 요청에서 저장·상신 허용 (승인 창으로 물음)
-                  </label>
-                  <label className="check">
-                    <input id="opt-dry" type="checkbox" checked={opts.dryRun} disabled={busy} onChange={(e) => setOption({ dryRun: e.target.checked })} />
-                    시험 실행 (상신 직전에 멈춤)
-                  </label>
+              <div className="composer-box">
+                <textarea
+                  id="composer"
+                  rows={2}
+                  value={text}
+                  placeholder="무엇을 할까요?  예: 8라인 재공 확인해줘"
+                  onChange={(e) => setText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                      e.preventDefault();
+                      send();
+                    }
+                  }}
+                />
+                <div className="composer-bar">
+                  <div className="opts">
+                    <label className="toggle" title="스킬 없이 하는 자유 요청에서도 저장·상신 버튼을 누를 수 있게 합니다. 누르기 전에 승인 창으로 묻습니다">
+                      <input id="opt-write" type="checkbox" checked={opts.allowWrite} disabled={busy} onChange={(e) => setOption({ allowWrite: e.target.checked })} />
+                      <span>저장·상신 허용</span>
+                    </label>
+                    <label className="toggle" title="입력까지만 하고 저장·상신 직전에 멈춥니다">
+                      <input id="opt-dry" type="checkbox" checked={opts.dryRun} disabled={busy} onChange={(e) => setOption({ dryRun: e.target.checked })} />
+                      <span>시험 실행</span>
+                    </label>
+                  </div>
+                  {busy ? (
+                    <button className="danger stop" id="stop" onClick={() => void api.stop()}>
+                      <span aria-hidden>■</span> 중지
+                    </button>
+                  ) : (
+                    <button className="send" id="send" aria-label="보내기" title="보내기 (Enter)" disabled={!text.trim()} onClick={() => send()}>
+                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
+                        <path d="M8 13V3M3.5 7.5 8 3l4.5 4.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </button>
+                  )}
                 </div>
-                {busy ? (
-                  <button className="danger" id="stop" onClick={() => void api.stop()}>
-                    중지
-                  </button>
-                ) : (
-                  <button id="send" disabled={!text.trim()} onClick={() => send()}>
-                    보내기
-                  </button>
-                )}
               </div>
+              <div className="composer-note">Enter로 보내고 Shift+Enter로 줄을 바꿉니다. 저장·상신은 승인 창을 거칩니다.</div>
             </div>
           </div>
         </main>
       </div>
 
+      {showConnect && <ConnectDialog onClose={() => setShowConnect(false)} onDone={setServers} />}
       {showSettings && <Settings onClose={() => setShowSettings(false)} onChanged={(c) => setInfo((i) => i && { ...i, config: c })} config={info?.config ?? ''} />}
     </div>
   );
@@ -440,7 +459,6 @@ function SkillButton({
     <button className="skill" data-skill={s.id} disabled={busy} onClick={() => onOpen(s)} title={`${s.description}\n담당 ${s.owner}${s.tags.length ? ` · ${s.tags.join(', ')}` : ''}`}>
       <span>
         <b>{s.name}</b>
-        <span className={`risk ${s.risk}`}>{s.risk}</span>
         {showSource && (
           <span className="chip" data-source={s.source}>
             {s.source}
@@ -454,6 +472,9 @@ function SkillButton({
             성공 {Math.round(st.rate * 100)}%
           </span>
         ) : null}
+        <span className={`risk ${s.risk}`} title={s.risk === 'R3' ? '저장·상신까지 하는 스킬 (승인 필요)' : s.risk === 'R2' ? '값을 바꾸는 스킬' : '읽기만 하는 스킬'}>
+          {s.risk}
+        </span>
       </span>
       <small>
         {s.description}
@@ -736,27 +757,41 @@ function Settings({ onClose, onChanged, config }: { onClose: () => void; onChang
       setMessage((e as Error).message);
     }
   };
-  const fields: { key: keyof typeof form; config: string; label: string; hint: string }[] = [
-    { key: 'userId', config: 'llm.userId', label: '사용자 ID (사내 SSO ID)', hint: '사내 모델 게이트웨이의 user-id 헤더' },
-    { key: 'browser', config: 'browser', label: '쓸 브라우저', hint: '확장이 든 브라우저가 여럿일 때 이름 일부 (예: edge, chrome)' },
-    { key: 'outputDir', config: 'outputDir', label: '결과 엑셀 저장 폴더', hint: '비우면 내려받기 폴더' },
-    { key: 'teamSkills', config: 'teamSkills', label: '팀 스킬 저장소 폴더', hint: '사내 GitHub의 dogent-skills를 받아 둔 폴더' },
-  ];
+  type Field = { key: keyof typeof form; config: string; label: string; hint: string };
+  const fields: Record<'account' | 'browser' | 'storage', Field[]> = {
+    account: [{ key: 'userId', config: 'llm.userId', label: '사용자 ID (사내 SSO ID)', hint: '사내 모델 게이트웨이의 user-id 헤더' }],
+    browser: [{ key: 'browser', config: 'browser', label: '쓸 브라우저', hint: '확장이 든 브라우저가 여럿일 때 이름 일부 (예: edge, chrome)' }],
+    storage: [
+      { key: 'outputDir', config: 'outputDir', label: '결과 엑셀 저장 폴더', hint: '비우면 내려받기 폴더' },
+      { key: 'teamSkills', config: 'teamSkills', label: '팀 스킬 저장소 폴더', hint: '사내 GitHub의 dogent-skills를 받아 둔 폴더' },
+    ],
+  };
+  const fieldRow = (f: Field) => (
+    <label key={f.key}>
+      {f.label}
+      <div className="token">
+        <input value={form[f.key]} placeholder={f.hint} onChange={(e) => setForm({ ...form, [f.key]: e.target.value })} />
+        <button className="secondary" disabled={!form[f.key].trim()} onClick={() => void save(f.config, form[f.key].trim())}>
+          저장
+        </button>
+      </div>
+    </label>
+  );
   return (
     <div className="overlay" onClick={onClose}>
       <div className="drawer" id="settings" onClick={(e) => e.stopPropagation()}>
-        <div className="row" style={{ justifyContent: 'space-between' }}>
+        <div className="drawer-head">
           <h2>설정</h2>
           <button className="ghost" onClick={onClose}>
             닫기
           </button>
         </div>
-        <div id="extension-link">
-          <div className="group" style={{ margin: '0 0 6px' }}>
-            브라우저 확장 연결
-          </div>
+        {message && <div className="toast">{message}</div>}
+
+        <section className="set-section" id="extension-link">
+          <h3>브라우저 확장 연결</h3>
           {link?.ids.length ? (
-            <div className="hint">
+            <div className="hint ok-note">
               연결 준비됨 (확장 {link.ids.length}개 허용). 브라우저의 Dogent 사이드 패널 → 설정 → 클라이언트 연결에서 방식을 Native Messaging으로 하면 토큰 없이 붙습니다.
             </div>
           ) : (
@@ -771,40 +806,38 @@ function Settings({ onClose, onChanged, config }: { onClose: () => void; onChang
               {extId.trim() ? '등록' : '다시 찾기'}
             </button>
           </div>
-        </div>
-        <label>
-          WebSocket으로 붙을 때만 쓰는 토큰
-          <div className="token">
-            <input readOnly value={token} id="token" />
-            <button
-              className="secondary"
-              onClick={() => {
-                navigator.clipboard.writeText(token).then(() => setCopied(true), () => {});
-              }}
-            >
-              {copied ? '복사됨' : '복사'}
-            </button>
-          </div>
-          <span className="hint">회사 정책으로 Native Messaging이 막혔을 때: 사이드 패널 → 설정 → 클라이언트 연결에서 WebSocket을 고르고 이 토큰을 넣으세요.</span>
-        </label>
-        {fields.map((f) => (
-          <label key={f.key}>
-            {f.label}
+          <label>
+            WebSocket으로 붙을 때만 쓰는 토큰
             <div className="token">
-              <input value={form[f.key]} placeholder={f.hint} onChange={(e) => setForm({ ...form, [f.key]: e.target.value })} />
-              <button className="secondary" disabled={!form[f.key].trim()} onClick={() => void save(f.config, form[f.key].trim())}>
-                저장
+              <input readOnly value={token} id="token" />
+              <button
+                className="secondary"
+                onClick={() => {
+                  navigator.clipboard.writeText(token).then(() => setCopied(true), () => {});
+                }}
+              >
+                {copied ? '복사됨' : '복사'}
               </button>
             </div>
+            <span className="hint">회사 정책으로 Native Messaging이 막혔을 때: 사이드 패널 → 설정 → 클라이언트 연결에서 WebSocket을 고르고 이 토큰을 넣으세요.</span>
           </label>
-        ))}
-        {message && <div className="hint">{message}</div>}
-        <div>
-          <div className="group" style={{ margin: '0 0 6px' }}>
-            지금 설정
-          </div>
+          {fields.browser.map(fieldRow)}
+        </section>
+
+        <section className="set-section">
+          <h3>계정</h3>
+          {fields.account.map(fieldRow)}
+        </section>
+
+        <section className="set-section">
+          <h3>저장 위치</h3>
+          {fields.storage.map(fieldRow)}
+        </section>
+
+        <section className="set-section">
+          <h3>지금 설정</h3>
           <pre id="config">{config}</pre>
-        </div>
+        </section>
       </div>
     </div>
   );

@@ -97,13 +97,36 @@ export class BrowserTools {
       this.current = null;
       return null;
     }
-    const tab = await this.target();
-    const port = this.host.port(tab);
     const n = (i: number) => {
       const v = Number(args[i]);
       if (!Number.isFinite(v)) throw new Error(`${method}: ${i + 1}번째 인자는 숫자여야 합니다`);
       return v;
     };
+    // 탭을 다루는 동작은 대상 탭이 없어도 된다 (탭이 하나도 없을 때 새 탭을 열어 시작할 수 있게)
+    if (method === 'tabs') {
+      const [tabs, sites] = await Promise.all([this.host.tabs(), this.host.sites()]);
+      const current = this.current ?? (await this.host.activeTab());
+      return tabs.map((t) => ({ id: t.id, url: t.url, title: t.title, current: t.id === current, allowed: siteAllowed(t.url, sites) }));
+    }
+    if (method === 'openTab') {
+      const url = String(args[0] ?? '');
+      await this.allowed(url);
+      this.current = await this.host.open(url);
+      return { ok: true, message: `새 탭 [${this.current}]에서 열었습니다: ${url}` };
+    }
+    if (method === 'selectTab') {
+      const id = n(0);
+      const found = (await this.host.tabs()).find((t) => t.id === id);
+      if (!found) return { ok: false, message: `탭 [${id}]이 없습니다. tab_list로 확인하세요` };
+      if (!siteAllowed(found.url, await this.host.sites())) {
+        return { ok: false, message: `탭 [${id}](${found.url})은 조작할 사이트 목록에 없어 대상으로 삼을 수 없습니다` };
+      }
+      this.current = id;
+      await this.host.focus(id);
+      return { ok: true, message: `탭 [${id}] "${found.title || found.url}"을(를) 조작 대상으로 정했습니다` };
+    }
+    const tab = await this.target();
+    const port = this.host.port(tab);
     const t = (await this.host.tabs()).find((x) => x.id === tab);
     const allowed = !!t && siteAllowed(t.url, await this.host.sites());
     if (method === 'target') return { id: tab, url: t?.url ?? '', title: t?.title ?? '', allowed };

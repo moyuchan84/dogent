@@ -77,6 +77,12 @@ export function checkAction(action: Action, snap: PageSnapshot, skill: Skill): V
           reason: `${action.args.url} 은(는) 이 스킬의 허용 도메인(${skill.domains.join(', ')})이 아닙니다`,
         };
   }
+  // 새 탭도 허용 도메인 안의 주소만 연다 (이미 열려 있는 화면을 또 여는 것은 막지 않는다. 탭마다 따로 조작한다)
+  if (action.tool === 'open_tab') {
+    return hostAllowed(action.args.url, skill.domains)
+      ? { ok: true }
+      : { ok: false, reason: `${action.args.url} 은(는) 이 스킬의 허용 도메인(${skill.domains.join(', ')})이 아닙니다` };
+  }
   // 열린 엑셀 문서를 바꾸거나 열린 곳에 저장하는 것은 저장·상신 허용(R3)일 때만 한다. 읽기와 다른 이름 저장은 늘 된다.
   if ((action.tool === 'excel_write' || (action.tool === 'excel_save' && !action.args.path)) && skill.risk !== 'R3') {
     return { ok: false, reason: '엑셀 문서를 바꾸거나 열린 곳에 저장하려면 저장·상신 허용(--allow-write) 또는 R3 스킬이어야 합니다. 다른 이름으로 저장(path)은 됩니다' };
