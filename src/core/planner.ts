@@ -27,6 +27,8 @@ export async function planRequest(
   skills: Skill[],
   llm: LlmPort,
   signal?: AbortSignal,
+  /** 요청에 나온 사내 시스템의 설명 (systems.ts describeSystem). 용어와 별칭을 이해하는 데 쓴다 */
+  systemInfo?: string,
 ): Promise<Plan> {
   const catalog = skills
     .map((s) => {
@@ -48,7 +50,7 @@ export async function planRequest(
   const text = await llm.complete(
     [
       { role: 'system', content: PLANNER_SYSTEM_PROMPT },
-      { role: 'user', content: `## 스킬 목록\n${catalog}\n\n## 사용자 요청\n${request}` },
+      { role: 'user', content: `${systemInfo ? `## 사내 시스템 설명 (참고)\n${systemInfo}\n\n` : ''}## 스킬 목록\n${catalog}\n\n## 사용자 요청\n${request}` },
     ],
     signal,
   );

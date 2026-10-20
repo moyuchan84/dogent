@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ApprovalRequest, RunEvent, RunResult } from '../../../src/core';
 import { searchSkills, skillCoversUrl } from '../../../src/core/catalog';
 import type { BrowserLink } from '../../../bridge/hub.mjs';
-import type { DogentApi, ExtensionStatus, InitInfo, SkillSummary, UiMessage } from '../ipc';
+import type { DogentApi, ExtensionStatus, InitInfo, SkillSummary, SystemSummary, UiMessage } from '../ipc';
 
 declare global {
   interface Window {
@@ -27,6 +27,41 @@ const STATUS: Record<RunResult['status'], string> = {
   dryrun: '시험 실행 (제출 전 멈춤)',
 };
 
+/** 왼쪽 목록의 너비. 끌어서 바꾸고, 다시 열면 그대로 쓴다. */
+const SIDE_KEY = 'dogent.sideWidth';
+const SIDE_DEFAULT = 280;
+const SIDE_MIN = 200;
+const sideMax = () => Math.max(SIDE_MIN, Math.min(640, Math.round(window.innerWidth * 0.6)));
+const clampSide = (w: number) => Math.min(sideMax(), Math.max(SIDE_MIN, Math.round(w)));
+
+function useSideWidth() {
+  const [width, setWidth] = useState(() => {
+    try {
+      const saved = Number(localStorage.getItem(SIDE_KEY));
+      return saved ? clampSide(saved) : SIDE_DEFAULT;
+    } catch {
+      return SIDE_DEFAULT;
+    }
+  });
+  const set = (w: number, keep = true) => {
+    const next = clampSide(w);
+    setWidth(next);
+    if (!keep) return;
+    try {
+      localStorage.setItem(SIDE_KEY, String(next));
+    } catch {
+      /* 저장 못 해도 이번 실행에서는 그대로 쓴다 */
+    }
+  };
+  // 창을 줄이면 목록이 화면을 다 차지하지 않게 맞춘다
+  useEffect(() => {
+    const onResize = () => setWidth((w) => clampSide(w));
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  return [width, set] as const;
+}
+
 const EXAMPLES = ['7라인 재공 확인해줘', '8라인을 선택하고 조회해서 총 몇 건인지 알려줘', 'skills', 'browsers'];
 
 export function App() {
@@ -35,11 +70,13 @@ export function App() {
   const [busy, setBusy] = useState(false);
   const [browsers, setBrowsers] = useState<BrowserLink[]>([]);
   const [skills, setSkills] = useState<SkillSummary[]>([]);
+  const [systems, setSystems] = useState<SystemSummary[]>([]);
   const [text, setText] = useState('');
-  const [side, setSide] = useState<'skills' | 'excel'>('skills');
+  const [side, setSide] = useState<'skills' | 'systems' | 'excel'>('skills');
   const [showSettings, setShowSettings] = useState(false);
   const [opts, setOpts] = useState({ allowWrite: false, dryRun: false });
   const [query, setQuery] = useState('');
+  const [sideWidth, setSideWidth] = useSideWidth();
   const [page, setPage] = useState<{ url: string; title: string } | null>(null);
   const feedEnd = useRef<HTMLDivElement>(null);
 
@@ -55,6 +92,7 @@ export function App() {
     void api.init().then((i) => {
       setInfo(i);
       setSkills(i.skills);
+      void api.systems().then(setSystems);
       setBrowsers(i.browsers);
       setOpts(i.options);
     });
@@ -69,11 +107,17 @@ export function App() {
   function apply(m: UiMessage) {
     if (m.kind === 'busy') {
       setBusy(m.busy);
-      if (!m.busy) void api.skills().then(setSkills); // 자유 요청을 스킬로 저장했을 수 있다
+      if (!m.busy) {
+        void api.skills().then(setSkills); // 자유 요청을 스킬로 저장했을 수 있다
+        void api.systems().then(setSystems);
+      }
       return;
     }
     if (m.kind === 'browsers') return setBrowsers(m.browsers);
-    if (m.kind === 'skills') return void api.skills().then(setSkills);
+    if (m.kind === 'skills') {
+      void api.systems().then(setSystems);
+      return void api.skills().then(setSkills);
+    }
     setItems((prev) => {
       const next = [...prev];
       const lastRun = () => {
@@ -193,11 +237,14 @@ export function App() {
         </button>
       </header>
 
-      <div className="body">
+      <div className="body" style={{ gridTemplateColumns: `${sideWidth}px 6px minmax(0, 1fr)` }}>
         <aside className="side">
           <nav className="side-tabs">
             <button className={side === 'skills' ? 'on' : ''} onClick={() => setSide('skills')}>
               스킬 {skills.length}
+            </button>
+            <button className={side === 'systems' ? 'on' : ''} id="tab-systems" onClick={() => setSide('systems')} title="사내 시스템 사전: 요청에 시스템 이름이 나오면 모델에 함께 보여 줍니다">
+              시스템 {systems.length}
             </button>
             <button className={side === 'excel' ? 'on' : ''} id="tab-excel" onClick={() => setSide('excel')}>
               엑셀 문서
@@ -242,10 +289,67 @@ export function App() {
                 ))
               )}
             </div>
+          ) : side === 'systems' ? (
+            <div className="side-list" id="system-list">
+              {systems.length === 0 && <div className="empty">시스템 사전이 비어 있습니다. 팀 저장소의 skills/systems/&lt;id&gt;/SYSTEM.md에 시스템을 적어 두면 여기에 나타납니다.</div>}
+              {systems.map((x) => (
+                <button key={x.id} className="skill" data-system={x.id} disabled={busy} onClick={() => send(`systems info ${x.id}`)} title={`${x.description}
+${x.url}`}>
+                  <span>
+                    <b>{x.name}</b>
+                    <span className="chip" data-source={x.source}>
+                      {x.source}
+                    </span>
+                  </span>
+                  <small>{x.aliases.length ? `${x.aliases.join(', ')} · ` : ''}스킬 {x.skills}개</small>
+                </button>
+              ))}
+            </div>
           ) : (
             <ExcelDocs />
           )}
         </aside>
+
+        <div
+          className="splitter"
+          id="side-splitter"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="목록 너비 조절"
+          aria-valuemin={SIDE_MIN}
+          aria-valuemax={sideMax()}
+          aria-valuenow={sideWidth}
+          tabIndex={0}
+          title="끌어서 목록 너비를 바꿉니다 (두 번 누르면 처음 너비)"
+          onPointerDown={(e) => {
+            e.preventDefault();
+            const el = e.currentTarget;
+            el.setPointerCapture(e.pointerId);
+            el.classList.add('drag');
+            const left = el.parentElement!.getBoundingClientRect().left;
+            const move = (ev: PointerEvent) => setSideWidth(ev.clientX - left, false);
+            const up = (ev: PointerEvent) => {
+              el.releasePointerCapture(ev.pointerId);
+              el.classList.remove('drag');
+              el.removeEventListener('pointermove', move);
+              el.removeEventListener('pointerup', up);
+              el.removeEventListener('pointercancel', up);
+              setSideWidth(ev.clientX - left);
+            };
+            el.addEventListener('pointermove', move);
+            el.addEventListener('pointerup', up);
+            el.addEventListener('pointercancel', up);
+          }}
+          onDoubleClick={() => setSideWidth(SIDE_DEFAULT)}
+          onKeyDown={(e) => {
+            const step = e.shiftKey ? 48 : 16;
+            if (e.key === 'ArrowLeft') setSideWidth(sideWidth - step);
+            else if (e.key === 'ArrowRight') setSideWidth(sideWidth + step);
+            else if (e.key === 'Home') setSideWidth(SIDE_DEFAULT);
+            else return;
+            e.preventDefault();
+          }}
+        />
 
         <main className="main">
           <div className="feed" id="feed">

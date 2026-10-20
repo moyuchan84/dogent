@@ -27,6 +27,11 @@ export class McpBrowser implements BrowserPort {
     return this.port('target');
   }
 
+  /** 대상을 사용자가 보고 있는 탭으로 되돌린다 (새 탭을 열어 쓴 뒤, 다음 요청 전에) */
+  async followActive(): Promise<void> {
+    await this.port('followActive');
+  }
+
   snapshot(): Promise<PageSnapshot> {
     return this.port('snapshot');
   }

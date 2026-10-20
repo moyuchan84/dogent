@@ -37,5 +37,22 @@ for (const entry of readdirSync(dir, { withFileTypes: true })) {
 }
 skills.sort((a, b) => a.id.localeCompare(b.id));
 
-writeFileSync(join(dir, 'index.json'), `${JSON.stringify({ skills }, null, 2)}\n`);
-console.log(`${join(dir, 'index.json')} 에 스킬 ${skills.length}개를 적었습니다`);
+// 시스템 사전: <폴더>/systems/<id>/SYSTEM.md
+const systems = [];
+const sysDir = join(dir, 'systems');
+if (existsSync(sysDir)) {
+  for (const entry of readdirSync(sysDir, { withFileTypes: true })) {
+    const file = join(sysDir, entry.name, 'SYSTEM.md');
+    if (!entry.isDirectory() || !existsSync(file)) continue;
+    const id = /^id:\s*(\S+)\s*$/m.exec(readFileSync(file, 'utf8'))?.[1];
+    if (!id) {
+      console.error(`systems/${entry.name}/SYSTEM.md 에 id가 없습니다`);
+      process.exit(1);
+    }
+    systems.push({ id, path: `systems/${entry.name}/SYSTEM.md`, sha256: hash(file) });
+  }
+  systems.sort((a, b) => a.id.localeCompare(b.id));
+}
+
+writeFileSync(join(dir, 'index.json'), `${JSON.stringify({ ...(systems.length ? { systems } : {}), skills }, null, 2)}\n`);
+console.log(`${join(dir, 'index.json')} 에 스킬 ${skills.length}개${systems.length ? `, 시스템 ${systems.length}개` : ''}를 적었습니다`);

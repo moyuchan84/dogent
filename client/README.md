@@ -57,6 +57,10 @@ pnpm client run wip-adjust source=D:\조정.xlsx  # 파일 입력은 경로로
 pnpm client skills                            # [개인] [팀] [기본]
 pnpm client skills search 홀드 해제            # 말로 스킬 찾기 (조사·어미가 붙어도). 말이 없으면 지금 브라우저 화면의 사이트용 스킬
 pnpm client skills info hold-release          # 입력, 위험도, 담당, 이 PC에서의 성공률
+pnpm client doctor                            # 확장이 안 붙을 때 원인 점검: 토큰, 포트, Native Messaging 등록, 회사 정책(크롬·엣지), 호스트 실행, 실시간 시험
+pnpm client doctor --fix                      # Native Messaging 호스트를 등록 (터미널 dogent는 등록하지 않으므로 앱 없이 쓸 때 필요). 확장을 못 찾으면 --id <확장 ID>
+pnpm client systems                           # 사내 시스템 사전 (이름·별칭). 요청에 시스템 이름이 나오면 그 시스템 설명을 모델에 함께 보여 준다
+pnpm client systems info mes                  # 화면(메뉴 경로), 용어, 이 시스템의 스킬 (docs/05-skill-spec.md 6-1)
 pnpm client skill new "라인 골라 HOLD Lot을 사유별로 정리해 줘. 라인은 매번 다름"   # 말로 스킬 만들기: 지금 화면을 보고 초안 → 말로 고치기 → 시험 → 저장
 pnpm client skill edit wip-check              # 편집기로 열고, 닫으면 품질 검사 (DOGENT_EDITOR, 기본 notepad)
 pnpm client check D:\my\SKILL.md              # 품질 검사
@@ -99,6 +103,9 @@ pnpm client excel docs                    # 사용자의 Excel에 열린 문서 
 pnpm client excel resave <원본> <새 경로>  # Excel로 다시 저장 (문서 보안 재암호화 확인용)
 ```
 
+- **엑셀을 말하는 요청** (`dogent "열린 재공 엑셀에서 라인별 합계 정리해줘"`): 맞는 스킬이 없으면 자유 요청이 엑셀 도구(`excel_docs`, `excel_read`, `excel_write`, `excel_save`)를 씁니다. 요청에 "엑셀", 파일 경로, 지금 열린 문서의 이름이 나오면 엑셀이 필요하다고 보고, 주소·시스템 이름·"화면/브라우저/메뉴/클릭…" 같은 말이 없으면 브라우저 연결을 기다리지 않고 엑셀 도구로만 합니다. 둘 다 있으면 ("엑셀 값을 MES 화면에 입력해줘") 화면과 엑셀을 함께 씁니다. 모델에는 열린 문서의 이름이 보입니다.
+- 엑셀을 읽는 것은 늘 되고, 문서를 바꾸는 것(`excel_write`, 열린 곳에 저장)은 `--allow-write`일 때만, 그것도 그때마다 허락을 묻습니다 (`--yes`로 건너뛰지 않음). 다른 이름으로 저장은 허락만 받으면 됩니다. `--dry-run`이면 쓰기 직전에 멈춥니다.
+- 스킬의 파일 입력은 경로 대신 열린 문서의 이름도 받습니다 (`dogent run wip-adjust source=재공.xlsx`). 스킬이 단계에 `excel_read` 등을 쓰면 엑셀 통로가 자동으로 붙습니다.
 - 스킬의 엑셀 파일 입력은 먼저 직접 읽고, 안 되면(문서 보안 파일 등) Excel로 엽니다.
 - `config saveThroughExcel true`면 결과 엑셀을 Excel을 거쳐 저장합니다.
 

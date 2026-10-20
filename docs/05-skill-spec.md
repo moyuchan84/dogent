@@ -52,7 +52,7 @@ skills/
 
 `ip`는 IPv4 주소 또는 CIDR(`10.1.2.0/24`), `port`는 1~65535의 숫자 또는 범위(`8000-8010`)만 받습니다.
 
-`file`은 xlsx 또는 csv 파일입니다. 첫 시트의 첫 행을 컬럼 이름으로 읽어 `dataset`에 적은 이름의 데이터셋으로 넣습니다. 파일은 사용자 PC에서 읽고, 내용은 모델에 보내지 않습니다(모델에는 컬럼 이름과 샘플 몇 행만 보임).
+`file`은 xlsx 또는 csv 파일입니다. 첫 시트의 첫 행을 컬럼 이름으로 읽어 `dataset`에 적은 이름의 데이터셋으로 넣습니다. 파일 경로 대신 **사용자의 Excel에 열려 있는 문서의 이름**(예: 문서 공유망에서 읽기·편집으로 연 문서)을 줘도 됩니다. 파일은 사용자 PC에서 읽고, 내용은 모델에 보내지 않습니다(모델에는 컬럼 이름과 샘플 몇 행만 보임).
 
 ## 3. 본문
 
@@ -117,7 +117,7 @@ skills/
 
 ### 3.3 모델 없이 바로 실행되는 단계
 
-단계의 첫머리가 **`도구로`** (`navigate로`, `click으로`, `type으로`, `select로`, `close_tab으로`, `extract_table로`, `download_table로`, `fill_table로`, `transform으로`, `write_excel로`, `read_text로`, `summarize로`, `finish로`)로 시작하고 `` `{...}` `` 인자가 적혀 있으면, 루프가 **모델을 부르지 않고** 그 동작을 그대로 실행합니다.
+단계의 첫머리가 **`도구로`** (`navigate로`, `click으로`, `type으로`, `select로`, `close_tab으로`, `extract_table로`, `download_table로`, `fill_table로`, `transform으로`, `write_excel로`, `excel_docs로`, `excel_read로`, `excel_write로`, `excel_save로`, `read_text로`, `summarize로`, `finish로`)로 시작하고 `` `{...}` `` 인자가 적혀 있으면, 루프가 **모델을 부르지 않고** 그 동작을 그대로 실행합니다.
 
 - 모든 단계를 이렇게 쓰면 스킬 전체가 모델 호출 없이 돕니다. 로컬 gemma3:4b로 약 4분 걸리던 재공 확인이 수 초에 끝나고, 결과도 매번 같습니다.
 - 통제는 똑같이 적용됩니다. 허용 도메인, 저장·상신 승인, 제출 전 대조를 그대로 거칩니다.
@@ -188,7 +188,11 @@ skills/
 | `download_table` | `ref`, `dataset`, `timeout_sec` | 화면의 엑셀·CSV 내려받기 버튼을 눌러 받은 파일을 데이터셋에 담는다 (4.2절) |
 | `fill_table` | `ref`, `dataset`, `add_ref` | 입력 칸이 있는 표의 빈 행에 데이터셋을 통째로 채운다. 입력 칸 없는 그리드는 붙여 넣는다 (4.1절). `risk`가 R2 이상인 스킬만 가능 |
 | `transform` | `source`, `target`, `steps` | `filter`, `group`, `sort`, `select`, `limit` |
-| `write_excel` | `filename`, `sheets` | |
+| `write_excel` | `filename`, `sheets` | 새 엑셀 파일을 결과 폴더에 저장 |
+| `excel_docs` | | 사용자의 Excel에 열린 문서 목록 (클라이언트 + 오피스 도구가 있을 때) |
+| `excel_read` | `doc`, `dataset`, `sheet`, `range` | 열린 문서(이름) 또는 파일 경로의 시트를 데이터셋으로 읽는다. 문서 보안 문서도 사용자의 Excel로 읽는다 |
+| `excel_write` | `doc`, `dataset`, `sheet`, `start` | 데이터셋을 문서의 시트에 쓴다 (저장은 안 함). **R3 스킬 또는 저장·상신 허용일 때만**, 쓰기 전에 사용자 허락을 받는다. 시험 실행이면 쓰기 직전에 멈춘다 |
+| `excel_save` | `doc`, `path` | Excel로 저장. `path` 없이는 열린 곳에 저장해 원본이 바뀌므로 R3/저장·상신 허용에 허락이 필요하고, `path`(전체 경로)를 주면 다른 이름 저장(사용자 Excel의 문서는 같은 형식의 사본만, 창의 문서 이름은 안 바뀜) |
 | `ask_user` | `question` | |
 | `next_step` | | 검사 줄이 없는 단계에서만 |
 | `read_text` | `ref` | 화면(ref를 주면 그 요소)에 보이는 글을 읽는다. 입력 칸 값과 비밀번호는 담지 않는다 |
@@ -344,6 +348,49 @@ rules:
 | `min_length` | 최소 글자 수 |
 
 `field`는 스킬의 입력 이름이어야 합니다. 규칙 값은 스킬 오너와 보안 부서가 정합니다.
+
+## 6-1. 시스템 사전 (`SYSTEM.md`)
+
+스킬이 업무 하나의 절차라면, 시스템 문서는 **시스템 전체에 대한 설명**입니다. 모델은 "구글"은 알아도 "재공 시스템"은 모르므로, 요청에 시스템 이름이 나오면 이 문서를 찾아 모델에게 함께 보여 줍니다 (요청 해석과 자유 요청 모두).
+
+```
+skills/                       ← 팀 저장소의 스킬 폴더 (개인은 %USERPROFILE%\.dogent\skills)
+  systems/
+    mes/
+      SYSTEM.md
+```
+
+```yaml
+---
+id: mes
+name: 모의 MES (생산 관리)
+description: 라인별 재공과 Lot 홀드를 조회하고 처리하는 생산 관리 시스템
+aliases: [MES, 재공 시스템, 재공, WIP]      # 사람들이 부르는 말. 요청에서 시스템을 찾는 데 가장 크게 쓰임
+url: https://mes.example.com/               # 처음 여는 주소 (조작할 사이트 목록 안이어야 이동됨)
+domains: [mes.example.com]                  # 비우면 url의 호스트
+owner: 생산관리
+login: 사내 SSO. 로그인 창이 뜨면 사용자가 직접 로그인   # 선택
+screens:
+  - name: 재공 현황 조회
+    path: 재공 > 재공 현황                  # 메뉴 경로
+    purpose: 라인·공정별 Lot과 수량 조회
+    url: https://mes.example.com/wip       # 선택
+terms:
+  HOLD: 품질 문제 등으로 공정 진행을 멈춘 Lot의 상태
+---
+(본문: 주의사항을 자유롭게. 1200자까지 모델에 전달됨)
+```
+
+| 항목 | 뜻 |
+|---|---|
+| `aliases` | 요청에 이 말이 나오면 이 시스템으로 본다. 길수록 우선. 없으면 `dogent check`가 경고 |
+| `screens` | 메뉴 경로. 모델이 화면을 찾아가는 단서 (20개까지 전달) |
+| `terms` | 사내 용어 (30개까지 전달) |
+
+- 요청에 시스템 이름이 있는데 그 화면이 열려 있지 않으면, 자유 요청에서 시스템의 `url`로 이동할지 묻습니다. 이동도 조작할 사이트 목록 안에서만 됩니다.
+- 같은 사이트를 다루는 스킬(`domains`가 겹치는 스킬)은 요청에 시스템 이름이 있으면 후보에 더해집니다.
+- 개인 > 팀 > 기본 순서로 같은 id는 앞의 것을 씁니다. 팀 저장소의 `skills/index.json`에는 `pnpm skill:index`가 `systems` 목록도 적습니다.
+- `dogent systems`, `dogent systems info <ID>`로 봅니다.
 
 ## 7. 수명 주기
 

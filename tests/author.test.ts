@@ -45,7 +45,7 @@ beforeEach(() => {
 
 describe('스킬 품질 검사', () => {
   it('번들된 스킬은 모두 A등급이고 전 단계가 모델 없이 실행된다', () => {
-    for (const id of readdirSync(SKILLS)) {
+    for (const id of readdirSync(SKILLS).filter((d) => d !== 'systems')) {
       const policy = join(SKILLS, id, 'policy.yaml');
       const report = lintSkill(
         readFileSync(join(SKILLS, id, 'SKILL.md'), 'utf8'),
@@ -95,6 +95,20 @@ ${steps}
       ),
     );
     expect(found).toEqual(['E06@1', 'E03@2', 'E02@2', 'E05@3', 'E03@4', 'E05@4']);
+  });
+
+  it('엑셀 도구: excel_read가 만든 데이터셋은 뒤 단계가 쓰고, 없는 데이터셋을 쓰면 오류', () => {
+    const ok = rules(
+      base(
+        [
+          '1. excel_read로 읽는다.\n   `{"doc": "재공.xlsx", "dataset": "wip"}`\n   - 검사: did("excel_read")',
+          '2. finish로 보고한다.\n   `{"summary": "{rows.wip}행"}`',
+        ].join('\n'),
+      ),
+    );
+    expect(ok).not.toContain('E05@2');
+    const bad = rules(base('1. excel_write로 쓴다.\n   `{"doc": "a.xlsx", "dataset": "none", "sheet": "s"}`\n   - 검사: did("excel_write")'));
+    expect(bad).toContain('E05@1');
   });
 
   it('저장·상신 버튼은 R3와 submit_steps 선언이 있어야 한다', () => {

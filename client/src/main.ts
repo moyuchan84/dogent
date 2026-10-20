@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { lintSkill } from '../../src/core';
+import { lintSkill, lintSystem } from '../../src/core';
+import { runDoctor } from './doctor';
 import { loadToken } from './bridge';
 import { describeConfig, loadConfig, setConfig } from './config';
 import { addSchedule, describeSchedule, listSchedules, parseSpec, removeSchedule } from './schedule';
@@ -15,17 +16,20 @@ const HELP = `Dogent 클라이언트 ${__DOGENT_BUILD__.version} (${__DOGENT_BUI
   dogent skills                   쓸 수 있는 스킬 (개인 > 팀 > 기본)
   dogent skills search [<말>]     스킬 찾기 (예: dogent skills search 홀드 해제). 말이 없으면 지금 브라우저 화면의 사이트용 스킬
   dogent skills info <스킬ID>     입력, 위험도, 담당, 이 PC에서의 성공률
+  dogent systems [info <ID>]      사내 시스템 사전 (이름·별칭·주소·화면·용어). 요청에 시스템 이름이 나오면 모델에 함께 보여 준다
   dogent skill new ["<업무 설명>"]   말로 스킬 만들기: 지금 브라우저 화면을 보고 초안 → 말로 고치기 → 시험 → 저장
   dogent skill edit <스킬ID>       스킬 파일을 편집기로 열고, 닫으면 품질 검사 (편집기: DOGENT_EDITOR, 기본 notepad)
-  dogent check <SKILL.md>         스킬 품질 검사
+  dogent check <SKILL.md|SYSTEM.md>  스킬 또는 시스템 문서 품질 검사
   dogent sync                     팀 스킬 저장소를 받는다 (teamSkillsUrl이면 주소로, teamSkills 폴더면 git pull)
   dogent tabs                     브라우저 탭 목록
   dogent browsers                 Dogent 확장이 연결된 브라우저 (크롬, 엣지 …). 대화 중에는 browser edge 로 바꿈
-  dogent excel <파일>             Excel로 열어 시트와 앞부분을 보여 준다 (문서 보안 문서 확인)
+  dogent excel <파일|열린 문서 이름>   Excel로 열어 시트와 앞부분을 보여 준다 (문서 보안 문서 확인)
   dogent excel docs               사용자의 Excel에 열린 문서 (문서 공유망에서 연 문서 등)
   dogent excel resave <원본> <새 경로>   Excel로 다시 저장 (문서 보안이 다시 암호화하는지 확인)
   dogent schedule add <이름> --at 09:00 [--days 월,수,금] <스킬ID> [이름=값 …]   예약 실행 (매일, 또는 요일마다. 저장·상신은 하지 않는다)
   dogent schedule list|remove <이름>   예약 보기 / 지우기
+  dogent doctor [--fix] [--id <확장 ID>] [--wait <초>]
+                                  확장이 안 붙을 때 원인 점검 (토큰, 포트, Native Messaging 등록, 회사 정책, 실시간 시험). --fix는 호스트를 등록한다
   dogent token                    확장의 "클라이언트 연결"에 넣을 토큰
   dogent config [키 값]            설정 보기 / 바꾸기 (예: dogent config llm.userId sso123)
 
@@ -63,6 +67,16 @@ async function main(): Promise<number> {
     console.log(loadToken());
     return 0;
   }
+  if (cmd === 'doctor') {
+    const ok = await runDoctor({
+      waitSec: process.argv.includes('--wait') ? flags.waitSec : 15,
+      fix: rest.includes('--fix'),
+      ids: rest.flatMap((a, i) => (a === '--id' && rest[i + 1] ? [rest[i + 1]] : [])),
+      print: (l) => console.log(l),
+      version: __DOGENT_BUILD__.version,
+    });
+    return ok ? 0 : 1;
+  }
   if (cmd === 'schedule') {
     const [sub, ...more] = rest;
     try {
@@ -81,6 +95,13 @@ async function main(): Promise<number> {
     if (rest.length >= 2) console.log(`${setConfig(rest[0], rest.slice(1).join(' '))}에 저장했습니다`);
     else console.log(describeConfig(loadConfig()));
     return 0;
+  }
+  if (cmd === 'check' && /SYSTEM\.md$/i.test(rest[0] ?? '')) {
+    const r = lintSystem(readFileSync(rest[0], 'utf8'));
+    console.log(r.errors.length ? '시스템 문서 검사: 오류' : '시스템 문서 검사: 통과');
+    for (const m of r.errors) console.log(`  [error] ${m}`);
+    for (const m of r.warnings) console.log(`  [warn] ${m}`);
+    return r.errors.length ? 1 : 0;
   }
   if (cmd === 'check') {
     const report = lintSkill(readFileSync(rest[0], 'utf8'));
@@ -113,6 +134,11 @@ async function main(): Promise<number> {
     }
     // 스킬을 쓰는 명령이면 팀 스킬 저장소를 받아 온다 (한 시간에 한 번, 닿지 않으면 받아 둔 것)
     if (!['excel', 'browsers', 'tabs'].includes(cmd ?? '')) await client.refreshTeam({ quiet: true });
+    if (cmd === 'systems') {
+      if (rest[0] === 'info' && rest[1]) return client.systemInfo(rest[1]) ? 0 : 1;
+      client.listSystems();
+      return 0;
+    }
     if (cmd === 'skills' && rest[0] === 'search') return (await client.searchSkills(rest.slice(1).join(' '))).length ? 0 : 1;
     if (cmd === 'skills' && rest[0] === 'info' && rest[1]) return client.skillInfo(rest[1]) ? 0 : 1;
     if (cmd === 'skills') {

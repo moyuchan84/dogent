@@ -222,6 +222,94 @@ try {
     return '홀드·지금 화면·팀 저장소';
   });
 
+  await scenario('시스템 사전: 목록·자세히, 요청에 시스템 이름이 있으면 찾아서 함께 쓰고 팀 저장소의 시스템도 받음', async () => {
+    const list = await client(['systems']);
+    assert.equal(list.code, 0, list.text);
+    assert.match(list.text, /\[기본\] mes — 모의 MES \(생산 관리\) \(MES, 재공 시스템/);
+    const info = await client(['systems', 'info', 'mes']);
+    assert.match(info.text, /재공 현황 조회 \[재공 > 재공 현황\]/);
+    assert.match(info.text, /HOLD: 품질 문제/);
+    assert.match(info.text, /이 시스템의 스킬: .*wip-check/);
+    assert.equal((await client(['systems', 'info', 'nope'])).code, 1);
+
+    // 맞는 스킬이 없는 요청이라도 시스템 이름이 나오면 그 시스템을 찾아 자유 요청에 설명을 붙인다
+    await open('/wip.html');
+    const r = await client(['MES에서 8라인을 선택하고 조회해서 총 몇 건인지 알려줘', '--yes']);
+    assert.equal(r.code, 0, r.text);
+    assert.match(r.text, /시스템: 모의 MES \(생산 관리\)/);
+    assert.match(r.text, /맞는 스킬이 없어 지금 브라우저 화면에서 자유 요청으로 합니다/);
+    assert.match(r.text, new RegExp(`총 ${generateWip('8라인').length}건`));
+
+    // 시스템 이름이 없는 요청에는 붙이지 않는다
+    const plain = await client(['8라인을 선택하고 조회해서 총 몇 건인지 알려줘', '--yes']);
+    assert.doesNotMatch(plain.text, /시스템:/);
+
+    // 팀 저장소 목록의 시스템 문서를 받는다 (개인 폴더의 같은 id가 먼저)
+    const sys = readFileSync(join(ROOT, 'skills/systems/mes/SYSTEM.md'), 'utf8').replace('id: mes', 'id: team-mes').replace('name: 모의 MES (생산 관리)', 'name: 팀 MES');
+    const team = createServer((req, res) => {
+      const body = { '/t/index.json': JSON.stringify({ systems: [{ id: 'team-mes', path: 'systems/team-mes/SYSTEM.md' }], skills: [] }), '/t/systems/team-mes/SYSTEM.md': sys }[req.url];
+      res.writeHead(body ? 200 : 404).end(body);
+    }).listen(4180);
+    try {
+      await client(['config', 'teamSkillsUrl', 'http://127.0.0.1:4180/t/index.json']);
+      const synced = await client(['sync']);
+      assert.equal(synced.code, 0, synced.text);
+      assert.match((await client(['systems'])).text, /\[팀\] team-mes — 팀 MES/);
+    } finally {
+      team.close();
+    }
+    return '목록·자세히·요청에서 찾기·팀 저장소';
+  });
+
+  await scenario('새 탭: 요청에 주소가 있으면 열려 있는 탭을 두고 새 탭에서 진행', async () => {
+    const known = new Set(context.pages());
+    // 열린 새 탭은 남겨 두는 것이 동작이지만, 뒤 시나리오가 헷갈리지 않게 시나리오가 끝나면 닫는다
+    const closeNew = () => Promise.all(context.pages().filter((p) => !known.has(p)).map((p) => p.close()));
+    try {
+      return await newTabScenario(closeNew);
+    } finally {
+      await closeNew();
+      await target.bringToFront();
+    }
+  });
+
+  async function newTabScenario(closeNew) {
+    await open('/portal.html');
+    const before = context.pages().length;
+    const r = await client([`${SITE}/wip.html 에 들어가서 8라인을 선택하고 조회해서 총 몇 건인지 알려줘`, '--yes']);
+    assert.equal(r.code, 0, r.text);
+    assert.match(r.text, /새 탭에서 열었습니다: http:\/\/localhost:4173\/wip\.html/);
+    assert.match(r.text, new RegExp(`총 ${generateWip('8라인').length}건`));
+    assert.ok(context.pages().length > before, '새 탭이 열려야 한다');
+    assert.match(target.url(), /portal\.html$/, '원래 탭은 그대로');
+
+    // 이미 그 화면이 열려 있으면 새 탭을 열지 않는다
+    await open('/wip.html');
+    const same = await client([`${SITE}/wip.html 에서 8라인을 선택하고 조회해서 총 몇 건인지 알려줘`, '--yes']);
+    assert.equal(same.code, 0, same.text);
+    assert.doesNotMatch(same.text, /새 탭에서 열었습니다/);
+
+    // 스킬도 지금 탭이 스킬의 사이트가 아니면(빈 탭) 시작 주소를 새 탭에서 연다
+    await closeNew(); // 앞에서 연 새 탭이 남아 있으면 확장이 그 탭을 지금 탭으로 잡는다
+    await target.goto('about:blank');
+    await target.bringToFront();
+    const skill = await client(['run', 'wip-check', 'line=7라인']);
+    assert.equal(skill.code, 0, skill.text);
+    assert.match(skill.text, /새 탭에서 열었습니다: http:\/\/localhost:4173\//);
+    assert.equal(target.url(), 'about:blank');
+    return '주소 요청·같은 화면 재사용·스킬';
+  }
+
+  await scenario('dogent doctor: 점검하고 실시간 시험에서 확장이 붙는 것을 확인', async () => {
+    // 이 PC의 호스트 등록 상태는 시험과 무관하므로 종료 코드는 보지 않는다
+    const r = await client(['doctor']);
+    assert.match(r.text, /Dogent 연결 점검/);
+    assert.match(r.text, /포트 39312/);
+    assert.match(r.text, /\[통과\] 확장이 붙었습니다: .*WebSocket/);
+    assert.match(r.text, /결과: /);
+    return '확장 연결 확인';
+  });
+
   await scenario('직접 못 읽는 엑셀(xls)은 오피스 도구가 Excel로 열어 화면 표에 채움', async () => {
     if (!existsSync(join(ROOT, 'office/dist/dogent-office.exe'))) return '건너뜀: pnpm office:build 필요';
     // 문서 보안 파일 대신, exceljs가 읽지 못하는 구형 xls로 같은 상황을 만든다.
@@ -253,6 +341,23 @@ try {
     assert.match(r.text, /adjust\.xls: 파일을 직접 읽지 못해.*Excel로 엽니다/);
     const saved = await fetch(`${SITE}/api/adjust`).then((x) => x.json());
     assert.deepEqual(saved, [rows.map((row) => row.map(String))]);
+  });
+
+  await scenario('엑셀 요청: 맞는 스킬이 없고 엑셀만 필요하면 브라우저 없이 엑셀 도구로 자유 요청', async () => {
+    if (!existsSync(join(ROOT, 'office/dist/dogent-office.exe'))) return '건너뜀: pnpm office:build 필요';
+    const ExcelJS = (await import('exceljs')).default;
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('목록');
+    ws.addRow(['LOT', '수량']);
+    for (const r of [['A1', 10], ['A2', 20], ['A3', 30]]) ws.addRow(r);
+    const file = join(home, 'lots.xlsx');
+    await wb.xlsx.writeFile(file);
+    const r = await client([`${file} 파일을 엑셀로 열어서 정리해줘`, '--yes']);
+    assert.equal(r.code, 0, r.text);
+    assert.match(r.text, /엑셀 도구로 자유 요청을 합니다 \(브라우저는 쓰지 않습니다\)/);
+    assert.match(r.text, /엑셀에서 3행을 읽었습니다/);
+    assert.doesNotMatch(r.text, /확장 연결됨/);
+    return '브라우저 연결 없이 완료';
   });
 
   await scenario('브라우저가 둘이면 목록을 보여 주고, --browser로 고른 브라우저를 조작', async () => {

@@ -12,6 +12,8 @@ skills/
   wip-check/          ← 폴더 이름 = 스킬 id
     SKILL.md          ← 이름·설명·입력값(앞부분) + 단계(본문)
     policy.yaml       ← (선택) 입력값 규칙. 저장·상신하는 스킬은 거의 필수
+  systems/            ← 시스템 사전. 시스템 하나가 폴더 하나 (index.json에도 적힌다)
+    mes/SYSTEM.md     ← 이름·별칭·주소·화면(메뉴 경로)·용어. 요청에 시스템 이름이 나오면 모델에 함께 보여 준다
 tools/
   skill-check.mjs     ← 품질 검사기 (Dogent에서 생성. 고치지 않는다)
   skill-index.mjs     ← index.json 생성기

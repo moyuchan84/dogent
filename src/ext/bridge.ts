@@ -345,7 +345,7 @@ async function connect(gen: number): Promise<void> {
     void setStatus(
       'error',
       missing
-        ? 'Native Messaging 호스트가 설치되지 않았습니다. pnpm bridge:install --id <확장 ID> 를 실행하세요'
+        ? 'Native Messaging 호스트가 설치되지 않았습니다. Dogent 앱을 한 번 실행하거나, 터미널에서 dogent doctor --fix 를 실행한 뒤 연결 설정을 다시 저장하세요 (개발 PC는 pnpm bridge:install --id <확장 ID>)'
         : `Native Messaging 연결이 끊겼습니다${reason ? `: ${reason}` : ''}. 회사 정책으로 막혀 있으면 WebSocket을 쓰세요`,
     );
     scheduleRetry(missing ? 60_000 : 5_000);

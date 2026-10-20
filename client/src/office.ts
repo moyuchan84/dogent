@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { Dataset } from '../../src/core';
+import type { Cell, Dataset, OfficeDoc, OfficePort } from '../../src/core';
 
 type Table = Pick<Dataset, 'columns' | 'rows'>;
 import { StdioMcp } from './mcp-stdio';
@@ -59,6 +59,15 @@ export class Office {
     return this.tool('excel_user_workbooks', {});
   }
 
+  async write(workbook: string, a: { sheet: string; start?: string; columns: string[]; rows: Cell[][] }): Promise<{ sheet: string; range: string; written: number }> {
+    return this.tool('excel_write', { workbook, sheet: a.sheet, ...(a.start ? { start: a.start } : {}), columns: a.columns, rows: a.rows });
+  }
+
+  /** Excel로 저장한다. path가 없으면 연 곳에 저장하고, 있으면 다른 이름으로 저장한다. 저장한 곳을 돌려준다. */
+  async save(workbook: string, path?: string): Promise<string> {
+    return (await this.tool<{ saved: string }>('excel_save', { workbook, ...(path ? { path } : {}) })).saved;
+  }
+
   /** 사용자의 Excel에 열린 문서를 잡는다. 저장하면 열린 곳에 저장되고, 닫아도 사용자의 문서는 닫히지 않는다. */
   async attach(name?: string, waitSec = 0): Promise<{ workbook: string; path: string; read_only: boolean; sheets: SheetInfo[] }> {
     return this.tool('excel_attach', { ...(name ? { name } : {}), wait_sec: waitSec });
@@ -91,5 +100,68 @@ export class Office {
 
   shutdown(): Promise<void> {
     return this.mcp.close();
+  }
+}
+
+/** 경로로 보이는 글인지 (드라이브·폴더 구분자·엑셀 확장자). 아니면 열린 문서의 이름으로 본다. */
+export function looksLikePath(doc: string): boolean {
+  return /^[A-Za-z]:[\\/]/.test(doc) || /^\\\\/.test(doc) || /[\\/]/.test(doc);
+}
+
+/**
+ * 에이전트의 엑셀 도구가 쓰는 통로. 열린 문서는 사용자의 Excel에서 이름으로 잡고(excel_attach),
+ * 경로는 Excel로 연다. 잡은 문서는 한 실행 동안 재사용하고, 끝나면 놓는다 (사용자의 문서는 닫히지 않는다).
+ */
+export class OfficeDocs implements OfficePort {
+  private books = new Map<string, { workbook: string; sheets: SheetInfo[] }>();
+
+  constructor(private office: () => Promise<Office>) {}
+
+  private async book(doc: string, forWrite: boolean) {
+    const key = `${doc.toLowerCase()}|${forWrite ? 'w' : 'r'}`;
+    const known = this.books.get(key);
+    if (known) return known;
+    const office = await this.office();
+    let opened: { workbook: string; sheets: SheetInfo[] };
+    if (looksLikePath(doc)) {
+      if (!existsSync(doc)) throw new Error(`파일이 없습니다: ${doc}`);
+      opened = await office.open(doc, !forWrite);
+    } else {
+      opened = await office.attach(doc).catch((e: Error) => {
+        throw new Error(`열린 엑셀 문서 "${doc}"을(를) 잡지 못했습니다: ${e.message}`);
+      });
+    }
+    this.books.set(key, opened);
+    return opened;
+  }
+
+  async docs(): Promise<OfficeDoc[]> {
+    const list = await (await this.office()).userWorkbooks();
+    return list.map((b) => ({ name: b.name, fullName: b.full_name, readOnly: b.read_only }));
+  }
+
+  async read(doc: string, opts: { sheet?: string; range?: string }) {
+    const book = await this.book(doc, false);
+    const t = await (await this.office()).read(book.workbook, { ...opts, maxRows: 200_000 });
+    const rows = t.rows.map((r) => r.map((c) => (typeof c === 'number' ? c : String(c ?? ''))));
+    return { sheet: t.sheet, sheets: book.sheets.map((s) => s.name), columns: t.columns, rows, total: t.total_rows };
+  }
+
+  async write(doc: string, sheet: string, table: { columns: string[]; rows: Cell[][] }, start?: string): Promise<string> {
+    const book = await this.book(doc, true);
+    const r = await (await this.office()).write(book.workbook, { sheet, start, columns: table.columns, rows: table.rows });
+    return `${doc}의 "${r.sheet}" 시트 ${r.range}`;
+  }
+
+  async save(doc: string, path?: string): Promise<string> {
+    const book = this.books.get(`${doc.toLowerCase()}|w`) ?? this.books.get(`${doc.toLowerCase()}|r`) ?? (await this.book(doc, true));
+    return (await this.office()).save(book.workbook, path ? resolve(path) : undefined);
+  }
+
+  /** 실행이 끝나면 잡은 문서를 놓는다. 이 도구가 연 파일은 저장하지 않고 닫는다. */
+  async release(): Promise<void> {
+    const office = await this.office().catch(() => null);
+    for (const b of this.books.values()) await office?.close(b.workbook).catch(() => {});
+    this.books.clear();
   }
 }

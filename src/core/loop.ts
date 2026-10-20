@@ -19,6 +19,7 @@ import type {
   ElementItem,
   FilePort,
   HistoryEntry,
+  OfficePort,
   LlmPort,
   PageSnapshot,
   PathStore,
@@ -33,6 +34,8 @@ export interface RunDeps {
   browser: BrowserPort;
   ui: UiPort;
   files: FilePort;
+  /** 엑셀 문서를 다루는 통로. 주면 excel_* 도구를 쓸 수 있다. */
+  office?: OfficePort;
   datasets?: DatasetStore;
   onEvent?: (e: RunEvent) => void;
   signal?: AbortSignal;
@@ -63,6 +66,14 @@ const READ_TEXT_MAX = 4000;
 /** summarize에 보내는 화면 글과 데이터셋 행의 최대 */
 const SUMMARIZE_PAGE_MAX = 12000;
 const SUMMARIZE_ROWS_MAX = 200;
+
+const NO_OFFICE = '이 환경에서는 엑셀 도구를 쓸 수 없습니다 (오피스 도구 dogent-office.exe가 필요합니다)';
+
+/** 열린 엑셀 문서를 모델에 보여 줄 글 */
+export function describeDocs(docs: { name: string; fullName: string; readOnly: boolean }[]): string {
+  if (docs.length === 0) return '열려 있는 엑셀 문서가 없습니다';
+  return docs.map((d) => `- ${d.name}${d.readOnly ? ' (읽기 전용)' : ''} — ${d.fullName}`).join('\n');
+}
 
 const clipText = (text: string, max: number) => (text.length > max ? `${text.slice(0, max)}\n(이하 ${text.length - max}자 생략)` : text);
 /** 로그인을 기다리는 동안 화면을 다시 읽는 간격 */
@@ -98,10 +109,12 @@ export async function runSkill(skill: Skill, inputs: SkillInputs, deps: RunDeps)
 }
 
 async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps, memo: PathMemo | null): Promise<RunResult> {
-  const { llm, browser, ui, files, signal } = deps;
+  const { llm, browser, ui, files, office, signal } = deps;
   const datasets = deps.datasets ?? new DatasetStore();
   const emit = deps.onEvent ?? (() => {});
   const started = Date.now();
+  // 이 실행에서 쓸 수 있는 엑셀 문서(실행을 시작할 때 열려 있던 것). 모델이 excel_docs로 다시 볼 수 있다.
+  const officeNote = office ? describeDocs(await office.docs().catch(() => [])) : undefined;
   // 로그인을 기다린 시간. 스킬의 제한 시간에서 뺀다.
   let waited = 0;
   const history: HistoryEntry[] = [];
@@ -255,6 +268,7 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps, memo: PathM
       inputs,
       history,
       datasets: datasets.describe(),
+      office: officeNote,
       page,
       changes,
       step: { n: current, total: steps.length, text: withOutputs(promptSteps[current - 1]), unmet: unmetNow(snap) },
@@ -370,6 +384,45 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps, memo: PathM
         await files.save(filename, await buildWorkbook(sheets));
         savedFiles.push(filename);
         return { ok: true, result: `${filename} 저장 (시트 ${sheets.length}개)` };
+      }
+      case 'excel_docs': {
+        if (!office) return { ok: false, result: NO_OFFICE };
+        const docs = await office.docs();
+        return { ok: true, result: describeDocs(docs) };
+      }
+      case 'excel_read': {
+        if (!office) return { ok: false, result: NO_OFFICE };
+        const { doc, dataset, sheet, range } = action.args;
+        const t = await office.read(doc, { sheet, range });
+        const ds = datasets.set(dataset, t.columns, t.rows);
+        const more = t.total > ds.rows.length ? ` (표 전체 ${t.total}행 중 ${ds.rows.length}행)` : '';
+        return {
+          ok: true,
+          result: `"${doc}" 시트 "${t.sheet}"을(를) "${ds.name}"에 읽음: ${ds.rows.length}행${more}, 컬럼 ${JSON.stringify(ds.columns)}. 문서의 시트: ${t.sheets.join(', ')}`,
+        };
+      }
+      case 'excel_write':
+      case 'excel_save': {
+        if (!office) return { ok: false, result: NO_OFFICE };
+        const { doc } = action.args;
+        const inPlace = action.tool === 'excel_save' && !action.args.path;
+        const what =
+          action.tool === 'excel_write'
+            ? `"${doc}" 문서의 "${action.args.sheet}" 시트에 "${action.args.dataset}"(${datasets.get(action.args.dataset).rows.length}행)을 씁니다`
+            : inPlace
+              ? `"${doc}" 문서를 열린 곳에 저장합니다 (원본이 바뀝니다)`
+              : `"${doc}" 문서를 "${action.args.path}"에 다른 이름으로 저장합니다`;
+        if (deps.dryRun) return { ok: true, result: `시험 실행이라 하지 않았습니다: ${what}`, end: 'dryrun' };
+        if (!ui.confirm || !(await ui.confirm(what + '. 진행할까요?'))) {
+          return { ok: false, result: `사용자가 허락하지 않았습니다: ${what}` };
+        }
+        if (action.tool === 'excel_write') {
+          const ds = datasets.get(action.args.dataset);
+          const at = await office.write(doc, action.args.sheet, { columns: ds.columns, rows: ds.rows }, action.args.start);
+          return { ok: true, result: `${at}에 ${ds.rows.length}행을 씀 (저장은 아직 안 함. 저장하려면 excel_save)` };
+        }
+        const saved = await office.save(doc, action.args.path);
+        return { ok: true, result: `${saved}에 저장함` };
       }
       case 'read_text': {
         if (!browser.readText) return { ok: false, result: '이 환경에서는 화면 글을 읽을 수 없습니다' };

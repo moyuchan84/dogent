@@ -1,17 +1,28 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { basename } from 'node:path';
 import {
   DatasetStore,
   FREE_SKILL_ID,
   OpenAiCompatClient,
   buildFreeSkill,
+  noBrowser,
+  officeIntent,
+  skillUsesOffice,
+  describeSystem,
   docOfSkill,
+  docOfSystem,
   planRequest,
   readTable,
   resolveInputs,
   runSkill,
+  sameUrl,
+  startUrlForSkill,
+  urlInText,
   searchSkills,
+  searchSystems,
   shortlistSkills,
+  skillCoversUrl,
+  systemForUrl,
   type ApprovalRequest,
   type HistoryEntry,
   type RunEvent,
@@ -19,12 +30,14 @@ import {
   type SearchHit,
   type Skill,
   type SkillInputs,
+  type System,
 } from '../../src/core';
 import type { BrowserLink } from '../../bridge/hub.mjs';
 import { openBridge, type Bridge } from './bridge';
 import { composeFlow, editSkill } from './compose-skill';
 import { setConfig, type ClientConfig } from './config';
-import { Office, findOfficeExe } from './office';
+import { loadSystems, type SystemEntry } from './systems';
+import { Office, OfficeDocs, findOfficeExe, looksLikePath } from './office';
 import { saveRunAsSkill } from './save-skill';
 import { loadSkills, type SkillEntry } from './skills';
 import { appendRun, filePathStore, folderFiles, readRunStats } from './store';
@@ -72,6 +85,7 @@ export class Session {
   /** 이번 실행에서 쓸 브라우저를 정했는지 */
   private chosen = false;
   private skills: SkillEntry[] = [];
+  private systems: SystemEntry[] = [];
   /** 대화 중 help에 보여 줄 글 */
   help = '';
   private abort: AbortController | null = null;
@@ -90,7 +104,12 @@ export class Session {
       __DOGENT_SKILLS__,
     );
     this.skills = skills;
-    return errors;
+    const sys = loadSystems(
+      { personal: this.cfg.personalSkills, team: this.cfg.teamSkills, teamCache: this.cfg.teamSkillsUrl ? teamCacheDir(this.cfg.home) : undefined },
+      __DOGENT_SKILLS__,
+    );
+    this.systems = sys.systems;
+    return [...errors, ...sys.errors];
   }
 
   /**
@@ -117,11 +136,18 @@ export class Session {
   async currentPage(): Promise<{ url: string; title: string } | null> {
     if (!this.bridge?.connected()) return null;
     try {
+      await this.followActiveTab();
       const t = await this.bridge.browser.target();
       return { url: t.url, title: t.title };
     } catch {
       return null;
     }
+  }
+
+  /** 실행 중이 아니면 대상 탭을 사용자가 보고 있는 탭으로 되돌린다 (앞 요청이 새 탭을 열었어도 다음 요청은 지금 보는 탭에서 시작) */
+  private async followActiveTab(): Promise<void> {
+    if (this.running || !this.bridge?.connected()) return;
+    await this.bridge.browser.followActive().catch(() => {});
   }
 
   private async currentUrl(): Promise<string | undefined> {
@@ -207,6 +233,14 @@ export class Session {
     return new OpenAiCompatClient(this.cfg.llm);
   }
 
+  private officeDocs: OfficeDocs | null = null;
+
+  /** 에이전트의 엑셀 도구가 쓰는 통로. 오피스 도구가 없으면 null (그러면 엑셀 도구는 꺼진다) */
+  private officePort(): OfficeDocs | null {
+    if (!findOfficeExe(this.cfg.officeExe)) return null;
+    return (this.officeDocs ??= new OfficeDocs(() => this.officeTool()));
+  }
+
   /** 오피스 도구를 처음 쓸 때 띄운다. */
   async officeTool(): Promise<Office> {
     if (this.office) return this.office;
@@ -220,6 +254,14 @@ export class Session {
    * 파일 입력의 엑셀을 읽는다. 먼저 파일을 직접 읽고, 안 되면(문서 보안이 걸린 파일 등) 사용자의 Excel로 연다.
    */
   private async readInputFile(path: string): Promise<{ columns: string[]; rows: (string | number)[][] }> {
+    // 파일이 아니라 사용자의 Excel에 열려 있는 문서의 이름이면 그 문서를 읽는다 (문서 공유망에서 연 문서 등)
+    if (!looksLikePath(path) && !existsSync(path)) {
+      const port = this.officePort();
+      if (!port) throw new Error(`"${path}" 파일이 없습니다 (열린 엑셀 문서를 쓰려면 오피스 도구가 필요합니다)`);
+      this.term.print(`  열려 있는 엑셀 문서 "${path}"을(를) 읽습니다`);
+      const t = await port.read(path, {});
+      return { columns: t.columns, rows: t.rows };
+    }
     try {
       const data = readFileSync(path);
       return await readTable(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer, basename(path));
@@ -252,10 +294,12 @@ export class Session {
     }
     const path = sub;
     if (!path) {
-      this.term.print('dogent excel <파일> | dogent excel docs | dogent excel resave <원본> <저장할 경로>');
+      this.term.print('dogent excel <파일 또는 열린 문서 이름> | dogent excel docs | dogent excel resave <원본> <저장할 경로>');
       return false;
     }
-    const { workbook, sheets } = await office.open(path);
+    // 파일이 아니라 열려 있는 문서의 이름이면 그 문서를 잡는다 (닫아도 사용자의 문서는 닫히지 않는다)
+    const byName = !looksLikePath(path) && !existsSync(path);
+    const { workbook, sheets } = byName ? await office.attach(path) : await office.open(path);
     try {
       for (const s of sheets) this.term.print(`  시트 ${s.name}: ${s.range} (${s.rows}행 × ${s.columns}열)`);
       const t = await office.read(workbook, { maxRows: 5 });
@@ -276,7 +320,8 @@ export class Session {
     // 확장은 보통 1초 안에 붙는다. 그보다 오래 걸릴 때만 무엇을 할지 알려 준다.
     if (!(await bridge.waitForExtension(2000))) {
       this.term.print('브라우저의 Dogent 확장이 연결되기를 기다립니다…');
-      this.term.print('  사이드 패널 → 설정 → 클라이언트 연결을 켜고 토큰을 넣으세요 (토큰: dogent token).');
+      this.term.print('  사이드 패널 → 설정 → 클라이언트 연결에서 방식을 고르고 저장하세요 (WebSocket이면 토큰: dogent token).');
+      this.term.print('  계속 안 붙으면 터미널에서 dogent doctor 로 원인을 찾을 수 있습니다 (Native Messaging 등록은 dogent doctor --fix).');
       if (!(await bridge.waitForExtension(this.flags.waitSec * 1000))) {
         throw new Error(`${this.flags.waitSec}초 안에 확장이 연결되지 않았습니다. 확장의 클라이언트 연결 설정과 토큰을 확인하세요`);
       }
@@ -334,7 +379,7 @@ export class Session {
     for (const i of skill.inputs) {
       if (form[i.name] !== undefined && form[i.name] !== '') continue;
       if (!i.required || i.default !== undefined) continue;
-      const hint = [i.description, i.type === 'enum' && i.values ? `보기: ${i.values.join(', ')}` : '', i.type === 'file' ? '엑셀 파일 경로' : '']
+      const hint = [i.description, i.type === 'enum' && i.values ? `보기: ${i.values.join(', ')}` : '', i.type === 'file' ? '엑셀 파일 경로 또는 열린 문서 이름' : '']
         .filter(Boolean)
         .join(' · ');
       const a = await this.term.ask(`  ${i.label ?? i.name}${hint ? ` (${hint})` : ''}: `);
@@ -359,10 +404,22 @@ export class Session {
     skill: Skill,
     values: SkillInputs,
     filePaths: Record<string, string> = {},
-    opts: { dryRun?: boolean } = {},
+    opts: {
+      dryRun?: boolean;
+      /** 자유 요청에 붙일 시스템 설명 */
+      systemInfo?: string;
+      /** 브라우저 없이 엑셀 도구만으로 한다 (자유 요청) */
+      excelOnly?: boolean;
+      /** 브라우저 화면과 함께 엑셀 도구도 쓴다 (자유 요청) */
+      excel?: boolean;
+    } = {},
   ): Promise<{ result: RunResult; entries: HistoryEntry[]; tabUrl: string }> {
-    const bridge = await this.connect();
     const isFree = skill.id === FREE_SKILL_ID;
+    const excelOnly = isFree && !!opts.excelOnly;
+    const bridge = excelOnly ? null : await this.connect();
+    // 엑셀 도구는 자유 요청이 엑셀을 말하거나, 스킬이 엑셀을 쓸 때만 붙인다 (그렇지 않은 실행이 오피스 도구를 띄우지 않게)
+    const office = isFree ? (excelOnly || opts.excel ? this.officePort() : null) : skillUsesOffice(skill) ? this.officePort() : null;
+    if (excelOnly && !office) throw new Error('오피스 도구(dogent-office.exe)가 없어 엑셀 문서를 다룰 수 없습니다. pnpm office:build로 만들거나 dogent config officeExe <경로>로 알려 주세요');
     const datasets = new DatasetStore();
     for (const spec of skill.inputs) {
       const path = filePaths[spec.name];
@@ -370,11 +427,11 @@ export class Session {
       const table = await this.readInputFile(path);
       datasets.set(spec.dataset, table.columns, table.rows);
     }
-    const target = await bridge.browser.target();
+    const target = bridge ? await bridge.browser.target() : { url: '', title: '엑셀', allowed: true };
     if (!target.allowed) {
       throw new Error(`지금 브라우저 탭(${target.url})은 조작할 사이트 목록에 없습니다. 업무 화면 탭을 앞에 두거나 확장 설정 → 조작할 사이트에서 더하세요`);
     }
-    const active = isFree ? buildFreeSkill(target.url, this.flags.allowWrite) : skill;
+    const active = isFree ? buildFreeSkill(bridge ? target.url : null, this.flags.allowWrite, opts.systemInfo, !!office) : skill;
     const scale = Math.max(1, this.cfg.llm.timeoutScale || 1);
     const scaled = { ...active, limits: { ...active.limits, timeout_sec: active.limits.timeout_sec * scale } };
     const events: RunEvent[] = [];
@@ -387,7 +444,8 @@ export class Session {
     try {
       result = await runSkill(scaled, values, {
         llm: this.llm(),
-        browser: bridge.browser,
+        browser: bridge ? bridge.browser : noBrowser(),
+        office: office ?? undefined,
         datasets,
         signal: this.abort.signal,
         dryRun: !isFree && skill.risk === 'R3' && (opts.dryRun ?? this.flags.dryRun),
@@ -402,10 +460,13 @@ export class Session {
           ask: async (q) => (await this.term.ask(`\n  질문: ${q}\n  답: `)) ?? '',
           // 승인은 확장의 승인 창에서 받는다. 어떤 클라이언트가 붙어도 확장이 지키는 통제다 (docs/09 D6).
           approve: async (request) => {
+            if (!bridge) return false;
             if (this.term.approval) this.term.approval(request);
             else this.term.print(describeApproval(request));
             return bridge.browser.approve(request);
           },
+          // 엑셀 문서를 바꾸거나 저장하기 전에 사용자에게 묻는다. --yes로도 건너뛰지 않는다.
+          confirm: (message) => this.term.confirm(`\n  ${message}`, false),
         },
         loginWaitMs: LOGIN_WAIT_MS,
         onEvent: (e) => {
@@ -419,6 +480,7 @@ export class Session {
       result = { status: 'error', message: (e as Error).message, lastStep: 0, actions: 0, files: [], datasets: [], outputs: {}, elapsedMs: 0 };
     } finally {
       this.abort = null;
+      await this.officeDocs?.release().catch(() => {});
     }
     if (this.term.result) this.term.result(result, saved);
     else this.term.print(describeResult(result, saved));
@@ -426,8 +488,82 @@ export class Session {
     return { result, entries: events.flatMap((e) => (e.type === 'action' ? [e.entry] : [])), tabUrl: target.url };
   }
 
+  /**
+   * 요청에 나온 시스템(named)과 지금 화면의 시스템을 찾아 모델에 보여 줄 설명을 만든다.
+   * 시스템 사전이 비어 있으면 아무것도 하지 않는다.
+   */
+  private async systemsFor(text: string): Promise<{ named: System[]; systemInfo?: string }> {
+    if (!this.systems.length) return { named: [] };
+    const all = this.systems.map((e) => e.system);
+    const named = searchSystems(all, text, 2);
+    const here = systemForUrl(all, await this.currentUrl());
+    const context = [...new Set([...named, ...(here ? [here] : [])])];
+    return { named, systemInfo: context.length ? context.map(describeSystem).join('\n\n') : undefined };
+  }
+
+  /**
+   * 주소를 새 탭에서 열고 그 탭을 대상으로 정한다. 열려 있는 탭은 건드리지 않는다.
+   * 조작할 사이트 목록 밖이면 확장이 거절한다. 못 열었거나 사용자가 그만두면 false.
+   */
+  private async openStart(url: string, label: string): Promise<boolean> {
+    const bridge = await this.connect();
+    if (!this.flags.yes && !(await this.term.confirm(`새 탭에서 ${label}(${url})을 엽니다. 진행할까요?`, true))) return false;
+    const r = await bridge.call('tab_open', { url });
+    if (r.isError) {
+      this.term.print(`${label}을(를) 열지 못했습니다: ${r.text}`);
+      return false;
+    }
+    this.term.print(`새 탭에서 열었습니다: ${url}`);
+    return true;
+  }
+
+  /**
+   * 스킬을 돌릴 탭을 마련한다. 지금 탭이 스킬의 사이트면 그대로 쓰고, 아니면 시작 주소(요청에 쓴 주소 > 시스템 사전 > 스킬 본문)를 새 탭에서 연다.
+   * 시작 주소를 알 수 없으면 지금 탭에서 한다 (맞지 않으면 실행이 안내한다).
+   */
+  private async ensureStartTab(skill: Skill, request?: string): Promise<boolean> {
+    const bridge = await this.connect();
+    const now = await bridge.browser.target().catch(() => null);
+    const doc = docOfSkill(skill);
+    const asked = request ? urlInText(request) : null;
+    if (asked && skillCoversUrl(doc, asked)) return sameUrl(now?.url, asked) || (await this.openStart(asked, skill.name));
+    if (now?.allowed && skillCoversUrl(doc, now.url)) return true;
+    const url = startUrlForSkill(skill, this.systems.map((e) => e.system));
+    return url ? this.openStart(url, skill.name) : true;
+  }
+
+  /** systems — 시스템 사전 목록 */
+  listSystems(): void {
+    this.reloadSkills();
+    if (!this.systems.length) {
+      this.term.print('시스템 사전이 비어 있습니다. 팀 저장소의 skills/systems/<id>/SYSTEM.md 또는 개인 폴더(' + this.cfg.personalSkills + '/systems)에 SYSTEM.md를 두세요 (docs/05-skill-spec.md)');
+      return;
+    }
+    for (const e of this.systems) {
+      const x = e.system;
+      this.term.print(`  [${e.source}] ${x.id} — ${x.name}${x.aliases.length ? ` (${x.aliases.join(', ')})` : ''}`);
+    }
+    this.term.print('  자세히: systems info <ID>');
+  }
+
+  /** systems info <id> */
+  systemInfo(id: string): boolean {
+    this.reloadSkills();
+    const e = this.systems.find((x) => x.system.id === id);
+    if (!e) {
+      this.term.print(`"${id}" 시스템이 없습니다. systems로 목록을 보세요`);
+      return false;
+    }
+    const skills = this.skills.filter((k) => skillCoversUrl(docOfSkill(k.skill), e.system.url)).map((k) => k.skill.id);
+    this.term.print(
+      [`[${e.source}] ${describeSystem(e.system)}`, ...(e.path ? [`파일: ${e.path}`] : []), `사이트: ${e.system.domains.join(', ')}`, `이 시스템의 스킬: ${skills.length ? skills.join(', ') : '(없음)'}`].join('\n'),
+    );
+    return true;
+  }
+
   /** dogent run <id> 이름=값 … */
   async runSkillById(id: string, pairs: string[]): Promise<boolean> {
+    await this.followActiveTab();
     const entry = this.skills.find((e) => e.skill.id === id);
     if (!entry) {
       this.term.print(`"${id}" 스킬이 없습니다. dogent skills로 목록을 보세요`);
@@ -436,6 +572,7 @@ export class Session {
     const given = Object.fromEntries(pairs.map((p) => [p.slice(0, p.indexOf('=')), p.slice(p.indexOf('=') + 1)]).filter(([k]) => k));
     const filled = await this.fillInputs(entry.skill, given);
     if (!filled) return false;
+    if (!(await this.ensureStartTab(entry.skill))) return false;
     const { result } = await this.execute(entry.skill, filled.values, filled.files);
     return result.status === 'done' || result.status === 'dryrun';
   }
@@ -443,12 +580,17 @@ export class Session {
   /** 말로 한 요청: 맞는 스킬을 고르고 입력값을 뽑는다. 없으면 지금 화면에서 자유 요청으로 한다. */
   async request(text: string): Promise<boolean> {
     this.reloadSkills();
+    await this.followActiveTab();
+    const { named, systemInfo } = await this.systemsFor(text);
+    if (named.length) this.term.print(`시스템: ${named.map((m) => m.name).join(', ')}`);
     this.term.print('요청을 해석하는 중…');
     let plan: { skill_id: string | null; inputs: Record<string, unknown> };
     try {
       // 스킬이 많으면 말이 맞는 것과 지금 화면의 사이트를 다루는 것만 모델에 보여 준다 (프롬프트가 길어지지 않게)
-      const candidates = shortlistSkills(this.skills, (e) => docOfSkill(e.skill), text, { url: await this.currentUrl() });
-      plan = await planRequest(text, candidates.map((e) => e.skill), this.llm());
+      const base = shortlistSkills(this.skills, (e) => docOfSkill(e.skill), text, { url: await this.currentUrl() });
+      // 요청에 나온 시스템을 다루는 스킬도 후보에 넣는다 (그 시스템 화면이 아직 열려 있지 않아도)
+      const extra = this.skills.filter((e) => !base.includes(e) && named.some((m) => skillCoversUrl(docOfSkill(e.skill), m.url)));
+      plan = await planRequest(text, [...base, ...extra].map((e) => e.skill), this.llm(), undefined, systemInfo);
     } catch (e) {
       this.term.print(`요청을 해석하지 못했습니다: ${(e as Error).message}`);
       return false;
@@ -461,15 +603,48 @@ export class Session {
       const filled = await this.fillInputs(entry.skill, given);
       if (!filled) return false;
       if (!this.flags.yes && !(await this.term.confirm('실행할까요?', true))) return false;
+      if (!(await this.ensureStartTab(entry.skill, text))) return false;
       const { result } = await this.execute(entry.skill, filled.values, filled.files);
       return result.status === 'done' || result.status === 'dryrun';
     }
 
-    this.term.print('맞는 스킬이 없어 지금 브라우저 화면에서 자유 요청으로 합니다.');
+    // 엑셀 문서를 말하는 요청인지 가린다. 엑셀만 필요하면 브라우저 연결을 기다리지 않고 엑셀 도구로만 한다.
+    const asked = urlInText(text);
+    const office = this.officePort();
+    const docs = office ? await office.docs().catch(() => []) : [];
+    const intent = officeIntent(text, { openDocs: docs.map((d) => d.name), hasUrl: !!asked, hasSystem: named.length > 0 });
+    if (intent.excel && !office) {
+      this.term.print('엑셀 문서가 필요한 요청 같지만 오피스 도구(dogent-office.exe)가 없습니다. pnpm office:build로 만들거나 dogent config officeExe <경로>로 알려 주세요');
+      if (!intent.web) return false;
+    }
+    const excelOnly = intent.excel && !intent.web && !!office;
+    const withExcel = intent.excel && !!office;
+    if (withExcel) {
+      this.term.print(docs.length ? `열려 있는 엑셀 문서 ${docs.length}개: ${docs.map((d) => d.name).join(', ')}` : '사용자의 Excel에 열려 있는 문서가 없습니다 (파일 경로를 요청에 쓰면 그 파일을 엽니다)');
+    }
+    this.term.print(
+      excelOnly
+        ? '맞는 스킬이 없어 엑셀 도구로 자유 요청을 합니다 (브라우저는 쓰지 않습니다).'
+        : withExcel
+          ? '맞는 스킬이 없어 지금 브라우저 화면과 엑셀 도구로 자유 요청을 합니다.'
+          : '맞는 스킬이 없어 지금 브라우저 화면에서 자유 요청으로 합니다.',
+    );
     if (!this.flags.yes && !(await this.term.confirm('진행할까요?', true))) return false;
-    const free = buildFreeSkill('http://localhost/', this.flags.allowWrite);
-    const run = await this.execute(free, { request: text });
+    // 요청에 주소나 시스템 이름이 있으면 열려 있는 탭을 두고 새 탭에서 시작한다 (조작할 사이트 목록 안일 때만 열린다)
+    if (excelOnly) {
+      /* 브라우저를 쓰지 않는다 */
+    } else if (asked) {
+      const now = await (await this.connect()).browser.target().catch(() => null);
+      if (!sameUrl(now?.url, asked) && !(await this.openStart(asked, asked))) return false;
+    } else if (named[0]) {
+      const now = await (await this.connect()).browser.target().catch(() => null);
+      if (!(now && skillCoversUrl(docOfSystem(named[0]), now.url)) && !(await this.openStart(named[0].url, named[0].name))) return false;
+    }
+    const free = buildFreeSkill(excelOnly ? null : 'http://localhost/', this.flags.allowWrite);
+    const run = await this.execute(free, { request: text }, {}, { systemInfo, excelOnly, excel: withExcel });
     if (run.result.status !== 'done') return false;
+    // 엑셀만 다룬 실행은 화면 절차가 없어 스킬로 저장하지 않는다.
+    if (excelOnly) return true;
     // 잘 된 자유 요청은 개인 스킬로 저장할 수 있다.
     if (await this.term.confirm('\n이 실행을 스킬로 저장할까요? 다음부터 같은 요청을 스킬로 빠르게 합니다.', false)) {
       const file = await saveRunAsSkill(this.term, { request: text, tabUrl: run.tabUrl, entries: run.entries }, this.cfg.personalSkills, new Set(this.skills.map((e) => e.skill.id)));
@@ -539,7 +714,7 @@ export class Session {
 
   /** 대화: 요청을 한 줄씩 받는다. */
   async repl(): Promise<void> {
-    this.term.print(`Dogent 클라이언트 (${__DOGENT_BUILD__.mode}). 할 일을 말해 주세요. skills, 찾기 <말>, skills info <id>, skill new, skill edit <id>, sync, tabs, browsers, browser <이름>, help, exit`);
+    this.term.print(`Dogent 클라이언트 (${__DOGENT_BUILD__.mode}). 할 일을 말해 주세요. skills, 찾기 <말>, skills info <id>, systems, skill new, skill edit <id>, sync, tabs, browsers, browser <이름>, help, exit`);
     for (;;) {
       const line = await this.term.ask('\n무엇을 할까요? > ');
       if (line === null) return;
@@ -558,6 +733,12 @@ export class Session {
   skillList(): SkillEntry[] {
     this.reloadSkills();
     return this.skills;
+  }
+
+  /** 시스템 사전 (개인 > 팀 > 기본). 화면의 시스템 목록에 쓴다. */
+  systemList(): SystemEntry[] {
+    this.reloadSkills();
+    return this.systems;
   }
 
   /** 연결된 브라우저 목록 (기다리지 않음). 화면의 브라우저 고르기에 쓴다. */
@@ -581,6 +762,8 @@ export class Session {
     else if (text === 'skills') this.listSkills();
     else if (/^(skills\s+search|찾기)(\s|$)/.test(text)) await this.searchSkills(text.replace(/^(skills\s+search|찾기)\s*/, ''));
     else if (/^skills\s+info\s+\S/.test(text)) this.skillInfo(text.replace(/^skills\s+info\s+/, '').trim());
+    else if (text === 'systems') this.listSystems();
+    else if (/^systems\s+info\s+\S/.test(text)) this.systemInfo(text.replace(/^systems\s+info\s+/, '').trim());
     else if (text === 'sync') await this.refreshTeam({ force: true });
     else if (text === 'tabs') await this.tabs();
     else if (text === 'browsers') await this.listBrowsers();

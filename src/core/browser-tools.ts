@@ -92,6 +92,11 @@ export class BrowserTools {
    * 다른 도구와 같은 통제를 지킨다: 사이트 목록 밖으로 이동·내려받기 금지, 저장·상신은 사람의 승인.
    */
   async port(method: string, args: unknown[]): Promise<unknown> {
+    // 대상 탭을 사용자가 보고 있는 탭으로 되돌린다. tab_open으로 연 탭이 계속 대상으로 남아 다음 요청이 엉뚱한 탭에서 도는 것을 막는다.
+    if (method === 'followActive') {
+      this.current = null;
+      return null;
+    }
     const tab = await this.target();
     const port = this.host.port(tab);
     const n = (i: number) => {

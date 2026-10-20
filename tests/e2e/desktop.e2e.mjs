@@ -202,6 +202,49 @@ try {
     await win.locator('#skill-search').fill('');
   });
 
+  await scenario('시스템 사전: 시스템 탭에 목록, 누르면 화면·용어·스킬을 대화에 보여 줌', async () => {
+    await win.locator('#tab-systems').click();
+    const mes = win.locator('[data-system=mes]');
+    assert.match(await mes.innerText(), /모의 MES[\s\S]*기본[\s\S]*재공 시스템[\s\S]*스킬 \d+개/);
+    await mes.click();
+    await win.locator('#feed').getByText('HOLD: 품질 문제', { exact: false }).first().waitFor({ timeout: 15_000 });
+    assert.match(await win.locator('#feed').innerText(), /이 시스템의 스킬: .*wip-check/);
+    await win.screenshot({ path: join(ROOT, 'test-results/desktop-systems.png') });
+    await win.locator('#tab-systems').locator('xpath=preceding-sibling::button').first().click(); // 스킬 탭으로
+  });
+
+  await scenario('목록 너비: 끌어서 바꾸고, 범위를 지키고, 키보드와 두 번 누르기로 되돌림', async () => {
+    const side = win.locator('aside.side');
+    const bar = win.locator('#side-splitter');
+    const width = async () => Math.round((await side.boundingBox()).width);
+    assert.equal(await width(), 280);
+    const box = await bar.boundingBox();
+    const y = box.y + box.height / 2;
+    await win.mouse.move(box.x + 3, y);
+    await win.mouse.down();
+    await win.mouse.move(box.x + 3 + 120, y, { steps: 6 });
+    await win.mouse.up();
+    assert.ok(Math.abs((await width()) - 400) <= 6, `끈 만큼 넓어짐: ${await width()}`);
+    assert.equal(await win.evaluate(() => localStorage.getItem('dogent.sideWidth')), String(await width()));
+    // 너무 좁게 끌어도 최소 너비를 지킨다
+    const box2 = await bar.boundingBox();
+    await win.mouse.move(box2.x + 3, y);
+    await win.mouse.down();
+    await win.mouse.move(20, y, { steps: 6 });
+    await win.mouse.up();
+    assert.equal(await width(), 200);
+    // 키보드
+    await bar.focus();
+    await win.keyboard.press('ArrowRight');
+    assert.equal(await width(), 216);
+    await win.keyboard.press('Shift+ArrowRight');
+    assert.equal(await width(), 264);
+    // 두 번 누르면 처음 너비
+    await bar.dblclick();
+    assert.equal(await width(), 280);
+    await win.screenshot({ path: join(ROOT, 'test-results/desktop-splitter.png') });
+  });
+
   await scenario('설정: 확장 연결 토큰과 지금 설정을 보여 줌', async () => {
     await win.locator('#open-settings').click();
     await win.locator('#settings').waitFor();
