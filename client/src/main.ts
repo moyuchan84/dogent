@@ -5,6 +5,7 @@ import { lintSkill, lintSystem } from '../../src/core';
 import { runDoctor } from './doctor';
 import { loadToken } from './bridge';
 import { describeConfig, loadConfig, setConfig } from './config';
+import { runEvalCommand } from './eval';
 import { McpHub, describeHub, describeMcpConfig, loadMcpConfig, saveMcpConfig, type McpServerSpec } from './mcp-hub';
 import { remoteMcpUsed } from './mcp-http';
 import { stdioMcpUsed } from './mcp-stdio';
@@ -39,6 +40,7 @@ const HELP = `Dogent 클라이언트 ${__DOGENT_BUILD__.version} (${__DOGENT_BUI
                                   확장이 안 붙을 때 원인 점검 (토큰, 포트, Native Messaging 등록, 회사 정책, 실시간 시험). --fix는 호스트를 등록한다
   dogent token                    확장의 "클라이언트 연결"에 넣을 토큰
   dogent config [키 값]            설정 보기 / 바꾸기 (예: dogent config llm.userId sso123)
+  dogent eval pick [--cases 파일.json]   모델이 스킬을 얼마나 잘 고르는지 방식별로 잰다 (브라우저 없이 모델만)
 
   --yes          실행 전 확인을 묻지 않는다
   --allow-write  자유 요청에서 저장·상신 버튼을 허용한다 (누르기 전에 확장의 승인 창으로 묻는다)
@@ -255,6 +257,16 @@ async function main(): Promise<number> {
     if (rest.length >= 2) console.log(`${setConfig(rest[0], rest.slice(1).join(' '))}에 저장했습니다`);
     else console.log(describeConfig(loadConfig()));
     return 0;
+  }
+  if (cmd === 'eval') {
+    const abort = new AbortController();
+    process.on('SIGINT', () => abort.abort());
+    try {
+      return await runEvalCommand(rest, cfg, abort.signal);
+    } catch (e) {
+      console.error(`오류: ${(e as Error).message}`);
+      return 1;
+    }
   }
   if (cmd === 'check' && /SYSTEM\.md$/i.test(rest[0] ?? '')) {
     const r = lintSystem(readFileSync(rest[0], 'utf8'));

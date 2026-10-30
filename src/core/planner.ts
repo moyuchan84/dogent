@@ -41,26 +41,46 @@ export async function planRequest(
   /** 요청에 나온 사내 시스템의 설명 (systems.ts describeSystem). 용어와 별칭을 이해하는 데 쓴다 */
   systemInfo?: string,
 ): Promise<Plan> {
-  if (skills.length > TWO_STAGE_MIN) {
-    // 1단계: 이름과 설명 한 줄씩만 보고 고른다. 2단계: 고른 스킬의 입력만 보고 값을 뽑는다.
-    const index = skills.map((s) => `- ${s.id}: ${s.name} — ${s.description}`).join('\n');
-    const note = systemInfo ? `## 사내 시스템 설명 (참고)\n${systemInfo}\n\n` : '';
-    const picked = await llm.complete(
-      [
-        { role: 'system', content: PICK_SYSTEM_PROMPT },
-        { role: 'user', content: `${note}## 스킬 목록\n${index}\n\n## 사용자 요청\n${request}` },
-      ],
-      signal,
-    );
-    const pickedJson = extractJson(picked);
-    if (!pickedJson) throw new Error('모델이 스킬 선택 결과를 JSON으로 주지 않았습니다');
-    const choice = Plan.pick({ skill_id: true, reason: true }).parse(JSON.parse(pickedJson));
-    const one = skills.find((s) => s.id === choice.skill_id);
-    if (!one) {
-      return { skill_id: null, inputs: {}, reason: choice.skill_id ? `모델이 없는 스킬(${choice.skill_id})을 골랐습니다` : choice.reason };
-    }
-    return planRequest(request, [one], llm, signal, systemInfo);
+  if (skills.length <= TWO_STAGE_MIN) return planOneShot(request, skills, llm, signal, systemInfo);
+  // 1단계: 이름과 설명 한 줄씩만 보고 고른다. 2단계: 고른 스킬의 입력만 보고 값을 뽑는다.
+  const choice = await pickSkill(request, skills, llm, signal, systemInfo);
+  const one = skills.find((s) => s.id === choice.skill_id);
+  if (!one) {
+    return { skill_id: null, inputs: {}, reason: choice.skill_id ? `모델이 없는 스킬(${choice.skill_id})을 골랐습니다` : choice.reason };
   }
+  return planOneShot(request, [one], llm, signal, systemInfo);
+}
+
+/** 스킬 색인(id: 이름 — 설명 한 줄씩)만 보여 주고 하나를 고르게 한다. 입력값은 뽑지 않는다. */
+export async function pickSkill(
+  request: string,
+  skills: Skill[],
+  llm: LlmPort,
+  signal?: AbortSignal,
+  systemInfo?: string,
+): Promise<Pick<Plan, 'skill_id' | 'reason'>> {
+  const index = skills.map((s) => `- ${s.id}: ${s.name} — ${s.description}`).join('\n');
+  const note = systemInfo ? `## 사내 시스템 설명 (참고)\n${systemInfo}\n\n` : '';
+  const picked = await llm.complete(
+    [
+      { role: 'system', content: PICK_SYSTEM_PROMPT },
+      { role: 'user', content: `${note}## 스킬 목록\n${index}\n\n## 사용자 요청\n${request}` },
+    ],
+    signal,
+  );
+  const pickedJson = extractJson(picked);
+  if (!pickedJson) throw new Error('모델이 스킬 선택 결과를 JSON으로 주지 않았습니다');
+  return Plan.pick({ skill_id: true, reason: true }).parse(JSON.parse(pickedJson));
+}
+
+/** 후보 전부의 입력 설명까지 한 프롬프트에 넣고, 스킬 고르기와 값 뽑기를 한 번에 묻는다. */
+export async function planOneShot(
+  request: string,
+  skills: Skill[],
+  llm: LlmPort,
+  signal?: AbortSignal,
+  systemInfo?: string,
+): Promise<Plan> {
   const catalog = skills
     .map((s) => {
       const inputs = s.inputs
