@@ -32,11 +32,9 @@ function setupExtensionLink(extraId?: string): ExtensionStatus {
   try {
     const found = findInstalledExtensions();
     const ids = [...found.map((f) => f.id), ...(extraId ? [extraId] : [])];
-    const known = registeredIds();
-    // 이미 등록된 ID만 있어도 앱 위치가 바뀌었을 수 있으므로 매번 새로 쓴다 (레지스트리 한 줄이라 가볍다).
-    if (ids.length > 0 || known.length > 0) {
-      registerNativeHost({ ids, runtime: process.env.PORTABLE_EXECUTABLE_FILE || process.execPath, hostDir: join(here, 'host') });
-    }
+    // Dogent 확장의 ID는 정해져 있어 확장을 아직 로드하지 않았어도 등록해 둔다 (나중에 로드하면 바로 붙는다).
+    // 앱 위치가 바뀌었을 수 있으므로 매번 새로 쓴다 (레지스트리 한 줄이라 가볍다).
+    registerNativeHost({ ids, runtime: process.env.PORTABLE_EXECUTABLE_FILE || process.execPath, hostDir: join(here, 'host') });
     const now = new Set(registeredIds());
     return { ids: [...now], missing: found.filter((f) => !now.has(f.id)).map((f) => ({ id: f.id, browser: f.browser })) };
   } catch (e) {

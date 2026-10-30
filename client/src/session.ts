@@ -10,12 +10,10 @@ import {
   skillUsesOffice,
   describeSystem,
   docOfSkill,
-  docOfSystem,
   planRequest,
   readTable,
   resolveInputs,
   runSkill,
-  sameUrl,
   startUrlForSkill,
   urlInText,
   searchSkills,
@@ -77,6 +75,41 @@ export interface SessionOptions {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/** 사용자가 중지 버튼(Ctrl+C)을 눌러 그만둔 일 */
+class Stopped extends Error {
+  constructor() {
+    super('사용자가 중지했습니다');
+  }
+}
+
+/** 중지하면 끝나기를 기다리지 않고 바로 Stopped로 끝낸다. 뒤에서 하던 일의 결과는 버린다. */
+function untilStopped<T>(work: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return work;
+  if (signal.aborted) return Promise.reject(new Stopped());
+  return new Promise<T>((resolve, reject) => {
+    const stop = () => reject(new Stopped());
+    signal.addEventListener('abort', stop, { once: true });
+    work.then(resolve, reject).finally(() => signal.removeEventListener('abort', stop));
+  });
+}
+
+/**
+ * 도구(브라우저·엑셀·MCP)의 비동기 호출이 중지되면 바로 끝나게 감싼다.
+ * 확장이나 도구가 답을 주지 않아도 실행이 그 호출에 묶여 멈추지 않게 한다. keep은 중지 뒤의 정리에 쓰는 것이라 감싸지 않는다.
+ */
+function stoppable<T extends object>(port: T, signal: AbortSignal, keep: string[] = []): T {
+  return new Proxy(port, {
+    get(target, key) {
+      const value = Reflect.get(target, key, target);
+      if (typeof value !== 'function' || keep.includes(String(key))) return value;
+      return (...args: unknown[]) => {
+        const out = value.apply(target, args);
+        return out instanceof Promise ? untilStopped(out, signal) : out;
+      };
+    },
+  });
+}
+
 /** 로그인을 기다리는 최대 시간 (사이드 패널과 같다) */
 const LOGIN_WAIT_MS = 5 * 60_000;
 
@@ -89,7 +122,10 @@ export class Session {
   private systems: SystemEntry[] = [];
   /** 대화 중 help에 보여 줄 글 */
   help = '';
+  /** 지금 하는 일(요청 해석부터 실행이 끝날 때까지). 중지하면 abort한다 */
   private abort: AbortController | null = null;
+  /** 스킬을 실행하는 중인지 */
+  private executing = false;
 
   constructor(
     private term: Ui,
@@ -223,11 +259,34 @@ export class Session {
     return true;
   }
 
-  /** Ctrl+C: 실행 중이면 멈추고, 아니면 끝낸다. */
+  /** Ctrl+C·중지 버튼: 하는 일이 있으면(요청 해석, 연결 대기, 실행) 멈추고, 아니면 false (터미널은 끝낸다). */
   interrupt(): boolean {
     if (!this.abort) return false;
     this.abort.abort();
     return true;
+  }
+
+  /**
+   * 사용자가 시킨 일 하나를 중지할 수 있게 돌린다. 안에서 다시 부르면(handle → request) 바깥의 것을 그대로 쓴다.
+   * 중지하면 '중지했습니다'만 알리고 stopped를 돌려준다.
+   */
+  private async job<T>(work: () => Promise<T>, stopped: T): Promise<T> {
+    if (this.abort) return work();
+    const abort = (this.abort = new AbortController());
+    try {
+      return await work();
+    } catch (e) {
+      if (!abort.signal.aborted) throw e;
+      this.term.print('중지했습니다.');
+      return stopped;
+    } finally {
+      this.abort = null;
+    }
+  }
+
+  /** 지금 하는 일이 중지되면 바로 끝낸다 */
+  private until<T>(work: Promise<T>): Promise<T> {
+    return untilStopped(work, this.abort?.signal);
   }
 
   private llm() {
@@ -334,11 +393,11 @@ export class Session {
     this.bridge ??= await openBridge({ port: this.cfg.bridgePort });
     const bridge = this.bridge;
     // 확장은 보통 1초 안에 붙는다. 그보다 오래 걸릴 때만 무엇을 할지 알려 준다.
-    if (!(await bridge.waitForExtension(2000))) {
+    if (!(await this.until(bridge.waitForExtension(2000)))) {
       this.term.print('브라우저의 Dogent 확장이 연결되기를 기다립니다…');
       this.term.print('  사이드 패널 → 설정 → 클라이언트 연결에서 방식을 고르고 저장하세요 (WebSocket이면 토큰: dogent token).');
       this.term.print('  계속 안 붙으면 터미널에서 dogent doctor 로 원인을 찾을 수 있습니다 (Native Messaging 등록은 dogent doctor --fix).');
-      if (!(await bridge.waitForExtension(this.flags.waitSec * 1000))) {
+      if (!(await this.until(bridge.waitForExtension(this.flags.waitSec * 1000)))) {
         throw new Error(`${this.flags.waitSec}초 안에 확장이 연결되지 않았습니다. 확장의 클라이언트 연결 설정과 토큰을 확인하세요`);
       }
     }
@@ -347,7 +406,7 @@ export class Session {
       if (want) {
         // 원하는 브라우저가 붙기를 잠시 기다렸다가 고른다. 없으면 연결된 브라우저 목록과 함께 알린다.
         const end = Date.now() + Math.min(this.flags.waitSec, 20) * 1000;
-        while (!bridge.browsers().some((b) => b.browser.toLowerCase().includes(want.toLowerCase())) && Date.now() < end) await sleep(200);
+        while (!bridge.browsers().some((b) => b.browser.toLowerCase().includes(want.toLowerCase())) && Date.now() < end) await this.until(sleep(200));
         bridge.select(want);
       } else {
         // 지금 붙어 있는 브라우저를 쓴다. 실행 중에 다른 브라우저가 붙어도 바뀌지 않게 정해 둔다.
@@ -434,12 +493,23 @@ export class Session {
       extraHosts?: string[];
     } = {},
   ): Promise<{ result: RunResult; entries: HistoryEntry[]; tabUrl: string }> {
+    const stopped: RunResult = { status: 'stopped', message: '사용자가 중지했습니다', lastStep: 0, actions: 0, files: [], datasets: [], outputs: {}, elapsedMs: 0 };
+    return this.job(() => this.executeNow(skill, values, filePaths, opts), { result: stopped, entries: [], tabUrl: '' });
+  }
+
+  private async executeNow(
+    skill: Skill,
+    values: SkillInputs,
+    filePaths: Record<string, string>,
+    opts: Parameters<Session['execute']>[3] & object,
+  ): Promise<{ result: RunResult; entries: HistoryEntry[]; tabUrl: string }> {
+    const signal = this.abort!.signal;
     const isFree = skill.id === FREE_SKILL_ID;
     const excelOnly = isFree && !!opts.excelOnly;
     const noWeb = excelOnly || (isFree && !!opts.toolsOnly);
     const bridge = noWeb ? null : await this.connect();
     // MCP 도구는 자유 요청이거나 스킬이 call_tool을 쓸 때 붙인다
-    const tools = isFree || /\bcall_tool\b/.test(skill.body) ? await this.toolPort() : null;
+    const tools = isFree || /\bcall_tool\b/.test(skill.body) ? await this.until(this.toolPort()) : null;
     if (opts.toolsOnly && !tools) throw new Error('연결된 MCP 도구가 없습니다 (dogent mcp list)');
     // 엑셀 도구는 자유 요청이 엑셀을 말하거나, 스킬이 엑셀을 쓸 때만 붙인다 (그렇지 않은 실행이 오피스 도구를 띄우지 않게)
     const office = isFree ? (excelOnly || opts.excel ? this.officePort() : null) : skillUsesOffice(skill) ? this.officePort() : null;
@@ -448,33 +518,35 @@ export class Session {
     for (const spec of skill.inputs) {
       const path = filePaths[spec.name];
       if (spec.type !== 'file' || !spec.dataset || !path) continue;
-      const table = await this.readInputFile(path);
+      const table = await this.until(this.readInputFile(path));
       datasets.set(spec.dataset, table.columns, table.rows);
     }
-    const target = bridge ? await bridge.browser.target() : { url: '', title: excelOnly ? '엑셀' : 'MCP 도구', allowed: true };
+    const target = bridge ? await this.until(bridge.browser.target()) : { url: '', title: excelOnly ? '엑셀' : 'MCP 도구', allowed: true };
     if (!target.allowed) {
       throw new Error(`지금 브라우저 탭(${target.url})은 조작할 사이트 목록에 없습니다. 업무 화면 탭을 앞에 두거나 확장 설정 → 조작할 사이트에서 더하세요`);
     }
-    const active = isFree ? buildFreeSkill(bridge ? target.url : null, this.flags.allowWrite, opts.systemInfo, !!office, !!tools, opts.extraHosts) : skill;
+    const active = isFree ? buildFreeSkill(bridge ? target.url : null, this.flags.allowWrite, opts.systemInfo, !!office, !!tools, opts.extraHosts, true) : skill;
     const scale = Math.max(1, this.cfg.llm.timeoutScale || 1);
     const scaled = { ...active, limits: { ...active.limits, timeout_sec: active.limits.timeout_sec * scale } };
     const events: RunEvent[] = [];
     const saved: string[] = [];
     const startedAt = new Date().toISOString();
-    this.abort = new AbortController();
+    // 중지하면 확장·도구가 답을 주지 않아도 바로 멈추게 감싼다. 조작 중 표시는 중지한 뒤에도 꺼야 하므로 감싸지 않는다.
+    const browser = bridge ? stoppable(bridge.browser, signal, ['setActive']) : noBrowser();
+    this.executing = true;
     if (this.term.started) this.term.started(skill.name, target.title || target.url);
     else this.term.print(`\n${skill.name} 실행 — ${target.title || target.url}`);
     let result: RunResult;
     try {
       result = await runSkill(scaled, values, {
         llm: this.llm(),
-        browser: bridge ? bridge.browser : noBrowser(),
-        office: office ?? undefined,
-        tools: tools ?? undefined,
+        browser,
+        office: office ? stoppable(office, signal) : undefined,
+        tools: tools ? stoppable(tools, signal) : undefined,
         // 다른 스킬을 run_skill로 부를 수 있게 한다. 자식은 부모보다 권한이 넓어지지 않는다 (core/subagent.ts)
         skills: { list: () => this.skills.map((e) => e.skill), get: (id) => this.skills.find((e) => e.skill.id === id)?.skill },
         datasets,
-        signal: this.abort.signal,
+        signal,
         dryRun: !isFree && skill.risk === 'R3' && (opts.dryRun ?? this.flags.dryRun),
         direct: this.cfg.llm.skillDirect,
         paths: this.cfg.llm.pathCache && !isFree ? filePathStore(this.cfg.home) : undefined,
@@ -484,16 +556,16 @@ export class Session {
           this.cfg.saveThroughExcel ? async (temp, target) => void (await (await this.officeTool()).resave(temp, target)) : undefined,
         ),
         ui: {
-          ask: async (q) => (await this.term.ask(`\n  질문: ${q}\n  답: `)) ?? '',
+          ask: async (q) => (await this.until(this.term.ask(`\n  질문: ${q}\n  답: `))) ?? '',
           // 승인은 확장의 승인 창에서 받는다. 어떤 클라이언트가 붙어도 확장이 지키는 통제다 (docs/09 D6).
           approve: async (request) => {
             if (!bridge) return false;
             if (this.term.approval) this.term.approval(request);
             else this.term.print(describeApproval(request));
-            return bridge.browser.approve(request);
+            return this.until(bridge.browser.approve(request));
           },
           // 엑셀 문서를 바꾸거나 저장하기 전에 사용자에게 묻는다. --yes로도 건너뛰지 않는다.
-          confirm: (message) => this.term.confirm(`\n  ${message}`, false),
+          confirm: (message) => this.until(this.term.confirm(`\n  ${message}`, false)),
         },
         loginWaitMs: LOGIN_WAIT_MS,
         onEvent: (e) => {
@@ -504,9 +576,11 @@ export class Session {
         },
       });
     } catch (e) {
-      result = { status: 'error', message: (e as Error).message, lastStep: 0, actions: 0, files: [], datasets: [], outputs: {}, elapsedMs: 0 };
+      result = signal.aborted
+        ? { status: 'stopped', message: '사용자가 중지했습니다', lastStep: 0, actions: 0, files: [], datasets: [], outputs: {}, elapsedMs: 0 }
+        : { status: 'error', message: (e as Error).message, lastStep: 0, actions: 0, files: [], datasets: [], outputs: {}, elapsedMs: 0 };
     } finally {
-      this.abort = null;
+      this.executing = false;
       await this.officeDocs?.release().catch(() => {});
     }
     if (this.term.result) this.term.result(result, saved);
@@ -529,34 +603,45 @@ export class Session {
   }
 
   /**
-   * 주소를 새 탭에서 열고 그 탭을 대상으로 정한다. 열려 있는 탭은 건드리지 않는다.
-   * 조작할 사이트 목록 밖이면 확장이 거절한다. 못 열었거나 사용자가 그만두면 false.
+   * 일할 탭을 새로 열고 그 탭을 대상으로 정한다. 사용자가 보던 탭은 건드리지 않고, 확장이 연 탭을 Dogent 탭 그룹에 넣는다 (Claude in Chrome처럼).
+   * url이 없으면 지금 보고 있는 화면의 주소를 새 탭에서 연다. 조작할 사이트 목록 밖이면 확장이 거절한다. 못 열면 false.
    */
-  private async openStart(url: string, label: string): Promise<boolean> {
+  private async openWorkTab(url: string | null, label: string): Promise<boolean> {
     const bridge = await this.connect();
-    if (!this.flags.yes && !(await this.term.confirm(`새 탭에서 ${label}(${url})을 엽니다. 진행할까요?`, true))) return false;
-    const r = await bridge.call('tab_open', { url });
+    if (!url) {
+      const now = await this.until(bridge.browser.target().catch(() => null));
+      if (!now?.allowed || !/^https?:/.test(now.url)) {
+        this.term.print(`지금 브라우저 탭(${now?.url || '없음'})은 조작할 사이트 목록에 없습니다. 업무 화면 탭을 앞에 두거나, 요청에 주소나 시스템 이름을 쓰거나, 확장 설정 → 조작할 사이트에서 더하세요`);
+        return false;
+      }
+      url = now.url;
+      label = `지금 화면(${now.title || now.url})`;
+    }
+    const r = await this.until(bridge.call('tab_open', { url }));
     if (r.isError) {
       this.term.print(`${label}을(를) 열지 못했습니다: ${r.text}`);
       return false;
     }
-    this.term.print(`새 탭에서 열었습니다: ${url}`);
+    this.term.print(`Dogent 탭 그룹의 새 탭에서 열었습니다: ${url}`);
     return true;
   }
 
   /**
-   * 스킬을 돌릴 탭을 마련한다. 지금 탭이 스킬의 사이트면 그대로 쓰고, 아니면 시작 주소(요청에 쓴 주소 > 시스템 사전 > 스킬 본문)를 새 탭에서 연다.
-   * 시작 주소를 알 수 없으면 지금 탭에서 한다 (맞지 않으면 실행이 안내한다).
+   * 스킬을 돌릴 탭을 새로 연다. 시작 주소는 요청에 쓴 주소 > 지금 보고 있는 그 사이트의 화면 > 시스템 사전·스킬 본문의 주소 순이다.
+   * 시작 주소를 알 수 없으면 지금 화면을 새 탭에서 연다 (맞지 않으면 실행이 안내한다).
    */
   private async ensureStartTab(skill: Skill, request?: string): Promise<boolean> {
     const bridge = await this.connect();
-    const now = await bridge.browser.target().catch(() => null);
+    const now = await this.until(bridge.browser.target().catch(() => null));
     const doc = docOfSkill(skill);
     const asked = request ? urlInText(request) : null;
-    if (asked && skillCoversUrl(doc, asked)) return sameUrl(now?.url, asked) || (await this.openStart(asked, skill.name));
-    if (now?.allowed && skillCoversUrl(doc, now.url)) return true;
-    const url = startUrlForSkill(skill, this.systems.map((e) => e.system));
-    return url ? this.openStart(url, skill.name) : true;
+    // 어느 사이트에서나 쓰는 기본 스킬(domains: "*")은 요청에 쓴 주소나 지금 화면에서 한다
+    if (skill.domains.includes('*')) return this.openWorkTab(asked, skill.name);
+    const url =
+      (asked && skillCoversUrl(doc, asked) ? asked : null) ??
+      (now?.allowed && skillCoversUrl(doc, now.url) ? now.url : null) ??
+      startUrlForSkill(skill, this.systems.map((e) => e.system));
+    return this.openWorkTab(url, skill.name);
   }
 
   /** systems — 시스템 사전 목록 */
@@ -590,6 +675,10 @@ export class Session {
 
   /** dogent run <id> 이름=값 … */
   async runSkillById(id: string, pairs: string[]): Promise<boolean> {
+    return this.job(() => this.runSkillByIdNow(id, pairs), false);
+  }
+
+  private async runSkillByIdNow(id: string, pairs: string[]): Promise<boolean> {
     await this.followActiveTab();
     const entry = this.skills.find((e) => e.skill.id === id);
     if (!entry) {
@@ -606,6 +695,10 @@ export class Session {
 
   /** 말로 한 요청: 맞는 스킬을 고르고 입력값을 뽑는다. 없으면 지금 화면에서 자유 요청으로 한다. */
   async request(text: string): Promise<boolean> {
+    return this.job(() => this.requestNow(text), false);
+  }
+
+  private async requestNow(text: string): Promise<boolean> {
     this.reloadSkills();
     await this.followActiveTab();
     const { named, systemInfo } = await this.systemsFor(text);
@@ -617,8 +710,9 @@ export class Session {
       const base = shortlistSkills(this.skills, (e) => docOfSkill(e.skill), text, { url: await this.currentUrl() });
       // 요청에 나온 시스템을 다루는 스킬도 후보에 넣는다 (그 시스템 화면이 아직 열려 있지 않아도)
       const extra = this.skills.filter((e) => !base.includes(e) && named.some((m) => skillCoversUrl(docOfSkill(e.skill), m.url)));
-      plan = await planRequest(text, [...base, ...extra].map((e) => e.skill), this.llm(), undefined, systemInfo);
+      plan = await planRequest(text, [...base, ...extra].map((e) => e.skill), this.llm(), this.abort?.signal, systemInfo);
     } catch (e) {
+      if (this.abort?.signal.aborted) throw e;
       this.term.print(`요청을 해석하지 못했습니다: ${(e as Error).message}`);
       return false;
     }
@@ -638,7 +732,7 @@ export class Session {
     // 엑셀 문서를 말하는 요청인지 가린다. 엑셀만 필요하면 브라우저 연결을 기다리지 않고 엑셀 도구로만 한다.
     const asked = urlInText(text);
     const office = this.officePort();
-    const docs = office ? await office.docs().catch(() => []) : [];
+    const docs = office ? await this.until(office.docs().catch(() => [])) : [];
     // 시스템 이름이 MCP 서버 이름과 겹치면(MES 등) 화면 단서가 따로 없는 한 서버로 처리한다
     const viaServer = mentionedServers(loadMcpConfig(), text).length > 0;
     const intent = officeIntent(text, { openDocs: docs.map((d) => d.name), hasUrl: !!asked, hasSystem: named.length > 0 && !viaServer });
@@ -664,15 +758,10 @@ export class Session {
           : '맞는 스킬이 없어 지금 브라우저 화면에서 자유 요청으로 합니다.',
     );
     if (!this.flags.yes && !(await this.term.confirm('진행할까요?', true))) return false;
-    // 요청에 주소나 시스템 이름이 있으면 열려 있는 탭을 두고 새 탭에서 시작한다 (조작할 사이트 목록 안일 때만 열린다)
-    if (noWeb) {
-      /* 브라우저를 쓰지 않는다 */
-    } else if (asked) {
-      const now = await (await this.connect()).browser.target().catch(() => null);
-      if (!sameUrl(now?.url, asked) && !(await this.openStart(asked, asked))) return false;
-    } else if (named[0]) {
-      const now = await (await this.connect()).browser.target().catch(() => null);
-      if (!(now && skillCoversUrl(docOfSystem(named[0]), now.url)) && !(await this.openStart(named[0].url, named[0].name))) return false;
+    // 늘 새 탭(Dogent 탭 그룹)에서 시작한다. 요청에 주소나 시스템 이름이 있으면 그곳을, 없으면 지금 보고 있는 화면을 연다
+    if (!noWeb) {
+      const start = asked ?? named[0]?.url ?? null;
+      if (!(await this.openWorkTab(start, asked ?? named[0]?.name ?? ''))) return false;
     }
     const free = buildFreeSkill(noWeb ? null : 'http://localhost/', this.flags.allowWrite);
     // 요청이 말한 사이트(주소, 시스템 이름)는 새 탭으로 오가며 쓸 수 있게 허용 도메인에 더한다 (확장의 조작할 사이트 목록은 그대로 지킨다)
@@ -701,6 +790,10 @@ export class Session {
 
   /** 말로 스킬 만들기 (skill new). 지금 브라우저 탭의 화면에서 시작한다. */
   async composeSkill(request?: string): Promise<boolean> {
+    return this.job(() => this.composeSkillNow(request), false);
+  }
+
+  private async composeSkillNow(request?: string): Promise<boolean> {
     this.reloadSkills();
     const bridge = await this.connect();
     const file = await composeFlow(
@@ -796,11 +889,15 @@ export class Session {
 
   /** 실행 중인지 */
   get running(): boolean {
-    return this.abort !== null;
+    return this.executing;
   }
 
   /** 한 줄 입력을 처리한다 (대화 모드와 화면의 입력 칸). 명령이 아니면 요청으로 본다. */
   async handle(text: string): Promise<void> {
+    return this.job(() => this.handleNow(text), undefined);
+  }
+
+  private async handleNow(text: string): Promise<void> {
     if (text === 'help') this.term.print(this.help);
     else if (text === 'skills') this.listSkills();
     else if (/^(skills\s+search|찾기)(\s|$)/.test(text)) await this.searchSkills(text.replace(/^(skills\s+search|찾기)\s*/, ''));

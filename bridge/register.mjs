@@ -7,6 +7,7 @@ import { execFileSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { EXTENSION_ID } from './extension-key.mjs';
 import { NATIVE_HOST_NAME } from './protocol.mjs';
 
 // PATH에 System32가 빠진 셸(Git Bash 등)에서도 찾도록 전체 경로로 부른다.
@@ -66,16 +67,16 @@ export function findInstalledExtensions() {
 }
 
 /**
- * 호스트를 등록한다. ids는 허용할 확장 ID(이미 등록된 것은 남긴다).
+ * 호스트를 등록한다. ids는 더 허용할 확장 ID(이미 등록된 것은 남긴다).
+ * 매니페스트의 key로 정해진 Dogent 확장 ID(EXTENSION_ID)는 늘 허용하므로, 확장을 아직 로드하지 않았어도 미리 등록해 둘 수 있다.
  * runtime을 주면 node 대신 그 실행 파일을 쓴다 (묶어 낸 앱: Electron을 ELECTRON_RUN_AS_NODE로 돌린다).
  * 이때 호스트 스크립트(hostDir의 native-host.mjs, protocol.mjs)는 ~/.dogent로 복사한다. 묶어 낸 앱은 압축 파일 안이라 크롬이 읽을 수 없고, 휴대용 실행본은 경로가 바뀔 수 있다.
  */
-export function registerNativeHost({ ids, browsers = ['chrome', 'edge'], runtime, hostDir = import.meta.dirname, log = () => {} }) {
+export function registerNativeHost({ ids = [], browsers = ['chrome', 'edge'], runtime, hostDir = import.meta.dirname, log = () => {} }) {
   if (process.platform !== 'win32') throw new Error('지금은 Windows만 지원합니다');
   for (const b of browsers) if (!REGISTRY_KEYS[b]) throw new Error(`모르는 브라우저: ${b} (chrome, edge, chromium 중에서)`);
   for (const id of ids) if (!isExtensionId(id)) throw new Error(`확장 ID 형식이 아닙니다: ${id} (a~p 32글자)`);
-  const allIds = [...new Set([...registeredIds(), ...ids.map((i) => i.trim())])];
-  if (allIds.length === 0) throw new Error('허용할 확장 ID가 없습니다');
+  const allIds = [...new Set([EXTENSION_ID, ...registeredIds(), ...ids.map((i) => i.trim())])];
 
   mkdirSync(dogentDir(), { recursive: true });
   let hostScript = join(hostDir, 'native-host.mjs');

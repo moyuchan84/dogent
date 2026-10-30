@@ -97,6 +97,23 @@ function portFor(tabId: number): ChromeBrowser {
 
 const isWeb = (url?: string) => !!url && /^https?:\/\//.test(url);
 
+/** Dogent가 일하는 탭을 묶는 탭 그룹의 이름 */
+const GROUP_TITLE = 'Dogent';
+
+/**
+ * Dogent가 연 탭을 창마다 하나의 탭 그룹에 넣는다 (Claude in Chrome처럼). 사용자가 보던 탭은 건드리지 않는다.
+ * 그룹 안의 탭에서 링크로 연 탭은 브라우저가 같은 그룹에 넣는다. 그룹을 쓸 수 없으면 탭만 연다.
+ */
+async function addToGroup(tabId: number, windowId: number): Promise<void> {
+  try {
+    const [group] = await browser.tabGroups.query({ windowId, title: GROUP_TITLE });
+    const groupId = await browser.tabs.group({ tabIds: [tabId], ...(group ? { groupId: group.id } : { createProperties: { windowId } }) });
+    if (!group) await browser.tabGroups.update(groupId, { title: GROUP_TITLE, color: 'blue', collapsed: false });
+  } catch {
+    /* 탭 그룹을 쓸 수 없는 창(팝업 등)이면 묶지 않는다 */
+  }
+}
+
 const host: ToolHost = {
   async tabs() {
     return (await browser.tabs.query({})).flatMap((t) => (t.id !== undefined && isWeb(t.url) ? [{ id: t.id, url: t.url!, title: t.title ?? '' }] : []));
@@ -104,6 +121,7 @@ const host: ToolHost = {
   async open(url) {
     const tab = await browser.tabs.create({ url, active: true });
     const id = tab.id!;
+    await addToGroup(id, tab.windowId);
     for (let i = 0; i < 100; i++) {
       const t = await browser.tabs.get(id).catch(() => null);
       if (!t || t.status === 'complete') break;

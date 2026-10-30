@@ -51,6 +51,11 @@ describe('스킬 품질 검사', () => {
         readFileSync(join(SKILLS, id, 'SKILL.md'), 'utf8'),
         existsSync(policy) ? readFileSync(policy, 'utf8') : undefined,
       );
+      // 어느 사이트에서나 쓰는 기본 스킬(domains "*")은 화면을 미리 알 수 없어 목표 단계를 모델이 판단한다. 오류만 없으면 된다.
+      if (/^domains:\s*\n\s*-\s*"\*"/m.test(readFileSync(join(SKILLS, id, 'SKILL.md'), 'utf8'))) {
+        expect(report.findings.filter((f) => f.level === 'error'), id).toEqual([]);
+        continue;
+      }
       expect(report.findings, id).toEqual([]);
       expect(report.grade, id).toBe('A');
       expect(report.direct.count, id).toBe(report.direct.total);

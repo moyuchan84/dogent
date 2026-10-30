@@ -36,6 +36,25 @@ function quote(s: string): string {
   return JSON.stringify(s);
 }
 
+/**
+ * 화면에서 말에 맞는 요소만 고른다 (Claude in Chrome의 find처럼). 말의 낱말이 이름·값·설명·행·역할에 많이 들어 있는 순서다.
+ * 요소가 많아 화면 읽기가 잘린 경우에도 ref를 찾을 수 있게 한다.
+ */
+export function findInSnapshot(snap: PageSnapshot, query: string, limit = 20): string {
+  const words = query.toLowerCase().split(/[\s,]+/).filter(Boolean);
+  const scored = snap.items.flatMap((item) => {
+    if (item.kind !== 'el') return [];
+    const hay = [item.name, item.value, item.detail, item.row, item.role].filter(Boolean).join(' ').toLowerCase();
+    const score = words.filter((w) => hay.includes(w)).length;
+    return score > 0 ? [{ item, score }] : [];
+  });
+  if (scored.length === 0) return `"${query}"에 맞는 요소가 화면에 없습니다. 화면을 내리거나(scroll) 다른 말로 찾아보세요`;
+  scored.sort((a, b) => b.score - a.score);
+  const hits = scored.slice(0, limit).map((s) => s.item);
+  const lines = renderSnapshot({ ...snap, items: hits }).split('\n').slice(1);
+  return `"${query}"에 맞는 요소 ${scored.length}개${scored.length > limit ? ` (앞의 ${limit}개)` : ''}\n${lines.join('\n')}`;
+}
+
 export function renderSnapshot(snap: PageSnapshot, maxChars = 12000): string {
   const lines = [`[page] ${snap.title} — ${snap.url}`];
   for (const item of snap.items) {

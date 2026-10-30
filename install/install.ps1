@@ -7,7 +7,7 @@
     3. 브라우저 확장 로드 안내 (폴더 경로를 클립보드에 넣고 확장 관리 화면을 연다)
     4. Dogent 앱 실행 → 앱이 브라우저 연결(Native Messaging)을 스스로 등록
 
-  -Target      설치 폴더 (기본 %LOCALAPPDATA%\Dogent). 확장 ID가 폴더 경로로 정해지므로 업데이트 때도 같은 폴더를 쓴다
+  -Target      설치 폴더 (기본 %LOCALAPPDATA%\Dogent). 업데이트 때도 같은 폴더를 쓴다 (확장 ID는 매니페스트의 key로 정해져 있다)
   -Browser     chrome | edge | both (기본: 설치된 것)
   -NoShortcut  바로 가기를 만들지 않는다
   -Quiet       묻지 않고, 브라우저와 앱을 띄우지 않는다 (복사와 등록만)

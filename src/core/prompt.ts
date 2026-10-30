@@ -44,6 +44,10 @@ export const AGENT_SYSTEM_PROMPT = `당신은 사내 웹 시스템을 조작하�
   {"op":"limit","n":숫자}
 - write_excel {"filename", "sheets":[{"name","dataset"}]}: 데이터셋을 엑셀 파일로 저장.
 - read_text {"ref"}: 화면(ref를 주면 그 요소)에 보이는 글을 읽습니다. 게시글, 공지, 상세 내용처럼 글이 필요할 때 씁니다.
+- find {"query"}: 화면에서 말에 맞는 요소만 골라 봅니다(예: "검색 버튼", "사번 입력"). 화면이 길어 원하는 요소가 안 보일 때 씁니다. 화면은 바뀌지 않습니다.
+- press_key {"key", "ref"}: 키를 누릅니다. key는 Enter, Escape, Tab, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, PageUp, PageDown, Home, End, Backspace, Space 중 하나입니다. ref가 있으면 그 요소에서 누릅니다. 검색 칸에 입력한 뒤 Enter, 떠 있는 창을 Escape로 닫을 때 씁니다. 조회·저장 버튼이 있으면 키 대신 버튼을 누릅니다.
+- scroll {"ref", "direction"}: ref가 있으면 그 요소가 보이게, 없으면 화면을 한 쪽 아래로(direction "up"이면 위로) 내립니다. 내려야 더 나오는 목록에 씁니다.
+- go_back {}: 브라우저의 뒤로 가기. 상세 화면에서 목록으로 돌아갈 때 씁니다.
 - summarize {"instruction", "source", "name"}: 화면의 글(source "page")이나 데이터셋(source에 이름)을 instruction대로 정리해 기록 값 name에 남깁니다. 정리한 글은 finish의 summary에 {out.이름}으로 넣습니다. 데이터셋은 앞부분만 보내므로 행이 많으면 transform으로 먼저 줄입니다.
 - ask_user {"question"}: 진행에 필요한 정보가 없을 때 사용자에게 질문.
 - finish {"summary"}: 마지막 단계에서만 씁니다. summary에 스킬의 "결과" 절이 요구하는 내용을 적습니다.

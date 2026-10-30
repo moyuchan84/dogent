@@ -4,6 +4,7 @@ import { createServer, connect } from 'node:net';
 import { homedir, tmpdir, userInfo } from 'node:os';
 import { join } from 'node:path';
 import { WebSocket } from 'ws';
+import { EXTENSION_ID } from '../../bridge/extension-key.mjs';
 import { REGISTRY_KEYS, findInstalledExtensions, registerNativeHost } from '../../bridge/register.mjs';
 import { DEFAULT_PORT, NATIVE_HOST_NAME, pipePath } from '../../bridge/protocol.mjs';
 import { openBridge } from './bridge';
@@ -251,13 +252,8 @@ export interface DoctorOptions {
 /** 클라이언트에 넣어 둔 호스트 파일(__DOGENT_HOST__)로 호스트를 등록한다 */
 export function fixRegistration(ids: string[], print: (line: string) => void): boolean {
   const found = findInstalledExtensions();
+  // Dogent 확장의 ID(EXTENSION_ID)는 registerNativeHost가 늘 허용한다. 찾은 것과 --id는 그와 다른 ID(key를 넣기 전에 로드한 확장 등)다.
   const all = [...new Set([...found.map((f) => f.id), ...ids])];
-  if (!all.length) {
-    print('  [오류] 허용할 Dogent 확장을 찾지 못했습니다.');
-    print('         chrome://extensions(엣지는 edge://extensions)에서 개발자 모드를 켜고 Dogent의 ID(영문 32자)를 확인해 다음처럼 실행하세요:');
-    print('         dogent doctor --fix --id <확장 ID>');
-    return false;
-  }
   const dir = mkdtempSync(join(tmpdir(), 'dogent-host-'));
   mkdirSync(dir, { recursive: true });
   for (const [name, source] of Object.entries(__DOGENT_HOST__)) writeFileSync(join(dir, name), source);
@@ -330,12 +326,20 @@ export async function runDoctor(opts: DoctorOptions): Promise<boolean> {
   section('3. 브라우저에 설치된 Dogent 확장');
   const installed = process.platform === 'win32' ? findInstalledExtensions() : [];
   if (installed.length) {
-    for (const f of installed) add({ level: 'ok', text: `${f.browser} 프로필 "${f.profile}"에 Dogent 확장이 있습니다 (ID ${f.id})` });
+    for (const f of installed) {
+      if (f.id === EXTENSION_ID) add({ level: 'ok', text: `${f.browser} 프로필 "${f.profile}"에 Dogent 확장이 있습니다 (ID ${f.id})` });
+      else
+        add({
+          level: 'warn',
+          text: `${f.browser} 프로필 "${f.profile}"의 Dogent 확장 ID(${f.id})가 정해진 ID(${EXTENSION_ID})와 다릅니다`,
+          hint: 'ID를 고정하기 전의 확장입니다. 새 판의 확장 폴더로 다시 로드하면 ID를 알려 주지 않아도 붙습니다 (지금 것은 dogent doctor --fix 로 허용할 수 있습니다).',
+        });
+    }
   } else {
     add({
       level: 'warn',
       text: '크롬·엣지 프로필에서 Dogent 확장을 찾지 못했습니다',
-      hint: '압축해제로 로드한 확장만 찾을 수 있습니다. 확장 관리 화면에서 Dogent가 켜져 있는지, 브라우저를 한 번 이상 껐다 켰는지 보세요. 설치돼 있다면 dogent doctor --fix --id <확장 ID> 로 직접 알려 줄 수 있습니다.',
+      hint: `압축해제로 로드한 확장만 찾을 수 있습니다. 확장 관리 화면에서 Dogent가 켜져 있는지, 브라우저를 한 번 이상 껐다 켰는지 보세요. Dogent 확장의 ID는 ${EXTENSION_ID}로 정해져 있어, 로드하면 따로 알려 주지 않아도 붙습니다.`,
     });
   }
   const installedIds = installed.map((f) => f.id);

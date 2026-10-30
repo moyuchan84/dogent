@@ -127,6 +127,27 @@ export const TOOLS = [
     inputSchema: { type: 'object', properties: { ref, max_chars: { type: 'integer', default: 20000 } } },
   },
   {
+    name: 'find',
+    description: '마지막 snapshot에서 말에 맞는 요소만 골라 본다 (예: "검색 버튼", "사번 입력"). 요소가 많아 원하는 ref를 찾기 어려울 때 쓴다. 화면은 바뀌지 않는다.',
+    inputSchema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] },
+  },
+  {
+    name: 'press_key',
+    description:
+      '키를 누른다 (Enter, Escape, Tab, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, PageUp, PageDown, Home, End, Backspace, Space). ref가 있으면 그 요소에서, 없으면 초점이 있는 요소에서. 검색 칸의 Enter, 떠 있는 창을 Escape로 닫을 때 쓴다.',
+    inputSchema: { type: 'object', properties: { key: { type: 'string' }, ref }, required: ['key'] },
+  },
+  {
+    name: 'scroll',
+    description: 'ref가 있으면 그 요소가 보이게, 없으면 화면을 한 쪽 아래(direction "up"이면 위)로 내린다. 내려야 더 나오는 목록에 쓴다. 뒤에 snapshot을 다시 읽는다.',
+    inputSchema: { type: 'object', properties: { ref, direction: { type: 'string', enum: ['down', 'up'] } } },
+  },
+  {
+    name: 'go_back',
+    description: '대상 탭에서 브라우저의 뒤로 가기를 한다.',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
     name: 'inspect',
     description: '대상 화면을 Dogent가 얼마나 읽을 수 있는지 점검한다 (읽지 못한 iframe, 그림으로 그린 그리드, 머리글 없는 표 등).',
     inputSchema: { type: 'object', properties: {} },

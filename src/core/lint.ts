@@ -108,6 +108,8 @@ export function lintSkill(source: string, policySource?: string): LintReport {
     if (!parts) {
       // 목표만 적힌 단계는 모델이 화면을 보고 수행한다. 화면이나 값이 달라져도 맞춰 가므로 유연하지만, 매번 모델을 부른다.
       info('I01', '목표 단계: 모델이 화면을 보고 수행합니다. 늘 같은 동작이면 녹화한 빠른 경로("도구로 ..." + `{...}` 인자)를 붙이면 빨라집니다', n);
+      // 목표 단계가 "데이터셋 `이름`에 담는다"처럼 만들 데이터셋을 적었으면 뒤 단계가 그 이름을 쓸 수 있다
+      for (const m of text.matchAll(/데이터셋\s*`([^`]+)`/g)) datasets.add(m[1]);
     } else {
       tool = parts.tool;
       try {

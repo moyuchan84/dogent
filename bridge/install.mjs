@@ -3,8 +3,9 @@
 //   pnpm bridge:install [--id <확장 ID>] [--id <다른 ID>] [--browser chrome,edge]
 //   pnpm bridge:install --remove
 //
-// --id를 안 주면 크롬·엣지 프로필에 설치된 Dogent 확장을 찾아 등록한다. 압축해제 설치는 폴더마다 ID가 다르므로
-// 쓰는 빌드 폴더의 ID가 모두 등록된다 (이미 등록된 ID는 남긴다). 데스크탑 앱은 첫 실행에 같은 일을 스스로 한다.
+// Dogent 확장의 ID는 매니페스트의 key로 정해져 있어 늘 허용된다 (bridge/extension-key.mjs). 그래서 확장을 로드하기 전에 등록해도 된다.
+// key를 넣기 전에 로드한 확장처럼 ID가 다른 것은 크롬·엣지 프로필에서 찾아 함께 허용한다 (이미 등록된 ID는 남긴다).
+// 데스크탑 앱은 실행할 때마다 같은 일을 스스로 한다.
 // 자세한 동작은 register.mjs.
 import { loadToken } from './hub.mjs';
 import { findInstalledExtensions, registerNativeHost, unregisterNativeHost } from './register.mjs';
@@ -24,10 +25,6 @@ try {
     const found = findInstalledExtensions();
     for (const f of found) log(`찾음: ${f.id} (${f.browser}, 프로필 ${f.profile})`);
     ids = found.map((f) => f.id);
-  }
-  if (ids.length === 0) {
-    console.error('설치된 Dogent 확장을 찾지 못했습니다. 확장 관리 화면의 ID를 --id 로 적어 주세요.');
-    process.exit(1);
   }
   const { manifest, ids: all } = registerNativeHost({ ids, browsers, log });
   console.log(`
