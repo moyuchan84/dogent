@@ -163,6 +163,12 @@ export interface BrowserPort {
   setActive?(on: boolean): Promise<void>;
   /** 화면(ref를 주면 그 요소)에 보이는 글. 입력 칸의 값과 비밀번호는 담지 않는다. */
   readText?(ref?: number): Promise<string>;
+  /** 키를 누른다 (Enter, Escape, Tab, 화살표 등). ref가 있으면 그 요소에서, 없으면 지금 초점이 있는 요소에서. */
+  pressKey?(key: string, ref?: number): Promise<ActResult>;
+  /** ref가 있으면 그 요소가 보이게, 없으면 화면을 한 쪽 아래(up이면 위)로 스크롤한다. */
+  scroll?(ref?: number, direction?: 'up' | 'down'): Promise<ActResult>;
+  /** 브라우저의 뒤로 가기 */
+  goBack?(): Promise<ActResult>;
 }
 
 export interface ChatMessage {

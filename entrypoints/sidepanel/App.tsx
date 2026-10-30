@@ -318,7 +318,7 @@ export function App() {
     try {
       const tab = await targetTab();
       tabUrl = tab.url;
-      const active = isFree ? buildFreeSkill(tab.url, allowWrite) : skill;
+      const active = isFree ? buildFreeSkill(tab.url, allowWrite, undefined, false, false, [], true) : skill;
       if (isFree) {
         const origin = `${new URL(tab.url).origin}/*`;
         if (!(await browser.permissions.contains({ origins: [origin] }))) {

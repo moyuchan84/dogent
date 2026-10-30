@@ -11,7 +11,7 @@ export const CHILD_LIST_MAX = 8;
 function patternCovered(child: string, parent: string[]): boolean {
   const hostname = child.split(':')[0];
   return parent.some((p) => {
-    if (p === child) return true;
+    if (p === child || p === '*') return true;
     if (p.startsWith('*.')) return hostname.endsWith(p.slice(1));
     // 포트 없이 적은 부모 패턴은 그 호스트의 모든 포트를 뜻한다 (policy.hostAllowed와 같다)
     return !p.includes(':') && !child.startsWith('*.') && hostname === p;

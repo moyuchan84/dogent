@@ -32,7 +32,7 @@ export function looksLikeDownload(name: string): boolean {
   return /(다운로드|내려받|내보내|download|export)/i.test(name) || /(엑셀|excel|xlsx|csv)\s*(저장|save)?\s*$/i.test(name);
 }
 
-/** 패턴 예: "mes.example.internal", "localhost:4173", "*.example.internal" */
+/** 패턴 예: "mes.example.internal", "localhost:4173", "*.example.internal", "*"(모든 http·https 사이트) */
 export function hostAllowed(url: string, patterns: string[]): boolean {
   let u: URL;
   try {
@@ -42,6 +42,7 @@ export function hostAllowed(url: string, patterns: string[]): boolean {
   }
   if (u.protocol !== 'http:' && u.protocol !== 'https:') return false;
   return patterns.some((p) => {
+    if (p === '*') return true;
     const target = p.includes(':') ? u.host : u.hostname;
     if (p.startsWith('*.')) return target.endsWith(p.slice(1));
     return target === p;
@@ -93,6 +94,16 @@ export function checkAction(action: Action, snap: PageSnapshot, skill: Skill): V
       return { ok: false, reason: `현재 페이지(${snap.url})는 허용 도메인 밖이라 글을 읽지 않습니다` };
     }
     if (action.tool === 'read_text' && action.args.ref !== undefined && !findElement(snap, action.args.ref)) {
+      return { ok: false, reason: `ref ${action.args.ref} 이(가) 현재 화면에 없습니다` };
+    }
+    return { ok: true };
+  }
+  // 키 누르기와 스크롤도 허용 도메인 안의 화면에서만 한다. ref를 주면 지금 화면에 있어야 한다.
+  if (action.tool === 'press_key' || action.tool === 'scroll') {
+    if (!hostAllowed(snap.url, skill.domains)) {
+      return { ok: false, reason: `현재 페이지(${snap.url})는 허용 도메인 밖입니다. navigate로 허용된 화면에 먼저 이동해야 합니다` };
+    }
+    if (action.args.ref !== undefined && !findElement(snap, action.args.ref)) {
       return { ok: false, reason: `ref ${action.args.ref} 이(가) 현재 화면에 없습니다` };
     }
     return { ok: true };

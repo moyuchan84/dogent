@@ -451,6 +451,37 @@ export class ChromeBrowser implements BrowserPort {
     return (/^https?:/.test(url) && decodeURIComponent(new URL(url).pathname.split('/').pop() ?? '')) || '내려받은 파일';
   }
 
+  /** ref의 요소(없으면 맨 위 프레임)에서 페이지 에이전트의 동작 하나를 부르고 화면이 가라앉기를 기다린다 */
+  private async pageAct(method: 'pressKey' | 'scroll', ref: number | undefined, extra: unknown[]): Promise<ActResult> {
+    await this.follow();
+    const target = ref === undefined || ref === null ? { frame: 0, localRef: null } : this.refs.get(ref);
+    if (!target) return { ok: false, message: `ref ${ref} 이(가) 현재 화면에 없습니다` };
+    const args = method === 'pressKey' ? [...extra, target.localRef] : [target.localRef, ...extra];
+    const [res] = await this.run<ActResult>(method, args, target.frame);
+    if (!res) return { ok: false, message: '프레임이 사라졌습니다' };
+    if (!res.reply.ok) return { ok: false, message: res.reply.error };
+    await this.settle();
+    const moved = await this.follow();
+    return moved ? { ...res.reply.value, message: `${res.reply.value.message}.${moved}` } : res.reply.value;
+  }
+
+  pressKey(key: string, ref?: number): Promise<ActResult> {
+    return this.pageAct('pressKey', ref, [key]);
+  }
+
+  scroll(ref?: number, direction?: 'up' | 'down'): Promise<ActResult> {
+    return this.pageAct('scroll', ref, [direction ?? 'down']);
+  }
+
+  async goBack(): Promise<ActResult> {
+    const before = (await browser.tabs.get(this.tabId)).url;
+    await browser.tabs.goBack(this.tabId).catch(() => {});
+    await sleep(300);
+    await this.settle();
+    const tab = await browser.tabs.get(this.tabId);
+    return tab.url === before ? { ok: false, message: '뒤로 갈 화면이 없습니다' } : { ok: true, message: `뒤로 감: ${tab.url ?? ''}` };
+  }
+
   /** 화면에 보이는 글. ref를 주면 그 요소만 읽는다. 프레임이 여럿이면 프레임마다 이어 붙인다. */
   async readText(ref?: number): Promise<string> {
     await this.follow();

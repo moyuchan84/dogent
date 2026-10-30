@@ -21,6 +21,10 @@ export interface PageAgent {
   hasText(text: string): boolean;
   /** 화면(ref를 주면 그 요소)에 보이는 글. 요약처럼 화면의 글이 필요할 때 쓴다. 입력 칸의 값과 비밀번호는 담지 않는다. */
   readText(ref?: number): string;
+  /** 키를 누른다. ref가 없으면 지금 초점이 있는 요소에서 */
+  pressKey(key: string, ref?: number): ActResult;
+  /** ref가 있으면 그 요소가 보이게, 없으면 화면(가운데의 스크롤 영역)을 한 쪽 내리거나 올린다 */
+  scroll(ref?: number, direction?: 'up' | 'down'): ActResult;
   settle(quietMs?: number, maxMs?: number): Promise<void>;
   /** 곧 조작할 요소를 화면에 표시한다. 요소가 사라졌으면 false. */
   point(ref: number, label: string): boolean;
@@ -50,6 +54,11 @@ const MAX_OPTIONS = 40;
 /** 표 하나에서 따로 내보내는 칸 안 요소의 최대 개수 */
 const MAX_IN_TABLE = 60;
 const IN_CELL = 'a[href],button,input,select,textarea,[role],[onclick]';
+
+/** 오래된 페이지 스크립트가 보는 keyCode */
+const KEY_CODES: Record<string, number> = {
+  Enter: 13, Escape: 27, Tab: 9, ArrowUp: 38, ArrowDown: 40, ArrowLeft: 37, ArrowRight: 39, PageUp: 33, PageDown: 34, Home: 36, End: 35, Backspace: 8, ' ': 32,
+};
 
 const norm = (s: string | null | undefined) => (s ?? '').replace(/\s+/g, ' ').trim();
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}…` : s);
@@ -736,6 +745,43 @@ export function createPageAgent(
       const columns = Array.from({ length: width }, (_, i) => header[i] || `컬럼${i + 1}`);
       return { columns, rows: data.map((r) => Array.from({ length: width }, (_, i) => r[i] ?? '')) };
     },
+
+    pressKey: (key, ref) =>
+      act(() => {
+        const el = (ref === undefined || ref === null ? doc.activeElement ?? doc.body : resolve(ref)) as HTMLElement | null;
+        if (!el) throw new Error('키를 누를 요소가 없습니다');
+        if (ref !== undefined && ref !== null) el.focus?.();
+        // 페이지의 키 처리기에 맞춰 keydown·keypress·keyup을 차례로 보낸다. 브라우저 기본 동작(폼 제출 등)은 일어나지 않는다.
+        const code = KEY_CODES[key] ?? 0;
+        for (const type of ['keydown', 'keypress', 'keyup']) {
+          if (type === 'keypress' && key !== 'Enter' && key !== ' ') continue;
+          el.dispatchEvent(new win.KeyboardEvent(type, { key, code: key === ' ' ? 'Space' : key, keyCode: code, which: code, bubbles: true, cancelable: true }));
+        }
+        return `${key === ' ' ? 'Space' : key} 키를 눌렀습니다`;
+      }),
+
+    scroll: (ref, direction) =>
+      act(() => {
+        if (ref !== undefined && ref !== null) {
+          (resolve(ref) as HTMLElement).scrollIntoView?.({ block: 'center' });
+          return '요소가 보이게 스크롤했습니다';
+        }
+        const dy = (direction === 'up' ? -1 : 1) * Math.round((win.innerHeight || 800) * 0.8);
+        // 화면 가운데를 덮는 스크롤 영역(그리드 등)이 있으면 그것을, 없으면 문서를 내린다
+        let box = (doc.elementFromPoint?.((win.innerWidth || 0) / 2, (win.innerHeight || 0) / 2) ?? null) as HTMLElement | null;
+        while (box && box !== doc.body && box !== doc.documentElement) {
+          const style = win.getComputedStyle(box);
+          if (/(auto|scroll)/.test(style.overflowY) && box.scrollHeight > box.clientHeight + 4) break;
+          box = box.parentElement;
+        }
+        const target = box && box !== doc.body && box !== doc.documentElement ? box : (doc.scrollingElement as HTMLElement | null);
+        const before = target ? target.scrollTop : win.scrollY;
+        if (target) target.scrollTop += dy;
+        else win.scrollBy(0, dy);
+        const after = target ? target.scrollTop : win.scrollY;
+        const where = direction === 'up' ? '위로' : '아래로';
+        return after === before ? `더 ${where} 내릴 곳이 없습니다` : `화면을 ${where} 내렸습니다`;
+      }),
 
     readText(ref) {
       const root = ref === undefined ? doc.body : resolve(ref);

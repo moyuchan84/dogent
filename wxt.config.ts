@@ -1,4 +1,5 @@
 import { defineConfig } from 'wxt';
+import { EXTENSION_KEY } from './bridge/extension-key.mjs';
 import { dogentConfig } from './dogent.config';
 
 export default defineConfig({
@@ -16,6 +17,7 @@ export default defineConfig({
     // dogent.config.ts는 환경 파일을 읽기 전에 불러와지므로, 빌드 환경의 사이트 주소는 여기서 다시 읽는다.
     const sites = [
       ...dogentConfig.sitePermissions,
+      ...(/^(0|false|no|off)$/i.test(((import.meta.env.WXT_ALL_SITES as string | undefined) ?? '').trim()) ? [] : ['http://*/*', 'https://*/*']),
       ...((import.meta.env.WXT_SITE_PERMISSIONS as string | undefined) ?? '').split(',').map((x) => x.trim()).filter(Boolean),
     ];
     // 사용자가 설정에서 더할 수 있는 사이트의 범위. 이 안의 사이트는 다시 빌드하지 않고 크롬 권한 요청으로 더한다.
@@ -24,8 +26,10 @@ export default defineConfig({
     if (command === 'build') printProfile(mode, sites, scope);
     return {
       name: 'Dogent',
+      // 확장 ID를 고정한다. 어느 폴더에서 로드해도 같은 ID라 클라이언트가 Native Messaging에 미리 허용해 둔다 (bridge/extension-key.mjs)
+      key: EXTENSION_KEY,
       description: '스킬(업무 절차서)을 따라 사내 웹 시스템을 조작하는 업무 에이전트',
-      permissions: ['sidePanel', 'scripting', 'storage', 'tabs', 'downloads', 'alarms', 'nativeMessaging'],
+      permissions: ['sidePanel', 'scripting', 'storage', 'tabs', 'downloads', 'alarms', 'nativeMessaging', 'tabGroups'],
       host_permissions: [...new Set([...sites, ...dogentConfig.llmPermissions, ...llmHost, ...skillsHost])],
       optional_host_permissions: scope,
       // 아이콘 원본은 public/icon/dogent.svg. PNG는 그것을 크기별로 그린 것이다 (Do-Agent: D 위의 클릭하는 포인터).

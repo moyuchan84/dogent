@@ -9,7 +9,7 @@ import { PathMemo } from './paths';
 import { SUBMIT_PATTERN, checkAction, findElement, hostAllowed, optionsOf } from './policy';
 import { buildSummarizeMessages, buildTurnMessages } from './prompt';
 import { checkInputRules, extractSteps, fillTemplate, fillValue, type Skill, type SkillInputs } from './skill';
-import { renderSnapshot } from './snapshot';
+import { findInSnapshot, renderSnapshot } from './snapshot';
 import { listForPrompt, prepareChild, summarizeChild } from './subagent';
 import { transform } from './transform';
 import type {
@@ -537,6 +537,20 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps, memo: PathM
         const text = summarizeChild(child, r, renamed);
         if (r.status === 'dryrun') return { ok: true, result: text, end: 'dryrun' };
         return { ok: r.status === 'done', result: text };
+      }
+      case 'find':
+        return { ok: true, result: findInSnapshot(snap, action.args.query) };
+      case 'press_key': {
+        if (!browser.pressKey) return { ok: false, result: '이 환경에서는 키를 누를 수 없습니다' };
+        return acted(await browser.pressKey(action.args.key === 'Space' ? ' ' : action.args.key, action.args.ref));
+      }
+      case 'scroll': {
+        if (!browser.scroll) return { ok: false, result: '이 환경에서는 스크롤할 수 없습니다' };
+        return acted(await browser.scroll(action.args.ref, action.args.direction));
+      }
+      case 'go_back': {
+        if (!browser.goBack) return { ok: false, result: '이 환경에서는 뒤로 갈 수 없습니다' };
+        return acted(await browser.goBack());
       }
       case 'read_text': {
         if (!browser.readText) return { ok: false, result: '이 환경에서는 화면 글을 읽을 수 없습니다' };

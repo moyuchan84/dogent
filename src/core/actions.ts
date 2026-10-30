@@ -7,6 +7,9 @@ const ref = z.coerce.number().int().nonnegative();
 /** 표 안의 요소를 이름으로 가리킬 때, 그 행에 있는 글자. 같은 이름이 행마다 있을 때 행을 가린다. */
 const row = z.string().optional();
 
+/** press_key로 누를 수 있는 키 */
+export const PRESS_KEYS = ['Enter', 'Escape', 'Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown', 'Home', 'End', 'Backspace', 'Space'] as const;
+
 export const TOOL_ARGS = {
   next_step: z.object({}),
   navigate: z.object({ url: z.url() }),
@@ -89,6 +92,14 @@ export const TOOL_ARGS = {
   }),
   /** 화면(ref를 주면 그 요소)에 보이는 글을 읽는다. 게시글·공지처럼 글 내용이 필요할 때 쓴다. */
   read_text: z.object({ ref: ref.optional() }),
+  /** 화면에서 말에 맞는 요소만 골라 본다 (요소가 많은 화면에서 ref를 찾을 때). 화면은 바꾸지 않는다. */
+  find: z.object({ query: z.string().min(1) }),
+  /** 키를 누른다. ref가 있으면 그 요소에서, 없으면 지금 초점이 있는 요소에서. 검색 칸의 Enter, 창 닫기 Escape 등 */
+  press_key: z.object({ key: z.enum(PRESS_KEYS), ref: ref.optional() }),
+  /** ref가 있으면 그 요소가 보이게, 없으면 화면을 한 쪽 아래(up이면 위)로 내린다. 내리면 더 불러오는 목록에 쓴다. */
+  scroll: z.object({ ref: ref.optional(), direction: z.enum(['down', 'up']).default('down') }),
+  /** 브라우저의 뒤로 가기 */
+  go_back: z.object({}),
   /**
    * 화면의 글(source "page")이나 데이터셋을 지시대로 정리해 기록 값 name에 남긴다. 뒤 단계에서 {out.name}으로 쓴다.
    * 정리할 자료를 모델에 보낸다. 데이터셋은 앞부분 행만 보내므로, 많으면 transform으로 먼저 줄인다.
@@ -115,7 +126,7 @@ export type ToolName = keyof typeof TOOL_ARGS;
 
 /** 모델 없이 실행할 수 있는 단계의 첫머리. 예: "select로 ...", "click으로 ..." */
 const DIRECT_STEP =
-  /^(navigate|open_tab|click|close_tab|type|select|extract_table|download_table|fill_table|transform|write_excel|excel_docs|excel_read|excel_write|excel_save|call_tool|run_skill|read_text|summarize|finish)(?:으로|로)\s/;
+  /^(navigate|open_tab|click|close_tab|press_key|scroll|go_back|type|select|extract_table|download_table|fill_table|transform|write_excel|excel_docs|excel_read|excel_write|excel_save|call_tool|run_skill|read_text|summarize|finish)(?:으로|로)\s/;
 
 /**
  * 단계가 "도구로 ..."로 시작하고 `{...}` 인자가 적혀 있으면 그 도구 이름과 인자 원문을 돌려준다.

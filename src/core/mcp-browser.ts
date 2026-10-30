@@ -98,6 +98,18 @@ export class McpBrowser implements BrowserPort {
     return this.port('readText', ref ?? null);
   }
 
+  pressKey(key: string, ref?: number): Promise<ActResult> {
+    return this.port('pressKey', key, ref ?? null);
+  }
+
+  scroll(ref?: number, direction?: 'up' | 'down'): Promise<ActResult> {
+    return this.port('scroll', ref ?? null, direction ?? 'down');
+  }
+
+  goBack(): Promise<ActResult> {
+    return this.port('goBack');
+  }
+
   /** 저장·상신 직전에 확장의 승인 창으로 사람에게 묻는다. */
   approve(request: ApprovalRequest): Promise<boolean> {
     return this.port('approve', request);

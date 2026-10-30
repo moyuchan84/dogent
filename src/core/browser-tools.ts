@@ -3,8 +3,9 @@ import { renderInspection, type SiteInspection } from './inspect';
 import { extractPages } from './pages';
 import { SUBMIT_PATTERN, findElement } from './policy';
 import { siteAllowed } from './sites';
-import { renderSnapshot } from './snapshot';
-import type { ApprovalRequest, BrowserPort, ConfirmPolicy, PageSnapshot, TableData } from './types';
+import { PRESS_KEYS } from './actions';
+import { findInSnapshot, renderSnapshot } from './snapshot';
+import type { ActResult, ApprovalRequest, BrowserPort, ConfirmPolicy, PageSnapshot, TableData } from './types';
 
 /**
  * 외부 클라이언트(MCP)가 부르는 브라우저 도구의 실행부. 도구 목록은 bridge/tools.mjs에 있다.
@@ -209,6 +210,23 @@ export class BrowserTools {
       case 'setActive':
         await port.setActive?.(args[0] === true);
         return true;
+      case 'pressKey': {
+        if (!port.pressKey) throw new Error('이 환경에서는 키를 누를 수 없습니다');
+        const ref = args[1] === undefined || args[1] === null ? undefined : n(1);
+        if (ref !== undefined) this.lastSnap(tab);
+        this.snaps.delete(tab);
+        return port.pressKey(String(args[0] ?? ''), ref);
+      }
+      case 'scroll': {
+        if (!port.scroll) throw new Error('이 환경에서는 스크롤할 수 없습니다');
+        const ref = args[0] === undefined || args[0] === null ? undefined : n(0);
+        if (ref !== undefined) this.lastSnap(tab);
+        return port.scroll(ref, args[1] === 'up' ? 'up' : 'down');
+      }
+      case 'goBack':
+        if (!port.goBack) throw new Error('이 환경에서는 뒤로 갈 수 없습니다');
+        this.snaps.delete(tab);
+        return port.goBack();
       case 'readText': {
         if (!port.readText) throw new Error('이 환경에서는 화면 글을 읽을 수 없습니다');
         const ref = args[0] === undefined || args[0] === null ? undefined : n(0);
@@ -379,6 +397,36 @@ export class BrowserTools {
           }),
         );
         return diffs.length ? `${r.message}. 대조 불일치: ${diffs.join(' / ')}` : `${r.message}. 화면 값이 넣은 값과 일치합니다`;
+      }
+      case 'find': {
+        const tab = await this.target();
+        return findInSnapshot(this.lastSnap(tab), str(args, 'query'));
+      }
+      case 'press_key':
+      case 'scroll':
+      case 'go_back': {
+        const tab = await this.target();
+        const port = this.host.port(tab);
+        const t = (await this.host.tabs()).find((x) => x.id === tab);
+        await this.allowed(t?.url ?? '');
+        const ref = args.ref === undefined || args.ref === null ? undefined : num(args, 'ref');
+        if (ref !== undefined) this.lastSnap(tab);
+        let r: ActResult;
+        if (name === 'press_key') {
+          if (!port.pressKey) throw new Error('이 환경에서는 키를 누를 수 없습니다');
+          const key = str(args, 'key');
+          if (!(PRESS_KEYS as readonly string[]).includes(key)) throw new Error(`누를 수 없는 키입니다: ${key} (${PRESS_KEYS.join(', ')})`);
+          r = await port.pressKey(key === 'Space' ? ' ' : key, ref);
+        } else if (name === 'scroll') {
+          if (!port.scroll) throw new Error('이 환경에서는 스크롤할 수 없습니다');
+          r = await port.scroll(ref, args.direction === 'up' ? 'up' : 'down');
+        } else {
+          if (!port.goBack) throw new Error('이 환경에서는 뒤로 갈 수 없습니다');
+          r = await port.goBack();
+        }
+        if (name !== 'scroll') this.snaps.delete(tab);
+        if (!r.ok) throw new Error(r.message);
+        return `${r.message}. snapshot으로 화면을 다시 읽으세요`;
       }
       case 'read_text': {
         const tab = await this.target();

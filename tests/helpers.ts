@@ -226,6 +226,16 @@ export class JsdomBrowser implements BrowserPort {
     return this.agent.readText(ref === undefined ? undefined : this.local(ref));
   }
 
+  async pressKey(key: string, ref?: number) {
+    const r = this.agent.pressKey(key, ref === undefined ? undefined : this.local(ref));
+    await this.agent.settle(50, 3000);
+    return r;
+  }
+
+  async scroll(ref?: number, direction?: 'up' | 'down') {
+    return this.agent.scroll(ref === undefined ? undefined : this.local(ref), direction);
+  }
+
   async waitFor(text: string, timeoutMs: number) {
     const deadline = Date.now() + timeoutMs;
     while (!this.agent.hasText(text)) {
