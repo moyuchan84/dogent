@@ -29,10 +29,10 @@ limits:
    - 검사: did("type")
 2. 검색(또는 조회) 버튼을 click으로 누른다. 버튼이 없으면 검색 칸에서 press_key로 Enter를 누른다. 결과가 나올 때까지 기다린다.
 3. summarize로 검색 결과를 정리한다. args는 다음을 그대로 쓴다.
-   `{"instruction": "'{query}' 검색 결과 화면이다. '{focus}'을(를) 중심으로 결과를 다섯 개 이내로 골라 제목과 핵심을 한 줄씩 정리한다. 결과가 없으면 없다고 쓴다.", "source": "page", "name": "result"}`
+   `{"instruction": "'{query}' 검색 결과 화면이다. '{focus}'을(를) 중심으로 결과를 다섯 개 이내로 골라 '- **제목**: 핵심' 형식으로 한 줄씩 정리한다. 결과가 없으면 없다고 쓴다.", "source": "page", "name": "result"}`
    - 검사: did("summarize")
 4. finish로 결과를 보고한다. args는 다음을 그대로 쓴다.
-   `{"summary": "'{query}' 검색 결과\n{out.result}"}`
+   `{"summary": "### '{query}' 검색 결과\n\n{out.result}"}`
 
 ## 예외
 

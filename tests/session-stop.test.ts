@@ -11,7 +11,7 @@ const read = (p: string) => readFileSync(join(import.meta.dirname, '..', p), 'ut
 
 let Session: typeof SessionType;
 beforeAll(async () => {
-  vi.stubGlobal('__DOGENT_SKILLS__', { 'wip-check/SKILL.md': read('skills/wip-check/SKILL.md'), 'wip-search/SKILL.md': read('skills/wip-search/SKILL.md') });
+  vi.stubGlobal('__DOGENT_SKILLS__', { 'wip-check/SKILL.md': read('samples/skills/wip-check/SKILL.md'), 'wip-search/SKILL.md': read('samples/skills/wip-search/SKILL.md') });
   vi.stubGlobal('__DOGENT_BUILD__', { mode: 'home', version: 'test' });
   ({ Session } = await import('../client/src/session'));
 });

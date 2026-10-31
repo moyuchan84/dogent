@@ -9,8 +9,8 @@ import { syncTeam, teamCacheDir, teamMeta, teamStale } from '../client/src/team'
 
 const ROOT = join(import.meta.dirname, '..');
 const sha = (t: string) => createHash('sha256').update(t.replace(/\r\n/g, '\n'), 'utf8').digest('hex');
-const wip = readFileSync(join(ROOT, 'skills/wip-check/SKILL.md'), 'utf8');
-const hold = readFileSync(join(ROOT, 'skills/hold-release/SKILL.md'), 'utf8');
+const wip = readFileSync(join(ROOT, 'samples/skills/wip-check/SKILL.md'), 'utf8');
+const hold = readFileSync(join(ROOT, 'samples/skills/hold-release/SKILL.md'), 'utf8');
 
 /** 팀 저장소처럼 index.json과 스킬 파일을 내놓는 서버. 토큰을 요구한다 */
 const files: Record<string, string> = {

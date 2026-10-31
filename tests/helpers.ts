@@ -22,17 +22,17 @@ const ORIGIN = 'http://localhost:4173';
 
 const read = (path: string) => readFileSync(join(ROOT, path), 'utf8');
 
-export const wipSkill = () => parseSkill(read('skills/wip-check/SKILL.md'));
+export const wipSkill = () => parseSkill(read('samples/skills/wip-check/SKILL.md'));
 export const fwSkill = () =>
-  parseSkill(read('skills/firewall-request/SKILL.md'), read('skills/firewall-request/policy.yaml'));
+  parseSkill(read('samples/skills/firewall-request/SKILL.md'), read('samples/skills/firewall-request/policy.yaml'));
 
-export const adjustSkill = () => parseSkill(read('skills/wip-adjust/SKILL.md'));
+export const adjustSkill = () => parseSkill(read('samples/skills/wip-adjust/SKILL.md'));
 
 /** 모의 조정 화면이 저장한 내용. 한 번의 저장이 행 배열 하나다. */
 export const adjustLog: string[][][] = [];
 
 export const holdSkill = () =>
-  parseSkill(read('skills/hold-release/SKILL.md'), read('skills/hold-release/policy.yaml'));
+  parseSkill(read('samples/skills/hold-release/SKILL.md'), read('samples/skills/hold-release/policy.yaml'));
 
 /** 모의 화면이 접수한 홀드 해제 요청 */
 export const holdLog: Record<string, string>[] = [];

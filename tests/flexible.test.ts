@@ -6,7 +6,7 @@ import { lintSkill, parseSkill, planRequest, resolveInputs, runSkill, type ChatM
 import { JsdomBrowser, memoryFiles, mockLlm, scriptedLlm, wipSkill } from './helpers';
 
 const ui = { ask: async () => '', approve: async () => false };
-const searchSkill = () => parseSkill(readFileSync(join(import.meta.dirname, '../skills/wip-search/SKILL.md'), 'utf8'));
+const searchSkill = () => parseSkill(readFileSync(join(import.meta.dirname, '../samples/skills/wip-search/SKILL.md'), 'utf8'));
 
 /** 모의 모델을 감싸 주고받은 메시지를 남긴다. */
 function recording(inner: LlmPort = mockLlm) {

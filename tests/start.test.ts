@@ -4,8 +4,8 @@ import { describe, expect, it } from 'vitest';
 import { parseSkill, parseSystem, sameUrl, startUrlForSkill, urlInText } from '../src/core';
 
 const ROOT = join(import.meta.dirname, '..');
-const wip = parseSkill(readFileSync(join(ROOT, 'skills/wip-check/SKILL.md'), 'utf8'));
-const mes = parseSystem(readFileSync(join(ROOT, 'skills/systems/mes/SYSTEM.md'), 'utf8'));
+const wip = parseSkill(readFileSync(join(ROOT, 'samples/skills/wip-check/SKILL.md'), 'utf8'));
+const mes = parseSystem(readFileSync(join(ROOT, 'samples/skills/systems/mes/SYSTEM.md'), 'utf8'));
 
 describe('요청에서 시작 주소 찾기', () => {
   it('전체 주소는 조사 앞에서 끊는다', () => {
@@ -44,7 +44,7 @@ describe('스킬을 시작할 주소', () => {
   it('시스템 사전도 없으면 스킬 본문에 적힌 주소, 그것도 없으면 null', () => {
     expect(startUrlForSkill(wip, [])).toBe('http://localhost:4173/wip.html');
     // 사이트가 본문의 주소와 다르면 쓸 수 없다
-    const elsewhere = parseSkill(readFileSync(join(ROOT, 'skills/wip-check/SKILL.md'), 'utf8').replace('  - localhost:4173', '  - other.example.com'));
+    const elsewhere = parseSkill(readFileSync(join(ROOT, 'samples/skills/wip-check/SKILL.md'), 'utf8').replace('  - localhost:4173', '  - other.example.com'));
     expect(startUrlForSkill(elsewhere, [])).toBeNull();
   });
 });

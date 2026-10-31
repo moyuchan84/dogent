@@ -31,6 +31,7 @@ import {
 import { ChromeBrowser } from '@/src/ext/browser';
 import { loadShared, refreshShared, type SharedState } from '@/src/ext/shared';
 import { loadBundledSkills } from '@/src/ext/skills';
+import { Markdown } from '@/src/ui/Markdown';
 import { appendRun, builtInHeaders, resetSettings, clearPaths, effectiveSettings, hasBuiltInKey, loadDrafts, loadRuns, loadSettings, markTrial, pathStore, saveSettings, type DraftSkill } from '@/src/ext/storage';
 import { Author } from './Author';
 import { BatchView } from './Batch';
@@ -677,7 +678,7 @@ export function App() {
             disabled={running || planning}
             onChange={(e) => setRequest(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && plan()}
-            placeholder="예: 8라인 PHOTO 공정 재공 확인해줘"
+            placeholder="예: 이 화면 요약해줘"
           />
           <button id="plan" className="secondary" onClick={plan} disabled={running || planning || !request.trim()}>
             {planning ? '해석 중' : '해석'}
@@ -1008,7 +1009,7 @@ export function App() {
                   동작 {result.actions}회 · {(result.elapsedMs / 1000).toFixed(1)}초
                 </span>
               </div>
-              <p>{result.message}</p>
+              <Markdown text={result.message} copy className="result-body" />
               {result.files.length > 0 && <p className="hint">저장한 파일: {result.files.join(', ')}</p>}
               {lastFree && !running && (
                 <div className="row wrap">

@@ -9,6 +9,7 @@ import { PathMemo } from './paths';
 import { SUBMIT_PATTERN, checkAction, findElement, hostAllowed, optionsOf } from './policy';
 import { buildSummarizeMessages, buildTurnMessages } from './prompt';
 import { checkInputRules, extractSteps, fillTemplate, fillValue, type Skill, type SkillInputs } from './skill';
+import { tableMarkdown } from './markdown';
 import { findInSnapshot, renderSnapshot } from './snapshot';
 import { listForPrompt, prepareChild, summarizeChild } from './subagent';
 import { transform } from './transform';
@@ -170,6 +171,13 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps, memo: PathM
       .replace(/\{rows\.([A-Za-z_][A-Za-z0-9_]*)\}/g, (whole, name: string) => {
         const ds = datasets.list().find((d) => d.name === name);
         return ds ? String(ds.rows.length) : whole;
+      })
+      // {table.이름}: 데이터셋을 마크다운 표로 (앞의 20행). 보고에 표를 넣을 때 모델이 값을 옮겨 적지 않는다.
+      .replace(/\{table\.([A-Za-z_][A-Za-z0-9_]*)\}/g, (whole, name: string) => {
+        const ds = datasets.list().find((d) => d.name === name);
+        if (!ds) return whole;
+        const md = tableMarkdown(ds.columns, ds.rows);
+        return inJson ? JSON.stringify(md).slice(1, -1) : `\n\n${md}\n\n`;
       });
   // 지금 할 단계. 모델이 아니라 루프가 관리한다. 검사가 있는 단계는 조건이 충족되면 자동으로,
   // 없는 단계는 모델의 next_step으로 한 칸씩 넘어간다.
@@ -583,8 +591,8 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps, memo: PathM
         return { ok: true, result: `사용자 답변: ${answer}` };
       }
       case 'finish':
-        // 모델이 쓴 보고에도 {rows.이름}, {out.이름}을 채운다. 숫자와 정리한 글을 모델이 옮겨 적지 않아도 된다.
-        return { ok: true, result: withOutputs(action.args.summary), end: 'done' };
+        // 모델이 쓴 보고에도 {rows.이름}, {out.이름}, {table.이름}을 채운다. 숫자와 정리한 글을 모델이 옮겨 적지 않아도 된다.
+        return { ok: true, result: withOutputs(action.args.summary).replace(/\n{3,}/g, '\n\n').trim(), end: 'done' };
       case 'abort':
         return { ok: true, result: action.args.reason, end: 'aborted' };
     }

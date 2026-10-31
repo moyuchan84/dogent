@@ -1,6 +1,6 @@
 // Dogent 클라이언트(터미널) + 확장 + 모의 사이트를 실제 Chromium으로 끝까지 돌려 본다 (docs/09 2단계).
 //
-//   pnpm build && pnpm client:build && pnpm e2e:client
+//   WXT_SAMPLE_SKILLS=true pnpm build && WXT_SAMPLE_SKILLS=true pnpm client:build && pnpm e2e:client
 //
 // 클라이언트는 별도 프로세스(client/dist/dogent.mjs)로 띄우고, 확장은 클라이언트 안의 브리지에 WebSocket으로 붙는다.
 import assert from 'node:assert/strict';
@@ -202,7 +202,7 @@ try {
 
     // 팀 저장소: git 없이 index.json 주소로 받는다
     const team = createServer((req, res) => {
-      const skill = readFileSync(join(ROOT, 'skills/wip-check/SKILL.md'), 'utf8').replace('id: wip-check', 'id: team-wip').replace('name: 재공 확인', 'name: 팀 재공 확인');
+      const skill = readFileSync(join(ROOT, 'samples/skills/wip-check/SKILL.md'), 'utf8').replace('id: wip-check', 'id: team-wip').replace('name: 재공 확인', 'name: 팀 재공 확인');
       const body = { '/s/index.json': JSON.stringify({ skills: [{ id: 'team-wip', path: 'team-wip/SKILL.md' }] }), '/s/team-wip/SKILL.md': skill }[req.url];
       res.writeHead(body ? 200 : 404).end(body);
     }).listen(4179);
@@ -245,7 +245,7 @@ try {
     assert.doesNotMatch(plain.text, /시스템:/);
 
     // 팀 저장소 목록의 시스템 문서를 받는다 (개인 폴더의 같은 id가 먼저)
-    const sys = readFileSync(join(ROOT, 'skills/systems/mes/SYSTEM.md'), 'utf8').replace('id: mes', 'id: team-mes').replace('name: 모의 MES (생산 관리)', 'name: 팀 MES');
+    const sys = readFileSync(join(ROOT, 'samples/skills/systems/mes/SYSTEM.md'), 'utf8').replace('id: mes', 'id: team-mes').replace('name: 모의 MES (생산 관리)', 'name: 팀 MES');
     const team = createServer((req, res) => {
       const body = { '/t/index.json': JSON.stringify({ systems: [{ id: 'team-mes', path: 'systems/team-mes/SYSTEM.md' }], skills: [] }), '/t/systems/team-mes/SYSTEM.md': sys }[req.url];
       res.writeHead(body ? 200 : 404).end(body);

@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { buildFreeSkill, describeSystem, lintSystem, parseSystem, planRequest, searchSystems, syncSkills, systemForUrl, type System } from '../src/core';
 
 const ROOT = join(import.meta.dirname, '..');
-const dir = join(ROOT, 'skills/systems');
+const dir = join(ROOT, 'samples/skills/systems');
 const sources = readdirSync(dir).map((d) => readFileSync(join(dir, d, 'SYSTEM.md'), 'utf8'));
 const systems: System[] = sources.map(parseSystem);
 const ids = (q: string) => searchSystems(systems, q).map((s) => s.id);

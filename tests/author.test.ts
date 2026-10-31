@@ -18,7 +18,7 @@ import {
 import { createPageAgent } from '../src/page/agent';
 import { JsdomBrowser, fwLog, memoryFiles, readWorkbook } from './helpers';
 
-const SKILLS = join(import.meta.dirname, '../skills');
+const SKILL_DIRS = ['../skills', '../samples/skills'].map((d) => join(import.meta.dirname, d));
 const META = { id: 'fw-recorded', name: '방화벽 신청(녹화)', description: '녹화로 만든 방화벽 신청 스킬', owner: '인프라운영' };
 
 const noLlm: LlmPort = {
@@ -45,7 +45,7 @@ beforeEach(() => {
 
 describe('스킬 품질 검사', () => {
   it('번들된 스킬은 모두 A등급이고 전 단계가 모델 없이 실행된다', () => {
-    for (const id of readdirSync(SKILLS).filter((d) => d !== 'systems')) {
+    for (const SKILLS of SKILL_DIRS) for (const id of readdirSync(SKILLS).filter((d) => d !== 'systems')) {
       const policy = join(SKILLS, id, 'policy.yaml');
       const report = lintSkill(
         readFileSync(join(SKILLS, id, 'SKILL.md'), 'utf8'),
