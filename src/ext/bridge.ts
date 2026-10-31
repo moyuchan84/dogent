@@ -146,6 +146,10 @@ const host: ToolHost = {
 
 const tools = new BrowserTools(host);
 
+let lastCall = 0;
+/** 클라이언트가 마지막으로 도구를 부른 때. 실행 중에 확장을 다시 읽지 않으려고 본다 (self-update.ts) */
+export const lastCallAt = () => lastCall;
+
 /** 도구를 실행하는 동안 그 탭에 "조작 중" 표시를 하고, 한동안 호출이 없으면 끈다. */
 async function runTool(tool: string, args: Record<string, unknown>): Promise<string> {
   const tabId = await host.activeTab();
@@ -271,6 +275,7 @@ async function onMessage(msg: BridgeMessage, settings: BridgeSettings, t: Transp
     case 'call': {
       if (!authed) return;
       // 답은 호출이 온 연결로 보낸다.
+      lastCall = Date.now();
       try {
         const text = await runTool(msg.tool, msg.args ?? {});
         t.send({ type: 'result', id: msg.id, ok: true, text });

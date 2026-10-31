@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ApprovalRequest, RunEvent, RunResult } from '../../../src/core';
 import { searchSkills, skillCoversUrl } from '../../../src/core/catalog';
 import type { BrowserLink } from '../../../bridge/hub.mjs';
-import type { DogentApi, ExtensionStatus, InitInfo, ServerRow, SkillSummary, SystemSummary, UiMessage } from '../ipc';
+import type { DogentApi, ExtensionStatus, InitInfo, RecentRow, ServerRow, SkillPrefPatch, SkillSummary, SystemSummary, UiMessage } from '../ipc';
 import { ConnectDialog, ConnectorsPanel } from './Connectors';
 import { Markdown } from '../../../src/ui/Markdown';
 
@@ -19,7 +19,7 @@ type Item =
   | { type: 'text'; text: string }
   | { type: 'ask'; id: number; mode: 'text' | 'confirm'; question: string; fallback: string; answer?: string | null }
   | { type: 'run'; skill: string; page: string; events: RunEvent[]; approval?: ApprovalRequest; result?: { result: RunResult; saved: string[] } }
-  | { type: 'form'; skill: SkillSummary };
+  | { type: 'form'; skill: SkillSummary; initial?: Record<string, string> };
 
 const STATUS: Record<RunResult['status'], string> = {
   done: '완료',
@@ -64,7 +64,34 @@ function useSideWidth() {
   return [width, set] as const;
 }
 
-const EXAMPLES = ['이 화면 요약해줘', '이 화면의 표를 엑셀로 저장해줘', 'skills', 'browsers'];
+const EXAMPLES = ['이 화면 요약해줘', '이 화면의 표를 엑셀로 저장해줘', '이 화면의 표를 HTML 보고서로 정리해줘', 'browsers'];
+
+/** 왼쪽 목록에서 접어 둔 묶음. 다시 열어도 그대로 */
+const FOLD_KEY = 'dogent.folded';
+function useFolded() {
+  const [folded, setFolded] = useState<string[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem(FOLD_KEY) ?? '[]') as string[];
+    } catch {
+      return [];
+    }
+  });
+  const toggle = (key: string) =>
+    setFolded((prev) => {
+      const next = prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key];
+      try {
+        localStorage.setItem(FOLD_KEY, JSON.stringify(next));
+      } catch {
+        /* 저장 못 해도 이번 실행에서는 그대로 쓴다 */
+      }
+      return next;
+    });
+  return [folded, toggle] as const;
+}
+
+/** 출처별 묶음의 이름 */
+const SOURCE_GROUP: Record<SkillSummary['source'], string> = { 개인: '내 스킬', 팀: '팀 스킬', 기본: '기본 스킬' };
+const RECENT_STATUS: Record<RecentRow['status'], string> = { done: '완료', aborted: '중단', stopped: '멈춤', error: '오류', dryrun: '시험' };
 
 export function App() {
   const [info, setInfo] = useState<InitInfo | null>(null);
@@ -82,7 +109,12 @@ export function App() {
   const [query, setQuery] = useState('');
   const [sideWidth, setSideWidth] = useSideWidth();
   const [page, setPage] = useState<{ url: string; title: string } | null>(null);
+  const [samplesShown, setSamplesShown] = useState(false);
+  const [recent, setRecent] = useState<RecentRow[]>([]);
+  const [showManage, setShowManage] = useState(false);
+  const [folded, toggleFold] = useFolded();
   const feedEnd = useRef<HTMLDivElement>(null);
+  const composer = useRef<HTMLTextAreaElement>(null);
 
   // 지금 브라우저 탭을 몇 초마다 읽어 그 사이트를 다루는 스킬을 위에 둔다
   useEffect(() => {
@@ -96,6 +128,8 @@ export function App() {
     void api.init().then((i) => {
       setInfo(i);
       setSkills(i.skills);
+      setSamplesShown(i.samplesShown);
+      void api.recent().then(setRecent);
       void api.systems().then(setSystems);
       void api.connectors().then(setServers);
       setBrowsers(i.browsers);
@@ -115,6 +149,7 @@ export function App() {
       if (!m.busy) {
         void api.skills().then(setSkills); // 자유 요청을 스킬로 저장했을 수 있다
         void api.systems().then(setSystems);
+        void api.recent().then(setRecent);
       }
       return;
     }
@@ -184,8 +219,34 @@ export function App() {
     void api.answer(id, value);
   }
 
-  function openForm(skill: SkillSummary) {
-    setItems((prev) => [...prev, { type: 'form', skill }]);
+  function openForm(skill: SkillSummary, initial?: Record<string, string>) {
+    setItems((prev) => [...prev, { type: 'form', skill, ...(initial ? { initial } : {}) }]);
+  }
+
+  /** 새 요청: 대화를 비우고 입력 칸으로 (실행 기록은 남는다) */
+  function newRequest() {
+    if (busy) return;
+    setItems([]);
+    setText('');
+    composer.current?.focus();
+  }
+
+  /** 최근 실행을 다시: 자유 요청은 입력 칸에 넣고, 스킬은 그때 값을 채운 입력 폼을 연다 (바로 돌리지 않는다) */
+  function reopen(r: RecentRow) {
+    const s = skills.find((x) => x.id === r.skillId);
+    if (r.request || !s) {
+      setText(r.request ?? '');
+      composer.current?.focus();
+      return;
+    }
+    openForm(s, Object.fromEntries(Object.entries(r.inputs).map(([k, v]) => [k, String(v)])));
+  }
+
+  async function skillPref(patch: SkillPrefPatch) {
+    const r = await api.skillPref(patch);
+    setSkills(r.skills);
+    setSamplesShown(r.samplesShown);
+    void api.systems().then(setSystems);
   }
 
   function runForm(skill: SkillSummary, values: Record<string, string>) {
@@ -200,9 +261,13 @@ export function App() {
   }
 
   const current = browsers.find((b) => b.selected);
-  // 검색어가 있으면 맞는 순서로 한 줄, 없으면 "지금 화면"(이 탭의 사이트를 다루는 스킬) 다음에 출처별로
-  const hits = query.trim() ? searchSkills(skills, (s) => s, query, { url: page?.url }) : [];
-  const here = query.trim() ? [] : skills.filter((s) => skillCoversUrl(s, page?.url));
+  // 목록에 보이는 스킬: 끈 것과 (보이기로 하지 않은) 예시 스킬을 뺀다. 스킬 관리에서는 모두 보인다
+  const visible = skills.filter((s) => !s.off && (samplesShown || !s.sample));
+  const offCount = skills.filter((s) => s.off).length;
+  const sampleCount = skills.filter((s) => s.sample && !s.off).length;
+  // 검색어가 있으면 맞는 순서로 한 줄, 없으면 지금 화면 → 고정 → 최근 → 내 스킬 → 팀 → 기본 → 예시
+  const hits = query.trim() ? searchSkills(visible, (s) => s, query, { url: page?.url }) : [];
+  const here = query.trim() ? [] : visible.filter((s) => skillCoversUrl(s, page?.url));
   const hereHost = (() => {
     try {
       return page ? new URL(page.url).host : '';
@@ -210,10 +275,16 @@ export function App() {
       return '';
     }
   })();
-  const grouped = [
-    ...(here.length ? [{ source: `지금 화면 · ${hereHost}`, list: here }] : []),
-    ...(['개인', '팀', '기본'] as const).map((source) => ({ source, list: skills.filter((s) => s.source === source && !here.includes(s)) })),
+  const pinned = visible.filter((s) => s.pinned && !here.includes(s));
+  const rest = visible.filter((s) => !here.includes(s) && !s.pinned);
+  const grouped: { key: string; title: string; list: SkillSummary[]; fold?: boolean }[] = [
+    { key: 'here', title: `지금 화면 · ${hereHost}`, list: here },
+    { key: 'pinned', title: '고정', list: pinned },
+    ...(['개인', '팀', '기본'] as const).map((source) => ({ key: source, title: SOURCE_GROUP[source], list: rest.filter((s) => s.source === source && !s.sample), fold: true })),
+    { key: 'sample', title: '예시 (목업 사이트용)', list: rest.filter((s) => s.sample), fold: true },
   ].filter((g) => g.list.length);
+  const recentRows = recent.slice(0, 5);
+  const nameOf = (id: string) => skills.find((s) => s.id === id)?.name ?? id;
 
   return (
     <div className="app">
@@ -228,7 +299,7 @@ export function App() {
           </div>
           <nav className="side-tabs">
             <button className={side === 'skills' ? 'on' : ''} onClick={() => setSide('skills')}>
-              스킬 {skills.length}
+              스킬 {visible.length}
             </button>
             <button className={side === 'systems' ? 'on' : ''} id="tab-systems" onClick={() => setSide('systems')} title="사내 시스템 사전: 요청에 시스템 이름이 나오면 모델에 함께 보여 줍니다">
               시스템 {systems.length}
@@ -243,8 +314,11 @@ export function App() {
           {side === 'skills' ? (
             <>
             <div className="side-tools">
-              <button className="compose" id="compose-skill" disabled={busy} onClick={() => send('스킬 만들기')} title="지금 브라우저 화면에서 하는 업무를 말로 설명하면 스킬 초안을 씁니다">
-                <span aria-hidden>＋</span> 말로 스킬 만들기
+              <button className="compose" id="new-request" disabled={busy} onClick={newRequest} title="대화를 비우고 새 요청을 씁니다 (실행 기록은 남습니다)">
+                <span aria-hidden>＋</span> 새 요청
+              </button>
+              <button className="compose ghostly" id="compose-skill" disabled={busy} onClick={() => send('스킬 만들기')} title="지금 브라우저 화면에서 하는 업무를 말로 설명하면 스킬 초안을 씁니다">
+                <span aria-hidden>✎</span> 말로 스킬 만들기
               </button>
               <input
                 id="skill-search"
@@ -261,7 +335,7 @@ export function App() {
                 <div style={{ display: 'grid', gap: 4 }} id="skill-hits">
                   <div className="group">찾은 스킬 {hits.length}</div>
                   {hits.map((h) => (
-                    <SkillButton key={h.item.id} skill={h.item} here={h.site} showSource busy={busy} onOpen={openForm} />
+                    <SkillButton key={h.item.id} skill={h.item} here={h.site} showSource busy={busy} onOpen={openForm} onPin={(s) => void skillPref({ id: s.id, pinned: !s.pinned })} />
                   ))}
                   {hits.length === 0 && (
                     <div className="hint">
@@ -273,16 +347,49 @@ export function App() {
                   )}
                 </div>
               ) : (
-                grouped.map((g) => (
-                  <div key={g.source} style={{ display: 'grid', gap: 4 }} data-group={g.source.startsWith('지금 화면') ? 'here' : g.source}>
-                    <div className="group">{g.source}</div>
-                    {g.list.map((s) => (
-                      <SkillButton key={s.id} skill={s} showSource={g.source.startsWith('지금 화면')} busy={busy} onOpen={openForm} />
+                <>
+                  {grouped
+                    .filter((g) => g.key === 'here' || g.key === 'pinned')
+                    .map((g) => (
+                      <div key={g.key} style={{ display: 'grid', gap: 4 }} data-group={g.key === 'here' ? 'here' : g.key}>
+                        <div className="group">{g.title}</div>
+                        {g.list.map((s) => (
+                          <SkillButton key={s.id} skill={s} showSource={g.key === 'here'} busy={busy} onOpen={openForm} onPin={(x) => void skillPref({ id: x.id, pinned: !x.pinned })} />
+                        ))}
+                      </div>
                     ))}
-                  </div>
-                ))
+                  {recentRows.length > 0 && (
+                    <div style={{ display: 'grid', gap: 2 }} data-group="recent">
+                      <div className="group">최근</div>
+                      {recentRows.map((r) => (
+                        <button key={`${r.at}-${r.skillId}`} className="recent" disabled={busy} onClick={() => reopen(r)} title={`${r.summary || RECENT_STATUS[r.status]}\n${new Date(r.at).toLocaleString()}`}>
+                          <span className={`dot ${r.status}`} aria-label={RECENT_STATUS[r.status]} />
+                          <span className="recent-text">{r.request ?? nameOf(r.skillId)}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {grouped
+                    .filter((g) => g.fold)
+                    .map((g) => {
+                      const closed = folded.includes(g.key);
+                      return (
+                        <div key={g.key} style={{ display: 'grid', gap: 4 }} data-group={g.key}>
+                          <button className="group fold" aria-expanded={!closed} onClick={() => toggleFold(g.key)}>
+                            <span aria-hidden>{closed ? '▸' : '▾'}</span> {g.title} <span className="count">{g.list.length}</span>
+                          </button>
+                          {!closed && g.list.map((s) => <SkillButton key={s.id} skill={s} busy={busy} onOpen={openForm} onPin={(x) => void skillPref({ id: x.id, pinned: !x.pinned })} />)}
+                        </div>
+                      );
+                    })}
+                  {visible.length === 0 && <div className="empty">쓸 수 있는 스킬이 없습니다. 말로 요청하면 지금 화면에서 바로 하고, 잘 된 요청은 스킬로 저장할 수 있습니다.</div>}
+                </>
               )}
             </div>
+            <button className="manage" id="manage-skills" onClick={() => setShowManage(true)} title="스킬 켜고 끄기, 고정, 예시 스킬 보이기">
+              스킬 관리
+              {offCount + (samplesShown ? 0 : sampleCount) > 0 && <span className="count">숨김 {offCount + (samplesShown ? 0 : sampleCount)}</span>}
+            </button>
             </>
           ) : side === 'systems' ? (
             <div className="side-list" id="system-list">
@@ -392,6 +499,7 @@ ${x.url}`}>
             <div className="composer-inner">
               <div className="composer-box">
                 <textarea
+                  ref={composer}
                   id="composer"
                   rows={2}
                   value={text}
@@ -435,6 +543,7 @@ ${x.url}`}>
       </div>
 
       {showConnect && <ConnectDialog onClose={() => setShowConnect(false)} onDone={setServers} />}
+      {showManage && <ManageSkills skills={skills} samplesShown={samplesShown} onPref={(p) => void skillPref(p)} onClose={() => setShowManage(false)} />}
       {showSettings && <Settings onClose={() => setShowSettings(false)} onChanged={(c) => setInfo((i) => i && { ...i, config: c })} config={info?.config ?? ''} />}
     </div>
   );
@@ -447,16 +556,19 @@ function SkillButton({
   showSource,
   busy,
   onOpen,
+  onPin,
 }: {
   skill: SkillSummary;
   here?: boolean;
-  /** 출처별 묶음 밖(지금 화면, 찾은 스킬)에서는 출처를 따로 보여 준다 */
+  /** 출처별 묶음 밖(지금 화면, 고정, 찾은 스킬)에서는 출처를 따로 보여 준다 */
   showSource?: boolean;
   busy: boolean;
   onOpen: (s: SkillSummary) => void;
+  onPin?: (s: SkillSummary) => void;
 }) {
   const st = s.stats;
   return (
+    <div className="skill-row">
     <button className="skill" data-skill={s.id} disabled={busy} onClick={() => onOpen(s)} title={`${s.description}\n담당 ${s.owner}${s.tags.length ? ` · ${s.tags.join(', ')}` : ''}`}>
       <span>
         <b>{s.name}</b>
@@ -482,6 +594,83 @@ function SkillButton({
         {s.source === '팀' && <> · {s.owner}</>}
       </small>
     </button>
+    {onPin && (
+      <button className={`pin ${s.pinned ? 'on' : ''}`} data-pin={s.id} aria-pressed={s.pinned} aria-label={s.pinned ? '고정 풀기' : '위에 고정'} title={s.pinned ? '고정 풀기' : '위에 고정'} onClick={() => onPin(s)}>
+        {s.pinned ? '★' : '☆'}
+      </button>
+    )}
+    </div>
+  );
+}
+
+/**
+ * 스킬 관리: 읽은 스킬 전부를 켜고 끄고 고정한다 (클로드의 스킬 켜기·끄기와 같다).
+ * 끈 스킬은 왼쪽 목록에서 빠지고, 말로 한 요청을 스킬로 고를 때 후보에서도 빠진다.
+ * 목업 사이트용 예시 스킬(localhost만 다룸)은 따로 묶어 한 번에 보이거나 숨긴다.
+ */
+function ManageSkills({ skills, samplesShown, onPref, onClose }: { skills: SkillSummary[]; samplesShown: boolean; onPref: (p: SkillPrefPatch) => void; onClose: () => void }) {
+  const [q, setQ] = useState('');
+  const shown = q.trim() ? searchSkills(skills, (s) => s, q).map((h) => h.item) : skills;
+  const groups = [
+    ...(['개인', '팀', '기본'] as const).map((source) => ({ key: source, title: SOURCE_GROUP[source], list: shown.filter((s) => s.source === source && !s.sample) })),
+    { key: 'sample', title: '예시 (목업 사이트용)', list: shown.filter((s) => s.sample) },
+  ].filter((g) => g.list.length);
+  return (
+    <div className="overlay center" onClick={onClose}>
+      <div className="dialog manage" id="manage-dialog" role="dialog" aria-label="스킬 관리" onClick={(e) => e.stopPropagation()}>
+        <div className="dialog-head">
+          <h2>스킬 관리</h2>
+          <button className="ghost" onClick={onClose} aria-label="닫기">
+            닫기
+          </button>
+        </div>
+        <div className="dialog-body">
+          <p className="hint">끈 스킬은 목록에 보이지 않고, 말로 한 요청을 해석할 때 후보에서 빠집니다. ☆을 누르면 목록 위에 고정합니다.</p>
+          <div className="manage-row samples">
+            <label className="switch" title={samplesShown ? '숨기기' : '보이기'}>
+              <input id="show-samples" type="checkbox" checked={samplesShown} onChange={(e) => onPref({ samples: e.target.checked })} aria-label="예시 스킬 보이기" />
+              <span aria-hidden />
+            </label>
+            <div className="manage-text">
+              <b>예시 스킬 보이기</b>
+              <small>목업 사이트(localhost)만 다루는 스킬. 시연·시험용이라 업무 PC에서는 숨겨 둡니다</small>
+            </div>
+          </div>
+          <input type="search" value={q} placeholder="스킬 찾기" aria-label="관리할 스킬 찾기" onChange={(e) => setQ(e.target.value)} />
+          {groups.map((g) => (
+            <div key={g.key} className="manage-group" data-manage-group={g.key}>
+              <div className="group">
+                {g.title} <span className="count">{g.list.length}</span>
+                {g.key === 'sample' && !samplesShown && <span className="count"> · 숨김</span>}
+              </div>
+              {g.list.map((s) => (
+                <div key={s.id} className={`manage-row ${s.off || (s.sample && !samplesShown) ? 'dim' : ''}`} data-manage={s.id}>
+                  <label className="switch" title={s.off ? '켜기' : '끄기'}>
+                    <input type="checkbox" checked={!s.off} onChange={(e) => onPref({ id: s.id, off: !e.target.checked })} aria-label={`${s.name} 켜기`} />
+                    <span aria-hidden />
+                  </label>
+                  <div className="manage-text">
+                    <span className="manage-name">
+                      <b>{s.name}</b>
+                      <span className={`risk ${s.risk}`}>{s.risk}</span>
+                      {s.sample && <span className="chip">예시</span>}
+                    </span>
+                    <small>
+                      {s.id} · {s.domains.map((d) => (d === '*' ? '모든 사이트' : d)).join(', ')}
+                      {s.stats ? ` · ${s.stats.runs}번 실행` : ''}
+                    </small>
+                  </div>
+                  <button className={`pin ${s.pinned ? 'on' : ''}`} aria-pressed={s.pinned} aria-label={s.pinned ? '고정 풀기' : '위에 고정'} onClick={() => onPref({ id: s.id, pinned: !s.pinned })}>
+                    {s.pinned ? '★' : '☆'}
+                  </button>
+                </div>
+              ))}
+            </div>
+          ))}
+          {groups.length === 0 && <div className="empty">맞는 스킬이 없습니다.</div>}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -496,7 +685,7 @@ function FeedItem(props: {
   if (it.type === 'user') return <div className="msg-user">{it.text}</div>;
   if (it.type === 'text') return <div className={`msg-text ${/^오류/.test(it.text) ? 'error' : ''}`}>{it.text}</div>;
   if (it.type === 'ask') return <Ask item={it} onAnswer={props.onAnswer} />;
-  if (it.type === 'form') return <SkillForm skill={it.skill} onRun={props.onRun} onEdit={props.onEdit} busy={props.busy} />;
+  if (it.type === 'form') return <SkillForm skill={it.skill} initial={it.initial} onRun={props.onRun} onEdit={props.onEdit} busy={props.busy} />;
   return <RunCard run={it} />;
 }
 
@@ -506,7 +695,8 @@ function Ask({ item, onAnswer }: { item: Extract<Item, { type: 'ask' }>; onAnswe
     const shown = item.answer === null ? '(그만둠)' : item.mode === 'confirm' ? (item.answer === 'y' ? '예' : '아니오') : item.answer || item.fallback || '(빈 값)';
     return (
       <div className="answered">
-        {item.question} → <b>{shown}</b>
+        {/* 스크립트 승인처럼 긴 질문은 첫 줄만 남긴다 */}
+        {item.question.trim().split('\n')[0]} → <b>{shown}</b>
       </div>
     );
   }
@@ -553,16 +743,19 @@ function Ask({ item, onAnswer }: { item: Extract<Item, { type: 'ask' }>; onAnswe
 
 function SkillForm({
   skill,
+  initial,
   onRun,
   onEdit,
   busy,
 }: {
   skill: SkillSummary;
+  /** 최근 실행을 다시 열면 그때 넣은 값 */
+  initial?: Record<string, string>;
   onRun: (s: SkillSummary, v: Record<string, string>) => void;
   onEdit: (id: string) => void;
   busy: boolean;
 }) {
-  const [values, setValues] = useState<Record<string, string>>(() => Object.fromEntries(skill.inputs.map((i) => [i.name, i.default])));
+  const [values, setValues] = useState<Record<string, string>>(() => Object.fromEntries(skill.inputs.map((i) => [i.name, initial?.[i.name] ?? i.default])));
   const [sent, setSent] = useState(false);
   return (
     <form

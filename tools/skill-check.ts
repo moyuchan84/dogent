@@ -31,7 +31,11 @@ for (const entry of readdirSync(dir, { withFileTypes: true })) {
   if (!existsSync(file)) continue;
   const rel = `${entry.name}/SKILL.md`;
   const policyFile = join(dir, entry.name, 'policy.yaml');
-  const report = lintSkill(readFileSync(file, 'utf8'), existsSync(policyFile) ? readFileSync(policyFile, 'utf8') : undefined);
+  const scriptDir = join(dir, entry.name, 'scripts');
+  const scripts = existsSync(scriptDir)
+    ? Object.fromEntries(readdirSync(scriptDir).filter((f) => /\.(mjs|js|py)$/.test(f)).map((f) => [`scripts/${f}`, readFileSync(join(scriptDir, f), 'utf8')]))
+    : {};
+  const report = lintSkill(readFileSync(file, 'utf8'), existsSync(policyFile) ? readFileSync(policyFile, 'utf8') : undefined, scripts);
   const id = report.skill?.id ?? '(읽지 못함)';
   const LEVEL = { error: '오류', warn: '경고', info: '안내' } as const;
   const lines = report.findings.map((f) => `${LEVEL[f.level]} ${f.rule}${f.step ? ` · ${f.step}단계` : ''}: ${f.message}`);

@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { lintSkill, lintSystem } from '../../src/core';
 import { runDoctor } from './doctor';
@@ -11,6 +12,7 @@ import { stdioMcpUsed } from './mcp-stdio';
 import { describeInstall, normalizeServers, parseMcpAdd } from './mcp-install';
 import { addSchedule, describeSchedule, listSchedules, parseSpec, removeSchedule } from './schedule';
 import { Session, type SessionOptions } from './session';
+import { readScripts } from './skills';
 import { Terminal } from './terminal';
 
 const HELP = `Dogent 클라이언트 ${__DOGENT_BUILD__.version} (${__DOGENT_BUILD__.mode})
@@ -264,7 +266,8 @@ async function main(): Promise<number> {
     return r.errors.length ? 1 : 0;
   }
   if (cmd === 'check') {
-    const report = lintSkill(readFileSync(rest[0], 'utf8'));
+    const policyFile = join(dirname(rest[0]), 'policy.yaml');
+    const report = lintSkill(readFileSync(rest[0], 'utf8'), existsSync(policyFile) ? readFileSync(policyFile, 'utf8') : undefined, readScripts(dirname(rest[0])));
     console.log(`품질 검사: ${report.grade} (${report.score}점)`);
     for (const f of report.findings) console.log(`  [${f.level}] ${f.rule}${f.step ? ` ${f.step}단계` : ''}: ${f.message}`);
     return report.grade === 'F' ? 1 : 0;

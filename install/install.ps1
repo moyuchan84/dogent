@@ -11,12 +11,15 @@
   -Browser     chrome | edge | both (기본: 설치된 것)
   -NoShortcut  바로 가기를 만들지 않는다
   -Quiet       묻지 않고, 브라우저와 앱을 띄우지 않는다 (복사와 등록만)
+  -Update      업데이트 (update.cmd가 쓴다). 켜진 앱은 묻지 않고 닫았다가 다시 띄우고, 이미 로드한 확장은
+               건드리지 않는다 (확장이 새 판을 알아채고 스스로 다시 읽는다). 끝나고 Enter를 기다리지 않는다
 #>
 param(
   [string]$Target = (Join-Path $env:LOCALAPPDATA 'Dogent'),
   [ValidateSet('', 'chrome', 'edge', 'both')][string]$Browser = '',
   [switch]$NoShortcut,
-  [switch]$Quiet
+  [switch]$Quiet,
+  [switch]$Update
 )
 
 $ErrorActionPreference = 'Stop'
@@ -38,9 +41,10 @@ Write-Host "  설치 폴더: $Target" -ForegroundColor DarkGray
 
 # ── 켜져 있는 앱 닫기 (실행 파일을 덮어쓰려면) ─────────────
 $running = @(Get-Process -Name Dogent, dogent-office -ErrorAction SilentlyContinue)
+$wasRunning = @($running | Where-Object { $_.ProcessName -eq 'Dogent' }).Count -gt 0
 if ($running.Count -gt 0) {
   Step 'Dogent가 켜져 있습니다'
-  if (-not $Quiet) {
+  if (-not $Quiet -and -not $Update) {
     $yes = Read-Host '  닫고 계속할까요? 진행 중인 실행은 멈춥니다 (Y/N)'
     if ($yes -notmatch '^[yY]') { Fail '설치를 멈췄습니다. Dogent를 닫은 뒤 다시 실행하세요.' }
   }
@@ -54,7 +58,7 @@ Step '프로그램 복사'
 New-Item -ItemType Directory -Force $Target | Out-Null
 $extTarget = Join-Path $Target 'extension'
 # 확장 폴더는 이전 판의 남은 파일이 섞이지 않게 통째로 맞춘다 (같은 경로라 확장 ID는 그대로)
-& robocopy (Join-Path $Src 'extension') $extTarget /MIR /NFL /NDL /NJH /NJS /NP | Out-Null
+& (Join-Path $env:SystemRoot 'System32\robocopy.exe') (Join-Path $Src 'extension') $extTarget /MIR /NFL /NDL /NJH /NJS /NP | Out-Null
 if ($LASTEXITCODE -ge 8) { Fail "확장 폴더를 복사하지 못했습니다 (robocopy $LASTEXITCODE)" }
 Ok '브라우저 확장 → extension\'
 $copied = @{}
@@ -128,10 +132,42 @@ function Loaded($b) {
   return $false
 }
 
+# Dogent 확장 ID는 매니페스트의 key로 정해져 있다 (bridge/extension-key.mjs). 이 ID를 다른 폴더에서 로드했으면 그 경로
+$ExtId = 'koofmoibafgagpofabagilbhknolfgok'
+function OtherFolder($b) {
+  $root = Join-Path $env:LOCALAPPDATA $b.data
+  if (-not (Test-Path $root)) { return $null }
+  foreach ($p in Get-ChildItem $root -Directory -ErrorAction SilentlyContinue) {
+    foreach ($file in @('Secure Preferences', 'Preferences')) {
+      $f = Join-Path $p.FullName $file
+      if (-not (Test-Path $f)) { continue }
+      $text = [IO.File]::ReadAllText($f)
+      if ($text.IndexOf($ExtId) -lt 0) { continue }
+      try { $path = ($text | ConvertFrom-Json).extensions.settings.$ExtId.path } catch { $path = $null }
+      # PowerShell 5.1은 대소문자만 다른 키가 있으면 JSON을 읽지 못한다. 그때는 ID 뒤의 첫 "path"를 찾는다
+      if (-not $path) {
+        $m = [regex]::Match($text, '"' + $ExtId + '"\s*:\s*\{.{0,20000}?"path"\s*:\s*"((?:[^"\\]|\\.)*)"', 'Singleline')
+        if ($m.Success) { $path = [regex]::Unescape($m.Groups[1].Value) }
+      }
+      if ($path -and ($path.TrimEnd('\') -ne $extTarget.TrimEnd('\'))) { return $path }
+    }
+  }
+  return $null
+}
+
 Step '브라우저에 확장 로드'
 if ($targets.Count -eq 0) { Warn '크롬이나 엣지를 찾지 못했습니다. 설치된 브라우저에서 아래 순서로 로드하세요.' }
 $pending = @($targets | Where-Object { -not (Loaded $_) })
-foreach ($b in $targets) { if ($pending -notcontains $b) { Ok "$($b.name): 이미 로드됨 (업데이트였다면 확장 관리 화면에서 Dogent의 새로고침 ↻ 을 누르세요)" } }
+foreach ($b in $targets) {
+  if ($pending -notcontains $b) { Ok "$($b.name): 이미 로드됨. 확장이 새 판을 알아채고 1분 안에 스스로 다시 읽습니다 (Dogent 패널을 열면 바로)" }
+  else {
+    $other = OtherFolder $b
+    if ($other) {
+      Warn "$($b.name): Dogent를 다른 폴더($other)에서 로드해 두었습니다."
+      Warn '  확장 관리 화면에서 그 Dogent를 [삭제]하고 아래 폴더를 로드하세요. 이번 한 번만 하면 다음 업데이트부터는 지우지 않아도 됩니다'
+    }
+  }
+}
 if ($pending.Count -gt 0 -or $targets.Count -eq 0) {
   try { Set-Clipboard -Value $extTarget; $clip = ' (클립보드에 복사함)' } catch { $clip = '' }
   Write-Host ''
@@ -156,6 +192,16 @@ if ($pending.Count -gt 0 -or $targets.Count -eq 0) {
 
 # ── 앱 실행 → 연결 등록 ─────────────────────────────
 Step '마무리'
+if ($copied['Dogent.exe'] -and $Update) {
+  # 업데이트: 켜져 있던 앱을 새 판으로 다시 띄운다. 연결 설정은 이미 되어 있다
+  if ($wasRunning -or -not $Quiet) {
+    Start-Process (Join-Path $Target 'Dogent.exe')
+    Ok 'Dogent 앱을 새 판으로 띄웠습니다'
+  }
+  Write-Host ''
+  Write-Host "업데이트를 마쳤습니다. $(if (Test-Path $info) { (Get-Content -Encoding UTF8 $info -TotalCount 4 | Select-Object -Skip 2) -join ' · ' })" -ForegroundColor Green
+  exit 0
+}
 if ($copied['Dogent.exe'] -and -not $Quiet) {
   Start-Process (Join-Path $Target 'Dogent.exe')
   Ok 'Dogent 앱을 띄웠습니다. 앱이 처음 뜰 때 브라우저 연결을 스스로 등록합니다'

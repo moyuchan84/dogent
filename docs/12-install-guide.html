@@ -164,11 +164,15 @@ footer { margin-top: 48px; color: var(--muted); font-size: 13px; }
 <div class="note">문제가 생기면 화면 점검 보고서(.md)나 기록 탭의 실행 기록을 내보내 담당자에게 보내 주세요. 보고서는 기본으로 화면 글자와 입력값을 가립니다.</div>
 
 <h2 id="update">업데이트</h2>
+<p><b>코드를 받아 빌드하는 PC</b>(git으로 받은 저장소가 있는 PC)는 <code>install\update.cmd</code>를 두 번 누르면 끝납니다.</p>
 <ol>
-  <li>새 묶음을 풀고 <code>install.cmd</code>를 다시 누릅니다. 같은 폴더(<code>%LOCALAPPDATA%\Dogent</code>)에 덮어씁니다.</li>
-  <li>확장 관리 화면에서 Dogent 카드의 <b>새로고침 ↻</b>을 누릅니다. 폴더 경로가 같아서 확장 ID와 설정, 연결 등록이 그대로 남습니다.</li>
-  <li>앱을 다시 켭니다.</li>
+  <li><code>git pull</code>로 새 코드를 받습니다 (고친 파일이 있으면 받지 않고 지금 코드로 빌드). 의존성이 바뀌었으면 <code>pnpm install</code>도 합니다.</li>
+  <li>확장, 데스크탑 앱, 오피스 도구, 터미널 클라이언트를 모두 빌드해 <code>%LOCALAPPDATA%\Dogent</code>에 덮어씁니다. 켜져 있던 앱은 닫았다가 새 판으로 다시 띄웁니다.</li>
+  <li><b>브라우저 확장은 지우거나 다시 로드하지 않습니다.</b> 확장이 폴더의 새 판을 알아채고 1분 안에 스스로 다시 읽습니다. Dogent 패널을 열면 바로 바뀝니다(패널이 한 번 닫힙니다). 실행 중이면 끝난 뒤에 바뀝니다.</li>
 </ol>
+<p>모드는 지난번 것을 씁니다(처음은 company). 바꾸려면 <code>update.cmd -Mode home</code>, 코드를 직접 옮겨 왔으면 <code>update.cmd -NoPull</code>.</p>
+<div class="note"><b>처음 한 번만</b>: 확장을 <code>%LOCALAPPDATA%\Dogent\extension</code>에서 로드해 두어야 합니다. 저장소의 <code>.output\…</code>이나 <code>release\Dogent-…</code> 폴더에서 로드해 두었다면 확장 관리 화면에서 그 Dogent를 한 번 삭제하고 <code>%LOCALAPPDATA%\Dogent\extension</code>을 로드합니다(update가 알려 줍니다). 그 뒤로는 지울 일이 없습니다.</div>
+<p><b>묶음을 받아 쓰는 PC</b>는 새 묶음을 풀고 <code>install.cmd</code>를 다시 누릅니다. 같은 폴더에 덮어쓰고, 확장은 위와 같이 스스로 새 판으로 바뀝니다.</p>
 <p>내 스킬, 실행 기록, 연결 토큰(<code>%USERPROFILE%\.dogent</code>)은 업데이트해도 바뀌지 않습니다.</p>
 
 <h2 id="remove">제거</h2>
@@ -236,10 +240,14 @@ claude mcp add dogent-office -- D:\code\samsung\dogent\office\dist\dogent-office
   <tr><td><code>-Install</code></td><td>묶은 뒤 이 PC에 설치</td></tr>
   <tr><td><code>-Test</code></td><td>빌드 전에 typecheck와 단위 시험</td></tr>
   <tr><td><code>-Reinstall</code></td><td><code>pnpm install</code>을 다시</td></tr>
-  <tr><td rowspan="4"><code>install.cmd</code></td><td><code>-Target &lt;폴더&gt;</code></td><td>설치 폴더 (기본 <code>%LOCALAPPDATA%\Dogent</code>). 업데이트 때도 같은 폴더를</td></tr>
+  <tr><td rowspan="3"><code>install\update.cmd</code></td><td><code>-Mode dev|home|company</code></td><td>빌드 설정. 안 주면 지난번 것 (처음은 company)</td></tr>
+  <tr><td><code>-NoPull</code></td><td><code>git pull</code>을 하지 않음</td></tr>
+  <tr><td><code>-Test</code></td><td>빌드 전에 typecheck와 단위 시험</td></tr>
+  <tr><td rowspan="5"><code>install.cmd</code></td><td><code>-Target &lt;폴더&gt;</code></td><td>설치 폴더 (기본 <code>%LOCALAPPDATA%\Dogent</code>). 업데이트 때도 같은 폴더를</td></tr>
   <tr><td><code>-Browser chrome|edge|both</code></td><td>확장을 로드할 브라우저 (기본: 설치된 것)</td></tr>
   <tr><td><code>-NoShortcut</code></td><td>바로 가기를 만들지 않음</td></tr>
   <tr><td><code>-Quiet</code></td><td>묻지 않고 브라우저·앱을 띄우지 않음 (복사와 등록만)</td></tr>
+  <tr><td><code>-Update</code></td><td>업데이트로 설치: 켜진 앱을 묻지 않고 닫았다 다시 띄우고, 끝에 Enter를 기다리지 않음 (update.cmd가 씀)</td></tr>
   <tr><td rowspan="2"><code>uninstall.cmd</code></td><td><code>-Purge</code></td><td><code>%USERPROFILE%\.dogent</code>(내 스킬·설정·기록)도 지움</td></tr>
   <tr><td><code>-Quiet</code></td><td>묻지 않음</td></tr>
 </table></div>
@@ -250,6 +258,7 @@ claude mcp add dogent-office -- D:\code\samsung\dogent\office\dist\dogent-office
   <tr><td>개발자 모드가 회색이거나 로드가 막힘</td><td>회사 크롬 정책(<code>DeveloperToolsAvailability</code>, <code>ExtensionInstallBlocklist</code>)이 압축해제 확장을 막고 있습니다. <code>chrome://policy</code>에서 확인하고, 엣지로 시도하거나 IT에 허용(또는 사내 배포 등록)을 요청합니다.</td></tr>
   <tr><td>터미널 <code>dogent</code>가 "확장이 연결되기를 기다립니다…"에서 멈춤</td><td>터미널에서 <code>dogent doctor</code>를 실행합니다. 토큰, 포트 39217 점유, 호스트 등록, 크롬·엣지 정책(NativeMessagingBlocklist, NativeMessagingUserLevelHosts), 호스트 실행, 그리고 15초 실시간 시험까지 한 번에 보여 주고 원인을 알려 줍니다. Native Messaging 방식인데 호스트가 등록되어 있지 않으면(터미널 dogent는 등록하지 않습니다) <code>dogent doctor --fix</code> 후 확장의 "연결 설정 저장"을 다시 누릅니다. 회사 정책이 막으면 확장의 방식을 WebSocket으로 바꾸고 <code>dogent token</code>의 값을 넣습니다.</td></tr>
   <tr><td>앱 위쪽에 브라우저가 안 보임</td><td>① 패널 설정의 연결 방식이 Native Messaging인지, 저장했는지 ② 확장을 앱보다 나중에 로드했다면 앱을 다시 켭니다 (켜질 때 확장을 찾아 등록) ③ 브라우저를 완전히 닫았다 다시 엽니다.</td></tr>
+  <tr><td>업데이트했는데 확장이 옛 판 그대로</td><td>확장을 <code>%LOCALAPPDATA%\Dogent\extension</code>이 아닌 다른 폴더에서 로드했습니다. 그 Dogent를 지우고 이 폴더를 한 번 로드합니다. 맞는 폴더라면 Dogent 패널을 열면 바로 바뀝니다. 그래도 그대로면 확장 관리 화면에서 새로고침 ↻을 한 번 누릅니다.</td></tr>
   <tr><td>업데이트 뒤 연결이 끊김</td><td>확장 폴더를 다른 곳에 로드해 확장 ID가 바뀌었습니다. 확장 관리 화면의 Dogent가 <code>%LOCALAPPDATA%\Dogent\extension</code>을 가리키는지 보고, 아니면 지우고 그 폴더로 다시 로드한 뒤 앱을 다시 켭니다.</td></tr>
   <tr><td>앱과 터미널을 함께 켜면 연결이 안 됨</td><td>브리지 포트(39217)가 겹칩니다. 터미널 클라이언트, 데스크탑 앱, Claude Code의 브리지 중 하나만 켭니다.</td></tr>
   <tr><td>install.cmd 창이 바로 닫힘</td><td>zip 안에서 눌렀습니다. 압축을 풀고 다시 누릅니다. 그래도 닫히면 명령 창에서 <code>install.cmd</code>를 쳐서 메시지를 봅니다.</td></tr>

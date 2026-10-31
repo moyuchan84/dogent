@@ -32,6 +32,12 @@ export interface SkillSummary {
   domains: string[];
   /** 이 PC의 실행 기록 (없으면 아직 실행하지 않음) */
   stats?: { runs: number; rate: number | null; broken: boolean };
+  /** 끈 스킬 (목록에 보이지 않고 요청 해석의 후보에서 빠짐) */
+  off: boolean;
+  /** 목록 위에 고정 */
+  pinned: boolean;
+  /** 목업 사이트용 예시 스킬 (localhost만 다룸) */
+  sample: boolean;
   inputs: { name: string; label: string; type: string; required: boolean; description: string; values: string[]; default: string }[];
 }
 
@@ -42,7 +48,21 @@ export interface InitInfo {
   skills: SkillSummary[];
   browsers: BrowserLink[];
   options: { allowWrite: boolean; dryRun: boolean };
+  /** 예시 스킬을 보이는지 */
+  samplesShown: boolean;
 }
+
+/** 왼쪽 목록의 "최근" 한 줄 */
+export interface RecentRow {
+  at: string;
+  skillId: string;
+  request?: string;
+  inputs: Record<string, string | number>;
+  status: RunResult['status'];
+  summary: string;
+}
+
+export type SkillPrefPatch = { id: string; off?: boolean; pinned?: boolean } | { samples: boolean };
 
 /** 창에서 쓰는 API (preload가 window.dogent로 내놓는다) */
 /** 왼쪽 시스템 목록의 한 줄 */
@@ -69,6 +89,10 @@ export interface DogentApi {
   answer(id: number, value: string | null): Promise<void>;
   stop(): Promise<void>;
   skills(): Promise<SkillSummary[]>;
+  /** 스킬 끄기·고정·예시 보이기를 바꾸고 바뀐 목록을 받는다 */
+  skillPref(patch: SkillPrefPatch): Promise<{ skills: SkillSummary[]; samplesShown: boolean }>;
+  /** 최근 실행 */
+  recent(): Promise<RecentRow[]>;
   systems(): Promise<SystemSummary[]>;
   /** 지금 브라우저 탭 (확장이 붙어 있지 않으면 null) */
   page(): Promise<{ url: string; title: string } | null>;

@@ -13,7 +13,7 @@ import { addServers, parsePasted, patchServer, probeServer, removeServer, server
 import { loadMcpConfig } from '../../client/src/mcp-hub';
 import { Session, type SessionOptions, type Ui } from '../../client/src/session';
 import { findInstalledExtensions, registerNativeHost, registeredIds } from '../../bridge/register.mjs';
-import type { ExtensionStatus, SkillSummary, UiMessage } from './ipc';
+import type { ExtensionStatus, SkillPrefPatch, SkillSummary, UiMessage } from './ipc';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -134,9 +134,13 @@ async function work(job: () => Promise<unknown>): Promise<void> {
   }
 }
 
+/** 읽은 스킬 전부와 각각의 상태. 창이 끈 것·예시를 걸러 보이고, 스킬 관리에서는 모두 보인다 */
 function skillSummaries(): SkillSummary[] {
   const stats = session.runStats();
-  return session.skillList().map((e) => ({
+  return session.allSkillList().map(({ entry: e, off, pinned, sample }) => ({
+    off,
+    pinned,
+    sample,
     id: e.skill.id,
     name: e.skill.name,
     description: e.skill.description,
@@ -166,6 +170,7 @@ ipcMain.handle('dogent:init', () => ({
   version: __DOGENT_BUILD__.version,
   config: describeConfig(loadConfig()),
   skills: skillSummaries(),
+  samplesShown: session.showSamples(),
   browsers: session.browsersNow(),
   options,
 }));
@@ -179,6 +184,11 @@ ipcMain.handle('dogent:stop', () => {
   ui.cancelAll();
 });
 ipcMain.handle('dogent:skills', () => skillSummaries());
+ipcMain.handle('dogent:skill-pref', (_e, patch: SkillPrefPatch) => {
+  session.setSkillPref(patch);
+  return { skills: skillSummaries(), samplesShown: session.showSamples() };
+});
+ipcMain.handle('dogent:recent', () => session.recentRuns(8));
 ipcMain.handle('dogent:systems', () => session.systemList().map((e) => ({ id: e.system.id, name: e.system.name, description: e.system.description, aliases: e.system.aliases, url: e.system.url, source: e.source, skills: session.skillList().filter((k) => skillCoversUrl(docOfSkill(k.skill), e.system.url)).length })));
 ipcMain.handle('dogent:page', () => session.currentPage());
 ipcMain.handle('dogent:browsers', () => session.browsersNow());

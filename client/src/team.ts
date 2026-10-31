@@ -55,6 +55,10 @@ export async function syncTeam(home: string, url: string, opts: { token?: string
     mkdirSync(join(dir, s.id), { recursive: true });
     writeFileSync(join(dir, s.id, 'SKILL.md'), s.source);
     if (s.policy) writeFileSync(join(dir, s.id, 'policy.yaml'), s.policy);
+    for (const [path, text] of Object.entries(s.files ?? {})) {
+      mkdirSync(join(dir, s.id, 'scripts'), { recursive: true });
+      writeFileSync(join(dir, s.id, path), text);
+    }
   }
   for (const x of result.systems) {
     mkdirSync(join(dir, 'systems', x.id), { recursive: true });

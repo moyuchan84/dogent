@@ -67,6 +67,13 @@ function skillsIn(dir, skills) {
       const p = join(dir, d.name, f);
       if (existsSync(p)) skills[`${d.name}/${f}`] = readFileSync(p, 'utf8');
     }
+    // 스킬에 딸린 스크립트 (run_script): <id>/scripts/<이름>
+    const scripts = join(dir, d.name, 'scripts');
+    if (existsSync(scripts)) {
+      for (const x of readdirSync(scripts, { withFileTypes: true })) {
+        if (x.isFile() && /\.(mjs|js|py)$/.test(x.name)) skills[`${d.name}/scripts/${x.name}`] = readFileSync(join(scripts, x.name), 'utf8');
+      }
+    }
   }
   return skills;
 }
@@ -90,7 +97,8 @@ export function buildDefines(mode) {
     llm,
     skills: bundledSkills(samplesWanted(mode)),
     define: {
-      __DOGENT_BUILD__: JSON.stringify({ mode, version, llm, ...(skillsUrl ? { skillsUrl } : {}) }),
+      // samples: 예시 스킬을 넣었는지. 앱은 개발용 빌드(모드 없음)에서만 예시를 처음부터 보이고, 집·회사 빌드는 숨겨 둔다
+      __DOGENT_BUILD__: JSON.stringify({ mode, version, llm, ...(skillsUrl ? { skillsUrl } : {}), ...(samplesWanted(mode) ? { samples: true } : {}) }),
       __DOGENT_SKILLS__: JSON.stringify(bundledSkills(samplesWanted(mode))),
       __DOGENT_HOST__: JSON.stringify(Object.fromEntries(['native-host.mjs', 'protocol.mjs'].map((f) => [f, readFileSync(join(ROOT, 'bridge', f), 'utf8')]))),
     },

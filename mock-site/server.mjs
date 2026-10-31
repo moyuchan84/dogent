@@ -20,7 +20,8 @@ export async function wipXlsx(line, step, product) {
 }
 
 const PUBLIC = join(fileURLToPath(new URL('.', import.meta.url)), 'public');
-const SKILLS = join(fileURLToPath(new URL('.', import.meta.url)), '../skills');
+// 목업 사이트 전용 예시 스킬 (공유 저장소 흉내에 쓴다)
+const SKILLS = join(fileURLToPath(new URL('.', import.meta.url)), '../samples/skills');
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css' };
 
 export function createMockSite() {

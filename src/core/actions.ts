@@ -128,6 +128,16 @@ export const TOOL_ARGS = {
    * 화면의 글(source "page")이나 데이터셋을 지시대로 정리해 기록 값 name에 남긴다. 뒤 단계에서 {out.name}으로 쓴다.
    * 정리할 자료를 모델에 보낸다. 데이터셋은 앞부분 행만 보내므로, 많으면 transform으로 먼저 줄인다.
    */
+  /**
+   * 스킬에 선언한 스크립트를 실행한다 (script.ts). datasets의 표와 args를 JSON으로 넘기고,
+   * 스크립트가 돌려준 표는 데이터셋으로, 글은 기록 값 name({out.name})으로, 파일은 저장한다.
+   */
+  run_script: z.object({
+    script: z.string().min(1),
+    datasets: z.array(z.string().min(1)).default([]),
+    args: z.record(z.string(), z.unknown()).default({}),
+    name: z.string().regex(/^[a-z_][a-z0-9_]*$/).default('script'),
+  }),
   summarize: z.object({
     instruction: z.string().min(1),
     source: z.string().min(1).default('page'),
@@ -150,7 +160,7 @@ export type ToolName = keyof typeof TOOL_ARGS;
 
 /** 모델 없이 실행할 수 있는 단계의 첫머리. 예: "select로 ...", "click으로 ..." */
 const DIRECT_STEP =
-  /^(navigate|open_tab|click|close_tab|press_key|scroll|go_back|type|select|extract_table|download_table|fill_table|transform|write_excel|write_html|excel_docs|excel_read|excel_write|excel_save|call_tool|run_skill|read_text|summarize|finish)(?:으로|로)\s/;
+  /^(navigate|open_tab|click|close_tab|press_key|scroll|go_back|type|select|extract_table|download_table|fill_table|transform|write_excel|write_html|excel_docs|excel_read|excel_write|excel_save|call_tool|run_skill|run_script|read_text|summarize|finish)(?:으로|로)\s/;
 
 /**
  * 단계가 "도구로 ..."로 시작하고 `{...}` 인자가 적혀 있으면 그 도구 이름과 인자 원문을 돌려준다.

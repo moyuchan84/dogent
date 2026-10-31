@@ -167,6 +167,15 @@ export function App() {
   const abortRef = useRef<AbortController | null>(null);
   const logEnd = useRef<HTMLDivElement>(null);
 
+  // 패널을 열면 새 판이 설치됐는지 바로 본다 (있으면 확장이 다시 읽으며 패널이 닫힌다. src/ext/self-update.ts)
+  useEffect(() => {
+    browser.runtime.sendMessage({ type: 'dogent:check-update' }).catch(() => {});
+  }, []);
+  // 실행하는 동안에는 확장을 다시 읽지 않게 표시한다 (self-update.ts의 BUSY_KEY)
+  useEffect(() => {
+    browser.storage.session.set({ 'dogent.busy': running ? Date.now() : 0 }).catch(() => {});
+  }, [running]);
+
   // 자유 요청은 실행할 때 현재 탭의 주소로 다시 만든다. 여기서는 입력 폼을 그리는 용도다.
   const freeTemplate = useMemo(() => buildFreeSkill('http://localhost/', false), []);
   const isFree = skillId === FREE_SKILL_ID;

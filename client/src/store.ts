@@ -37,6 +37,42 @@ export function readRunStats(home: string): Map<string, SkillStats> {
   return new Map(skillStats(runs).map((s) => [s.skillId, s]));
 }
 
+/** 왼쪽 목록의 "최근" 한 줄: 같은 스킬·같은 요청은 가장 최근 것만 */
+export interface RecentRun {
+  at: string;
+  skillId: string;
+  /** 자유 요청이면 그 말 */
+  request?: string;
+  inputs: SkillInputs;
+  status: RunResult['status'];
+  /** 보고의 첫 줄 */
+  summary: string;
+}
+
+/** 최근 실행 n건 (새것부터). 기록 파일의 끝부분만 읽는다 */
+export function readRecentRuns(home: string, n = 8): RecentRun[] {
+  const file = join(home, 'runs.jsonl');
+  if (!existsSync(file)) return [];
+  const lines = readFileSync(file, 'utf8').split('\n').filter((l) => l.trim()).slice(-300).reverse();
+  const out: RecentRun[] = [];
+  const seen = new Set<string>();
+  for (const line of lines) {
+    if (out.length >= n) break;
+    try {
+      const r = JSON.parse(line) as RunRecord;
+      const request = typeof r.inputs?.request === 'string' ? r.inputs.request : undefined;
+      const key = `${r.skill.id}\u0001${request ?? JSON.stringify(r.inputs ?? {})}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const first = (r.result?.message ?? '').split('\n').map((x) => x.trim()).find(Boolean) ?? '';
+      out.push({ at: r.startedAt, skillId: r.skill.id, ...(request ? { request } : {}), inputs: r.inputs ?? {}, status: r.result?.status ?? 'error', summary: first.slice(0, 120) });
+    } catch {
+      /* 깨진 줄 */
+    }
+  }
+  return out;
+}
+
 /** 모델이 찾아 성공한 경로의 기억 (~/.dogent/paths.json) */
 export function filePathStore(home: string): PathStore {
   const file = join(home, 'paths.json');

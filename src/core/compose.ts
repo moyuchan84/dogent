@@ -4,6 +4,7 @@ import { firstHeading } from './author';
 import { stepCheck, type Clause } from './check';
 import { lintSkill, type LintReport } from './lint';
 import { SUBMIT_PATTERN } from './policy';
+import { SCRIPT_CONTRACT, SCRIPT_NAME } from './script';
 import { renderSnapshot } from './snapshot';
 import type { ElementItem, LlmPort, PageSnapshot } from './types';
 
@@ -29,7 +30,8 @@ JSON 객체 하나로만 답합니다.
   "risk": "R1 | R2 | R3",
   "tags": ["<찾을 때 쓸 말 3~5개: 화면·시스템 이름, 업무, 대상. 예: 재공, HOLD, 생산>"],
   "inputs": [{"name": "<영문 소문자>", "label": "<한글>", "description": "<요청의 어느 부분이 이 값인지, 예시 값>", "type": "string | number | text | enum", "values": ["<enum일 때 보기>"], "default": "<없으면 생략>", "required": true}],
-  "steps": [{"text": "<할 일 한 문장. 입력값은 {name}으로>", "check": "<이 단계를 마친 뒤에만 화면에 보이는 것. 없으면 생략>"}],
+  "steps": [{"text": "<할 일 한 문장. 입력값은 {name}으로>", "check": "<이 단계를 마친 뒤에만 화면에 보이는 것. 없으면 생략>", "script": "<이 단계에서 부를 스크립트 이름. 없으면 생략>"}],
+  "scripts": [{"name": "<영문 소문자, 예: merge-lots>", "lang": "node | python", "description": "<무엇을 받아 무엇을 돌려주는지>", "network": false, "code": "<스크립트 전체>"}],
   "submit": {"step": <저장·상신 버튼을 누르는 steps의 번호(1부터)>, "labels": ["<그 버튼 이름>"]},
   "exceptions": ["<오류 메시지가 나오거나 결과가 없을 때 할 일>"],
   "result": "<마지막에 보고할 내용>"
@@ -44,6 +46,11 @@ JSON 객체 하나로만 답합니다.
 - 마지막 단계는 결과를 정리해 보고하는 문장입니다. 예: "공정별 Lot 수와 수량을 정리해 보고한다".
 - check에 쓸 수 있는 것: text("글자"), no_text("글자"), url("주소 일부"), value("요소 이름") == "값", dialog("글자"). 여러 개는 and로 잇습니다. 시작 화면에 이미 보이는 글자는 쓰지 않습니다 (단계를 하기 전에 통과해 버립니다). 확실하지 않으면 생략합니다.
 - risk: 조회·읽기·내려받기만 하면 R1, 화면에 값을 입력만 하고 저장하지 않으면 R2, 저장·상신·등록·삭제·승인 버튼을 누르면 R3. R3이면 submit을 반드시 적고, 아니면 submit을 생략합니다.
+- 스크립트(scripts)는 에이전트의 표 가공(필터·정렬·집계·열 고르기)으로 할 수 없는 일에만 씁니다: 여러 표를 키로 합치기, 정규식으로 글에서 값 뽑기, 날짜 계산, 통계, 복잡한 규칙의 판정 등. 화면 조작에는 쓰지 않습니다. 필요 없으면 scripts를 생략합니다.
+  - 스크립트를 부르는 단계는 "앞에서 읽은 표로 ○○를 계산한다"처럼 쓰고 script에 이름을 적습니다. 그 앞 단계에서 표를 읽어 두어야 합니다.
+  - lang은 되도록 node(ES 모듈, Node 표준 라이브러리만)로 씁니다. python은 사용자가 원할 때만 씁니다(표준 라이브러리만).
+  - ${SCRIPT_CONTRACT.split('\n').join('\n  - ')}
+  - datasets의 표는 실행할 때 에이전트가 넘기므로 이름을 정해 두지 말고 Object.values(input.datasets)처럼 받습니다. 표의 열은 이름으로 찾습니다(columns.indexOf("열 이름")).
 - 고쳐 달라는 말을 받으면 지금 초안에서 그 부분만 고치고, 나머지는 그대로 둔 전체 JSON을 다시 냅니다.`;
 
 const InputDraft = z.object({
@@ -57,9 +64,21 @@ const InputDraft = z.object({
 });
 
 const StepDraft = z.union([
-  z.string().transform((text) => ({ text, check: undefined as string | undefined })),
-  z.object({ text: z.string(), check: z.string().nullish().transform((c) => c ?? undefined) }),
+  z.string().transform((text) => ({ text, check: undefined as string | undefined, script: undefined as string | undefined })),
+  z.object({
+    text: z.string(),
+    check: z.string().nullish().transform((c) => c ?? undefined),
+    script: z.string().nullish().transform((s) => s ?? undefined),
+  }),
 ]);
+
+const ScriptDraft = z.object({
+  name: z.string().min(1),
+  lang: z.enum(['node', 'python']).catch('node'),
+  description: z.string().min(1),
+  network: z.boolean().catch(false).default(false),
+  code: z.string().min(1),
+});
 
 export const ComposeSpec = z.object({
   id: z.string().default('new-skill'),
@@ -72,6 +91,7 @@ export const ComposeSpec = z.object({
   submit: z.object({ step: z.number().int().positive(), labels: z.array(z.string()).default([]) }).nullish(),
   exceptions: z.array(z.string()).default([]),
   result: z.string().default(''),
+  scripts: z.array(ScriptDraft).catch([]).default([]),
 });
 export type ComposeSpec = z.infer<typeof ComposeSpec>;
 
@@ -92,6 +112,8 @@ export interface ComposeDraft {
   spec: ComposeSpec;
   start: ComposeStart;
   source: string;
+  /** 스킬 폴더에 함께 저장할 파일 (scripts/<이름> → 내용) */
+  files: Record<string, string>;
   report: LintReport;
   /** 코드가 고친 것, 사람이 알아야 할 것 */
   notes: string[];
@@ -277,7 +299,7 @@ function fastPath(
  * 초안(JSON)을 SKILL.md로 만든다. 고친 것은 notes에 남긴다.
  * start.seen이 있으면 시작 화면에 이미 보이는 글자의 검사를 뺀다.
  */
-export function renderSpec(spec: ComposeSpec, start: ComposeStart): { source: string; notes: string[] } {
+export function renderSpec(spec: ComposeSpec, start: ComposeStart): { source: string; notes: string[]; files: Record<string, string> } {
   const notes: string[] = [];
   const url = new URL(start.url);
   const shown = start.seen ?? '';
@@ -317,11 +339,35 @@ export function renderSpec(spec: ComposeSpec, start: ComposeStart): { source: st
   const wantedSubmit = risk === 'R3' && spec.submit && spec.submit.step <= spec.steps.length ? spec.submit : undefined;
   if (wantedSubmit) submitLabels.push(...wantedSubmit.labels.map((l) => l.trim()).filter((l) => l && !/["\n]/.test(l)));
 
+  // 스크립트: 이름을 규칙에 맞추고 파일로 만든다
+  const files: Record<string, string> = {};
+  const scripts: { name: string; file: string; description: string; network: boolean }[] = [];
+  const scriptName = new Map<string, string>();
+  for (const s of spec.scripts) {
+    let name = s.name.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^[^a-z]+|-+$/g, '');
+    if (!SCRIPT_NAME.test(name)) name = `script${scripts.length + 1}`;
+    if (scripts.some((x) => x.name === name)) {
+      notes.push(`스크립트 "${s.name}"이(가) 겹쳐 뺐습니다`);
+      continue;
+    }
+    const file = `scripts/${name}.${s.lang === 'python' ? 'py' : 'mjs'}`;
+    scriptName.set(s.name, name);
+    scripts.push({ name, file, description: s.description.trim().replace(/\s*\n\s*/g, ' '), network: s.network });
+    files[file] = s.code.replace(/\r\n/g, '\n').replace(/\n*$/, '\n');
+  }
+  const usedScripts = new Set<string>();
+
   spec.steps.forEach((step, idx) => {
-    const text = tidy(fixNames(step.text));
+    let text = tidy(fixNames(step.text));
     const checks = goalChecks(step.check ? fixNames(step.check) : '', n + 1, shown, start, notes);
     const isSubmit = wantedSubmit?.step === idx + 1;
-    const fast = fastPath(text, inputs, start.elements ?? [], { risk, isSubmit, step: n + 1, notes });
+    const script = step.script ? scriptName.get(step.script) : undefined;
+    if (step.script && !script) notes.push(`${n + 1}단계: 스크립트 "${step.script}"이(가) scripts에 없어 부르지 않습니다`);
+    if (script) {
+      usedScripts.add(script);
+      text = `${text.replace(/[.。\s]+$/, '')}. 스크립트 "${script}"을(를) run_script로 부르고, 앞에서 읽은 표를 datasets로 넘긴다`;
+    }
+    const fast = script ? null : fastPath(text, inputs, start.elements ?? [], { risk, isSubmit, step: n + 1, notes });
     if (fast === 'drop') return;
     lines.push(`${++n}. ${fast ? fast.head : text}`);
     if (isSubmit) submitSteps.push(n);
@@ -387,6 +433,14 @@ export function renderSpec(spec: ComposeSpec, start: ComposeStart): { source: st
       front.push(`    required: ${i.required && (i.default === undefined || i.default === null || i.default === '')}`);
     }
   }
+  for (const s of scripts) if (!usedScripts.has(s.name)) notes.push(`스크립트 "${s.name}"을(를) 부르는 단계가 없습니다`);
+  if (scripts.length) {
+    front.push('scripts:');
+    for (const s of scripts) {
+      front.push(`  - name: ${s.name}`, `    file: ${s.file}`, `    description: ${q(s.description)}`);
+      if (s.network) front.push('    network: true');
+    }
+  }
   if (submitSteps.length) front.push(`submit_steps: [${submitSteps.join(', ')}]`);
   if (submitLabels.length) front.push(`submit_labels: [${submitLabels.map(q).join(', ')}]`);
   front.push('limits:', `  max_steps: ${Math.max(30, n * 5)}`, '  timeout_sec: 300', '---');
@@ -404,7 +458,7 @@ export function renderSpec(spec: ComposeSpec, start: ComposeStart): { source: st
     ...(spec.result.trim() ? ['', '## 결과', '', spec.result.trim()] : []),
     '',
   ].join('\n');
-  return { source, notes };
+  return { source, notes, files };
 }
 
 export interface ComposeContext {
@@ -443,8 +497,8 @@ async function ask(llm: LlmPort, user: string, signal?: AbortSignal): Promise<Co
 
 function finish(spec: ComposeSpec, ctx: ComposeContext): ComposeDraft {
   const fixed = { ...spec, id: slug(spec.id, ctx.takenIds ?? new Set()) };
-  const { source, notes } = renderSpec(fixed, ctx.start);
-  return { spec: fixed, start: ctx.start, source, report: lintSkill(source), notes };
+  const { source, notes, files } = renderSpec(fixed, ctx.start);
+  return { spec: fixed, start: ctx.start, source, files, report: lintSkill(source, undefined, files), notes };
 }
 
 /** 품질 검사 오류가 있으면 그 내용을 돌려 한 번 더 고치게 한다. */
@@ -486,6 +540,6 @@ export async function reviseSkill(draft: ComposeDraft, feedback: string, llm: Ll
 export function finalizeDraft(draft: ComposeDraft, owner: string, id = draft.spec.id): ComposeDraft {
   const start = { ...draft.start, owner };
   const spec = { ...draft.spec, id };
-  const { source, notes } = renderSpec(spec, start);
-  return { ...draft, spec, start, source, report: lintSkill(source), notes };
+  const { source, notes, files } = renderSpec(spec, start);
+  return { ...draft, spec, start, source, files, report: lintSkill(source, undefined, files), notes };
 }
