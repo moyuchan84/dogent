@@ -6,7 +6,7 @@
 
 ## Windows에 설치하기
 
-확장·데스크탑 앱·오피스 도구·터미널 클라이언트를 한 번에 빌드해 배포 묶음을 만들고, 사용자 PC에는 `install.cmd` 하나로 설치합니다. 순서와 문제 해결은 [docs/12-install-guide.html](docs/12-install-guide.html)에 있습니다.
+확장·데스크탑 앱·오피스 도구·터미널 클라이언트를 한 번에 빌드해 배포 묶음을 만들고, 사용자 PC에는 `install.cmd` 하나로 설치합니다. 순서와 문제 해결은 [docs/12-install-guide.html](docs/12-install-guide.html)에 있습니다. 저장소를 받아 회사 PC에서 직접 빌드해 쓰던 PC를 고정 폴더 설치로 옮기는 순서는 [docs/15-company-reinstall.html](docs/15-company-reinstall.html).
 
 ```bat
 install\build.cmd -Mode company -Zip     :: 빌드 → release\Dogent-company-<판>\ 과 .zip
