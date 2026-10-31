@@ -20,6 +20,7 @@ export * from './prompt';
 export * from './shared';
 export * from './skill';
 export * from './snapshot';
+export * from './html-report';
 export * from './markdown';
 export * from './stats';
 export * from './transform';

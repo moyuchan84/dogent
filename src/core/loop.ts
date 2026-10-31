@@ -9,6 +9,7 @@ import { PathMemo } from './paths';
 import { SUBMIT_PATTERN, checkAction, findElement, hostAllowed, optionsOf } from './policy';
 import { buildSummarizeMessages, buildTurnMessages } from './prompt';
 import { checkInputRules, extractSteps, fillTemplate, fillValue, type Skill, type SkillInputs } from './skill';
+import { buildHtmlReport, checkReport } from './html-report';
 import { tableMarkdown } from './markdown';
 import { findInSnapshot, renderSnapshot } from './snapshot';
 import { listForPrompt, prepareChild, summarizeChild } from './subagent';
@@ -438,6 +439,21 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps, memo: PathM
         await files.save(filename, await buildWorkbook(sheets));
         savedFiles.push(filename);
         return { ok: true, result: `${filename} 저장 (시트 ${sheets.length}개)` };
+      }
+      case 'write_html': {
+        const { title, charts } = action.args;
+        // 차트에 쓴 데이터셋은 표로도 넣는다 (차트 값의 근거를 같이 보여 준다)
+        const names = [...new Set([...action.args.datasets, ...charts.map((c) => c.dataset)])];
+        const used = names.map((n) => datasets.get(n));
+        const problem = checkReport(used, charts);
+        if (problem) return { ok: false, result: problem };
+        const content = withOutputs(action.args.content).replace(/\n{3,}/g, '\n\n').trim();
+        const base = action.args.filename.replace(/[\\/:*?"<>|]/g, '_').replace(/\.html?$/i, '');
+        const filename = `${base}.html`;
+        const html = buildHtmlReport({ title, content, datasets: used, charts });
+        await files.save(filename, new TextEncoder().encode(html).buffer as ArrayBuffer);
+        savedFiles.push(filename);
+        return { ok: true, result: `${filename} 저장 (표 ${used.length}개, 차트 ${charts.length}개)` };
       }
       case 'excel_docs': {
         if (!office) return { ok: false, result: NO_OFFICE };

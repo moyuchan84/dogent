@@ -340,7 +340,7 @@ export function App() {
         paths: settings.pathCache && !isFree ? pathStore : undefined,
         files: {
           async save(filename, data) {
-            download(filename, data, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            download(filename, data, /\.html$/i.test(filename) ? 'text/html' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
           },
         },
         ui: {

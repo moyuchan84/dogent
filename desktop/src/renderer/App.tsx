@@ -697,6 +697,11 @@ function RunCard({ run }: { run: Extract<Item, { type: 'run' }> }) {
               {r.saved.map((f) => (
                 <div key={f}>
                   <span title={f}>{f}</span>
+                  {/\.html$/i.test(f) && (
+                    <button onClick={() => void api.open(f)}>
+                      열기
+                    </button>
+                  )}
                   <button className="secondary" onClick={() => void api.show(f)}>
                     폴더에서 보기
                   </button>
