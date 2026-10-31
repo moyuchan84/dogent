@@ -4,6 +4,7 @@ import { searchSkills, skillCoversUrl } from '../../../src/core/catalog';
 import type { BrowserLink } from '../../../bridge/hub.mjs';
 import type { DogentApi, ExtensionStatus, InitInfo, ServerRow, SkillSummary, SystemSummary, UiMessage } from '../ipc';
 import { ConnectDialog, ConnectorsPanel } from './Connectors';
+import { Markdown } from '../../../src/ui/Markdown';
 
 declare global {
   interface Window {
@@ -63,7 +64,7 @@ function useSideWidth() {
   return [width, set] as const;
 }
 
-const EXAMPLES = ['7라인 재공 확인해줘', '8라인을 선택하고 조회해서 총 몇 건인지 알려줘', 'skills', 'browsers'];
+const EXAMPLES = ['이 화면 요약해줘', '이 화면의 표를 엑셀로 저장해줘', 'skills', 'browsers'];
 
 export function App() {
   const [info, setInfo] = useState<InitInfo | null>(null);
@@ -394,7 +395,7 @@ ${x.url}`}>
                   id="composer"
                   rows={2}
                   value={text}
-                  placeholder="무엇을 할까요?  예: 8라인 재공 확인해줘"
+                  placeholder="무엇을 할까요?  예: 이 화면 요약해줘"
                   onChange={(e) => setText(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -690,7 +691,7 @@ function RunCard({ run }: { run: Extract<Item, { type: 'run' }> }) {
               동작 {r.result.actions}회 · {(r.result.elapsedMs / 1000).toFixed(1)}초
             </span>
           </div>
-          <p>{r.result.message}</p>
+          <Markdown text={r.result.message} copy className="result-body" />
           {r.saved.length > 0 && (
             <div className="files">
               {r.saved.map((f) => (

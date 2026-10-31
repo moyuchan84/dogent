@@ -27,7 +27,7 @@ const noLlm: LlmPort = {
   },
 };
 
-const downloadSkill = () => parseSkill(readFileSync(join(import.meta.dirname, '../skills/wip-download/SKILL.md'), 'utf8'));
+const downloadSkill = () => parseSkill(readFileSync(join(import.meta.dirname, '../samples/skills/wip-download/SKILL.md'), 'utf8'));
 
 /** 조회까지 마친 화면에서 내려받기 한 단계만 하는 스킬 */
 const oneStep = (button: string, domain = 'localhost:4173') =>

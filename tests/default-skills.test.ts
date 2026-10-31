@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { parseSkill, resolveInputs, runSkill, type Skill } from '../src/core';
+import { parseMarkdown, parseSkill, resolveInputs, runSkill, type Skill } from '../src/core';
 import { JsdomBrowser, memoryFiles, readWorkbook, scriptedLlm } from './helpers';
 
 const skill = (id: string): Skill => parseSkill(readFileSync(join(import.meta.dirname, '../skills', id, 'SKILL.md'), 'utf8'));
@@ -33,7 +33,11 @@ describe('기본 스킬 (어느 사이트에서나)', () => {
     const files = memoryFiles();
     const result = await runSkill(s, resolveInputs(s, { filename: '재공' }).values, { llm, browser, ui, files, direct: true });
     expect(result.status, result.message).toBe('done');
-    expect(result.message).toMatch(/^표 \d+행을 재공\.xlsx로 저장했습니다$/);
+    expect(result.message).toMatch(/^표 \*\*\d+행\*\*을 재공\.xlsx로 저장했습니다\.\n\n\| Lot ID \|/);
+    // 보고에 표 앞부분이 마크다운 표로 들어간다
+    const table = parseMarkdown(result.message).find((b) => b.type === 'table');
+    expect(table?.type === 'table' && table.rows.length).toBe(20);
+    expect(result.message).toMatch(/전체 \d+행 중 앞의 20행$/);
     const wb = await readWorkbook(files.saved.get('재공.xlsx')!);
     expect(wb['표'].length).toBeGreaterThan(1);
   });

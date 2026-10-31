@@ -46,24 +46,38 @@ export function llmFromEnv(mode) {
   );
 }
 
-/** 기본 스킬: skills/<id>/SKILL.md, policy.yaml. 기본 시스템 사전: skills/systems/<id>/SYSTEM.md (키는 systems/<id>/SYSTEM.md) */
-export function bundledSkills() {
-  const skills = {};
-  for (const d of readdirSync(join(ROOT, 'skills'), { withFileTypes: true })) {
+/** 목업 사이트 전용 예시 스킬(samples/skills)을 넣을지. 환경 파일에 WXT_SAMPLE_SKILLS=true 일 때만 */
+export function samplesWanted(mode) {
+  return (loadEnv(mode).WXT_SAMPLE_SKILLS ?? '').trim() === 'true';
+}
+
+/** 한 폴더의 스킬: <dir>/<id>/SKILL.md, policy.yaml. 시스템 사전: <dir>/systems/<id>/SYSTEM.md (키는 systems/<id>/SYSTEM.md) */
+function skillsIn(dir, skills) {
+  if (!existsSync(dir)) return skills;
+  for (const d of readdirSync(dir, { withFileTypes: true })) {
     if (!d.isDirectory()) continue;
     if (d.name === 'systems') {
-      for (const x of readdirSync(join(ROOT, 'skills', 'systems'), { withFileTypes: true })) {
-        const p = join(ROOT, 'skills', 'systems', x.name, 'SYSTEM.md');
+      for (const x of readdirSync(join(dir, 'systems'), { withFileTypes: true })) {
+        const p = join(dir, 'systems', x.name, 'SYSTEM.md');
         if (x.isDirectory() && existsSync(p)) skills[`systems/${x.name}/SYSTEM.md`] = readFileSync(p, 'utf8');
       }
       continue;
     }
     for (const f of ['SKILL.md', 'policy.yaml']) {
-      const p = join(ROOT, 'skills', d.name, f);
+      const p = join(dir, d.name, f);
       if (existsSync(p)) skills[`${d.name}/${f}`] = readFileSync(p, 'utf8');
     }
   }
   return skills;
+}
+
+/**
+ * 기본 스킬: skills/ (어느 사이트에서나 쓰는 범용 스킬).
+ * samples가 참이면 목업 사이트 전용 예시(samples/skills)도 넣는다. 실제 업무 스킬은 팀 저장소나 개인 폴더에 둔다.
+ */
+export function bundledSkills(samples = false) {
+  const skills = skillsIn(join(ROOT, 'skills'), {});
+  return samples ? skillsIn(join(ROOT, 'samples', 'skills'), skills) : skills;
 }
 
 /** rolldown의 define에 넣을 값 */
@@ -74,10 +88,10 @@ export function buildDefines(mode) {
   const skillsUrl = loadEnv(mode).WXT_SKILLS_URL?.trim() || undefined;
   return {
     llm,
-    skills: bundledSkills(),
+    skills: bundledSkills(samplesWanted(mode)),
     define: {
       __DOGENT_BUILD__: JSON.stringify({ mode, version, llm, ...(skillsUrl ? { skillsUrl } : {}) }),
-      __DOGENT_SKILLS__: JSON.stringify(bundledSkills()),
+      __DOGENT_SKILLS__: JSON.stringify(bundledSkills(samplesWanted(mode))),
       __DOGENT_HOST__: JSON.stringify(Object.fromEntries(['native-host.mjs', 'protocol.mjs'].map((f) => [f, readFileSync(join(ROOT, 'bridge', f), 'utf8')]))),
     },
   };

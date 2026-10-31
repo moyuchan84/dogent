@@ -34,7 +34,7 @@ limits:
    `{"filename": "{filename}", "sheets": [{"name": "표", "dataset": "table"}]}`
    - 검사: did("write_excel")
 3. finish로 결과를 보고한다. args는 다음을 그대로 쓴다.
-   `{"summary": "표 {rows.table}행을 {filename}.xlsx로 저장했습니다"}`
+   `{"summary": "표 **{rows.table}행**을 {filename}.xlsx로 저장했습니다.\n\n{table.table}"}`
 
 ## 예외
 
@@ -43,4 +43,4 @@ limits:
 
 ## 결과
 
-저장한 행 수와 파일 이름.
+저장한 행 수와 파일 이름, 표의 앞부분 미리 보기.

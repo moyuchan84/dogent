@@ -1,8 +1,8 @@
 // 빌드된 확장을 실제 Chromium에 올려 재공 확인을 끝까지 돌려 본다.
 // 모의 사이트와 모델 서버는 이 스크립트가 띄운다.
 //
-//   pnpm build && pnpm e2e           모의 모델 (배관 검증, 항상 같은 결과)
-//   pnpm build && pnpm e2e:ollama    로컬 Ollama의 실제 모델 (모델 판단 능력 검증)
+//   WXT_SAMPLE_SKILLS=true pnpm build && pnpm e2e           모의 모델 (배관 검증, 항상 같은 결과)
+//   WXT_SAMPLE_SKILLS=true pnpm build && pnpm e2e:ollama    로컬 Ollama의 실제 모델 (모델 판단 능력 검증)
 //
 // Ollama 모드 환경 변수
 //   OLLAMA_MODEL    모델 이름 (기본 llama3)

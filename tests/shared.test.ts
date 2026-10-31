@@ -8,7 +8,7 @@ import { parseSkill, syncSkills, type SyncPorts } from '../src/core';
 
 const ROOT = join(import.meta.dirname, '..');
 const INDEX = 'https://files.example.internal/dogent-skills/index.json';
-const read = (path: string) => readFileSync(join(ROOT, 'skills', path), 'utf8').replace(/\r\n/g, '\n');
+const read = (path: string) => readFileSync(join(ROOT, 'samples', 'skills', path), 'utf8').replace(/\r\n/g, '\n');
 const sha256 = async (text: string) => createHash('sha256').update(text, 'utf8').digest('hex');
 
 /** 주소 → 내용으로 만든 가짜 저장소 */
@@ -97,7 +97,7 @@ describe('공유 스킬 저장소', () => {
 
   it('pnpm skill:index가 만든 목록으로 번들된 스킬을 모두 받을 수 있다', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'dogent-skills-'));
-    cpSync(join(ROOT, 'skills'), dir, { recursive: true });
+    cpSync(join(ROOT, 'samples', 'skills'), dir, { recursive: true });
     execFileSync(process.execPath, [join(ROOT, 'tools/skill-index.mjs'), dir]);
     const made = JSON.parse(readFileSync(join(dir, 'index.json'), 'utf8')) as { systems?: { id: string; path: string }[]; skills: { id: string; path: string; policy?: string }[] };
     expect(made.skills.length).toBeGreaterThanOrEqual(5);

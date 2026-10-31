@@ -1,6 +1,6 @@
 // Dogent 데스크탑 앱(Electron) + 확장 + 모의 사이트를 끝까지 돌려 본다.
 //
-//   pnpm build && pnpm desktop:build && pnpm e2e:desktop
+//   WXT_SAMPLE_SKILLS=true pnpm build && WXT_SAMPLE_SKILLS=true pnpm desktop:build && pnpm e2e:desktop
 //
 // 앱은 Playwright의 Electron 드라이버로 띄우고, 확장은 따로 띄운 Chromium에 올린다.
 import assert from 'node:assert/strict';

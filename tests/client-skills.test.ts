@@ -5,11 +5,11 @@ import { describe, expect, it } from 'vitest';
 import { loadSkills } from '../client/src/skills';
 
 const read = (p: string) => readFileSync(join(import.meta.dirname, '..', p), 'utf8');
-const bundled = { 'wip-check/SKILL.md': read('skills/wip-check/SKILL.md'), 'wip-search/SKILL.md': read('skills/wip-search/SKILL.md') };
+const bundled = { 'wip-check/SKILL.md': read('samples/skills/wip-check/SKILL.md'), 'wip-search/SKILL.md': read('samples/skills/wip-search/SKILL.md') };
 
 function put(dir: string, id: string, name: string) {
   mkdirSync(join(dir, id), { recursive: true });
-  writeFileSync(join(dir, id, 'SKILL.md'), read('skills/wip-check/SKILL.md').replace('id: wip-check', `id: ${id}`).replace(/^name: .*$/m, `name: ${name}`));
+  writeFileSync(join(dir, id, 'SKILL.md'), read('samples/skills/wip-check/SKILL.md').replace('id: wip-check', `id: ${id}`).replace(/^name: .*$/m, `name: ${name}`));
 }
 
 describe('클라이언트 스킬 폴더 (개인 > 팀 > 기본)', () => {

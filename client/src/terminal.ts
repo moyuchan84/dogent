@@ -1,5 +1,5 @@
 import { createInterface } from 'node:readline';
-import type { ApprovalRequest, RunEvent, RunResult } from '../../src/core';
+import { ANSI, markdownToTerminal, type ApprovalRequest, type RunEvent, type RunResult } from '../../src/core';
 
 /**
  * 터미널 입출력. 입력은 줄 단위로 줄을 세워 두고 물을 때 하나씩 꺼낸다.
@@ -111,7 +111,14 @@ const STATUS: Record<RunResult['status'], string> = {
   dryrun: '시험 실행 (제출 전 멈춤)',
 };
 
-export function describeResult(r: RunResult, saved: string[]): string {
+/**
+ * 결과 보고. 보고 글은 마크다운이라 표는 칸을 맞춘 상자로, 목록은 글머리로 그린다.
+ * 색은 터미널일 때만 넣는다 (파이프·파일로 받을 때는 글자만).
+ */
+export function describeResult(r: RunResult, saved: string[], out: { isTTY?: boolean; columns?: number } = process.stdout): string {
   const files = saved.length ? `\n  저장한 파일: ${saved.join(', ')}` : '';
-  return `\n[${STATUS[r.status]}] ${r.message}\n  동작 ${r.actions}회 · ${(r.elapsedMs / 1000).toFixed(1)}초${files}`;
+  const body = markdownToTerminal(r.message, { width: Math.max(40, (out.columns ?? 100) - 2), style: out.isTTY && !process.env.NO_COLOR ? ANSI : undefined });
+  const [first, ...rest] = body.split('\n');
+  const more = rest.length ? `\n${rest.map((l) => (l ? `  ${l}` : '')).join('\n')}` : '';
+  return `\n[${STATUS[r.status]}] ${first}${more}\n  동작 ${r.actions}회 · ${(r.elapsedMs / 1000).toFixed(1)}초${files}`;
 }

@@ -25,7 +25,7 @@ limits:
    `{}`
    - 검사: did("read_text")
 2. summarize로 화면의 글을 요약 기준에 맞게 정리한다. args는 다음을 그대로 쓴다.
-   `{"instruction": "화면의 글을 '{focus}'을(를) 중심으로 다섯 줄 이내로 요약한다. 화면에 없는 내용은 쓰지 않는다.", "source": "page", "name": "summary"}`
+   `{"instruction": "화면의 글을 '{focus}'을(를) 중심으로 요약한다. 첫 줄에 한 문장 결론, 이어서 핵심을 다섯 항목 이내로 쓴다. 여러 대상의 값을 견주는 내용이면 표로 쓴다. 화면에 없는 내용은 쓰지 않는다.", "source": "page", "name": "summary"}`
    - 검사: did("summarize")
 3. finish로 결과를 보고한다. args는 다음을 그대로 쓴다.
    `{"summary": "{out.summary}"}`
@@ -36,4 +36,4 @@ limits:
 
 ## 결과
 
-요약 기준에 맞춘 다섯 줄 이내의 요약.
+요약 기준에 맞춘 한 문장 결론과 다섯 항목 이내의 핵심 (마크다운).
