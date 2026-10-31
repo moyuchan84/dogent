@@ -10,6 +10,8 @@ import {
   skillUsesOffice,
   describeSystem,
   docOfSkill,
+  isLocalSite,
+  isSampleSkill,
   planRequest,
   readTable,
   resolveInputs,
@@ -38,8 +40,10 @@ import { loadSystems, type SystemEntry } from './systems';
 import { McpHub, enabledServers, loadMcpConfig, mentionedServers } from './mcp-hub';
 import { Office, OfficeDocs, findOfficeExe, looksLikePath } from './office';
 import { saveRunAsSkill } from './save-skill';
+import { loadSkillPrefs, patchSkillPrefs, type SkillPrefPatch, type SkillPrefs } from './skill-prefs';
+import { localScripts } from './scripts';
 import { loadSkills, type SkillEntry } from './skills';
-import { appendRun, filePathStore, folderFiles, readRunStats } from './store';
+import { appendRun, filePathStore, folderFiles, readRecentRuns, readRunStats } from './store';
 import { syncTeam, teamCacheDir, teamMeta, teamStale, type TeamMeta } from './team';
 
 /** 팀 스킬 저장소를 다시 받기까지의 시간 */
@@ -118,7 +122,11 @@ export class Session {
   private office: Office | null = null;
   /** 이번 실행에서 쓸 브라우저를 정했는지 */
   private chosen = false;
+  /** 요청에 쓰는 스킬: 끈 것과 (보이기로 하지 않은) 예시 스킬을 뺀 것 */
   private skills: SkillEntry[] = [];
+  /** 읽은 스킬 전부 (스킬 관리 화면과 ID로 직접 부를 때) */
+  private allSkills: SkillEntry[] = [];
+  private prefs: SkillPrefs = { off: [], pinned: [] };
   private systems: SystemEntry[] = [];
   /** 대화 중 help에 보여 줄 글 */
   help = '';
@@ -140,13 +148,50 @@ export class Session {
       { personal: this.cfg.personalSkills, team: this.cfg.teamSkills, teamCache: this.cfg.teamSkillsUrl ? teamCacheDir(this.cfg.home) : undefined },
       __DOGENT_SKILLS__,
     );
-    this.skills = skills;
+    this.prefs = loadSkillPrefs(this.cfg.home);
+    const samples = this.showSamples();
+    this.allSkills = skills;
+    this.skills = skills.filter((e) => !this.prefs.off.includes(e.skill.id) && (samples || !isSampleSkill(docOfSkill(e.skill))));
     const sys = loadSystems(
       { personal: this.cfg.personalSkills, team: this.cfg.teamSkills, teamCache: this.cfg.teamSkillsUrl ? teamCacheDir(this.cfg.home) : undefined },
       __DOGENT_SKILLS__,
     );
-    this.systems = sys.systems;
+    // 목업 사이트의 시스템 사전(주소가 localhost)도 예시와 같이 다룬다
+    this.systems = samples ? sys.systems : sys.systems.filter((e) => !isLocalSite(e.system.url));
     return [...errors, ...sys.errors];
+  }
+
+  /**
+   * 예시 스킬(localhost만 다루는 것)을 보일지. 정하지 않았으면 개발용 빌드(모드 없음)에 예시 스킬을 넣었을 때만.
+   * 집·회사 빌드는 환경 파일에 WXT_SAMPLE_SKILLS가 남아 있어도 숨겨 둔다 (스킬 관리에서 켤 수 있다)
+   */
+  showSamples(): boolean {
+    if (this.prefs.samples !== undefined) return this.prefs.samples;
+    if (typeof __DOGENT_BUILD__ === 'undefined') return false;
+    return __DOGENT_BUILD__.samples === true && __DOGENT_BUILD__.mode === 'production';
+  }
+
+  /** 스킬 끄기·고정·예시 보이기를 바꾼다 */
+  setSkillPref(patch: SkillPrefPatch): SkillPrefs {
+    this.prefs = patchSkillPrefs(this.cfg.home, patch);
+    this.reloadSkills();
+    return this.prefs;
+  }
+
+  skillPrefs(): SkillPrefs & { samplesShown: boolean } {
+    this.reloadSkills();
+    return { ...this.prefs, samplesShown: this.showSamples() };
+  }
+
+  /** 읽은 스킬 전부와 각각의 상태 (스킬 관리 화면) */
+  allSkillList(): { entry: SkillEntry; off: boolean; pinned: boolean; sample: boolean }[] {
+    this.reloadSkills();
+    return this.allSkills.map((entry) => ({
+      entry,
+      off: this.prefs.off.includes(entry.skill.id),
+      pinned: this.prefs.pinned.includes(entry.skill.id),
+      sample: isSampleSkill(docOfSkill(entry.skill)),
+    }));
   }
 
   /**
@@ -191,6 +236,11 @@ export class Session {
     return (await this.currentPage())?.url;
   }
 
+  /** 최근 실행 (왼쪽 목록의 "최근") */
+  recentRuns(n = 8) {
+    return readRecentRuns(this.cfg.home, n);
+  }
+
   /** 이 PC의 실행 기록으로 낸 스킬별 성공률 */
   runStats() {
     return readRunStats(this.cfg.home);
@@ -227,7 +277,7 @@ export class Session {
   /** 스킬 하나의 자세한 정보 (skills info <id>) */
   skillInfo(id: string): boolean {
     this.reloadSkills();
-    const e = this.skills.find((x) => x.skill.id === id);
+    const e = this.allSkills.find((x) => x.skill.id === id);
     if (!e) {
       this.term.print(`"${id}" 스킬이 없습니다. skills search <말>로 찾아보세요`);
       return false;
@@ -439,13 +489,34 @@ export class Session {
     this.term.print(`[${b.id}] ${b.browser}을(를) 씁니다`);
   }
 
-  listSkills(): void {
+  listSkills(all = false): void {
     const errors = this.reloadSkills();
-    for (const e of this.skills) {
+    for (const e of all ? this.allSkills : this.skills) {
       const inputs = e.skill.inputs.map((i) => `${i.name}${i.required ? '*' : ''}`).join(', ');
-      this.term.print(`  [${e.source}] ${e.skill.id} — ${e.skill.name} (${e.skill.risk})${inputs ? `  입력: ${inputs}` : ''}`);
+      const off = this.prefs.off.includes(e.skill.id) ? ' [꺼짐]' : '';
+      const sample = isSampleSkill(docOfSkill(e.skill)) ? ' [예시]' : '';
+      this.term.print(`  [${e.source}] ${e.skill.id} — ${e.skill.name} (${e.skill.risk})${off}${sample}${inputs ? `  입력: ${inputs}` : ''}`);
     }
+    const hidden = this.allSkills.length - this.skills.length;
+    if (!all && hidden > 0) this.term.print(`  (끈 스킬과 예시 스킬 ${hidden}개는 뺐습니다. 모두 보기: skills all · 켜고 끄기: skills on|off <ID> · 예시: skills samples on|off)`);
     for (const err of errors) this.term.print(`  읽지 못함: ${err}`);
+  }
+
+  /** skills on|off <ID>, skills samples on|off */
+  private skillSwitch(args: string[]): void {
+    const [what, value] = args;
+    if (what === 'samples' && (value === 'on' || value === 'off')) {
+      this.setSkillPref({ samples: value === 'on' });
+      this.term.print(`예시 스킬을 ${value === 'on' ? '보입니다' : '숨깁니다'}`);
+      return;
+    }
+    if ((what === 'on' || what === 'off') && value) {
+      if (!this.allSkills.some((e) => e.skill.id === value)) return this.term.print(`"${value}" 스킬이 없습니다`);
+      this.setSkillPref({ id: value, off: what === 'off' });
+      this.term.print(`${value}을(를) ${what === 'off' ? '껐습니다. 요청을 해석할 때 후보에서 빠집니다' : '켰습니다'}`);
+      return;
+    }
+    this.term.print('쓰는 법: skills on <ID> · skills off <ID> · skills samples on|off');
   }
 
   /** 스킬의 입력값을 채운다. 비어 있는 필수 입력은 묻는다. */
@@ -543,6 +614,8 @@ export class Session {
         browser,
         office: office ? stoppable(office, signal) : undefined,
         tools: tools ? stoppable(tools, signal) : undefined,
+        // 스킬에 딸린 스크립트 (처음 실행할 때와 내용이 바뀌었을 때 confirm으로 승인받는다)
+        scripts: localScripts(this.cfg.home),
         // 다른 스킬을 run_skill로 부를 수 있게 한다. 자식은 부모보다 권한이 넓어지지 않는다 (core/subagent.ts)
         skills: { list: () => this.skills.map((e) => e.skill), get: (id) => this.skills.find((e) => e.skill.id === id)?.skill },
         datasets,
@@ -680,7 +753,7 @@ export class Session {
 
   private async runSkillByIdNow(id: string, pairs: string[]): Promise<boolean> {
     await this.followActiveTab();
-    const entry = this.skills.find((e) => e.skill.id === id);
+    const entry = this.allSkills.find((e) => e.skill.id === id);
     if (!entry) {
       this.term.print(`"${id}" 스킬이 없습니다. dogent skills로 목록을 보세요`);
       return false;
@@ -830,7 +903,7 @@ export class Session {
   /** 스킬을 편집기로 고친다 (skill edit <id>). */
   async editSkill(id: string): Promise<boolean> {
     this.reloadSkills();
-    const entry = this.skills.find((e) => e.skill.id === id);
+    const entry = this.allSkills.find((e) => e.skill.id === id);
     if (!entry) {
       this.term.print(`"${id}" 스킬이 없습니다. dogent skills로 목록을 보세요`);
       return false;
@@ -900,6 +973,8 @@ export class Session {
   private async handleNow(text: string): Promise<void> {
     if (text === 'help') this.term.print(this.help);
     else if (text === 'skills') this.listSkills();
+    else if (text === 'skills all') this.listSkills(true);
+    else if (/^skills\s+(on|off|samples)(\s|$)/.test(text)) this.skillSwitch(text.split(/\s+/).slice(1));
     else if (/^(skills\s+search|찾기)(\s|$)/.test(text)) await this.searchSkills(text.replace(/^(skills\s+search|찾기)\s*/, ''));
     else if (/^skills\s+info\s+\S/.test(text)) this.skillInfo(text.replace(/^skills\s+info\s+/, '').trim());
     else if (text === 'systems') this.listSystems();

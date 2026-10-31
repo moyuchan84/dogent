@@ -1,6 +1,7 @@
 import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
 import { stepCaptures, stepCheck } from './check';
+import { ScriptDecl } from './script';
 
 export const RISK_LEVELS = ['R0', 'R1', 'R2', 'R3'] as const;
 export type Risk = (typeof RISK_LEVELS)[number];
@@ -51,6 +52,8 @@ const SkillMeta = z.object({
   /** 승인 후 누를 수 있는 버튼 이름. 비우면 저장·상신 계열 버튼 전부가 승인 대상이 된다. */
   submit_labels: z.array(z.string().min(1)).default([]),
   schedulable: z.boolean().default(false),
+  /** 스킬 폴더의 scripts/ 아래 스크립트 (run_script로 부른다. script.ts) */
+  scripts: z.array(ScriptDecl).default([]),
   limits: z
     .object({
       max_steps: z.number().int().positive().default(40),
@@ -64,12 +67,17 @@ export interface Skill extends SkillMeta {
   body: string;
   steps: string[];
   rules: InputRule[];
+  /** 선언한 스크립트의 내용 (파일 경로 → 내용). 스킬 폴더에서 읽었을 때만 있다 */
+  scriptSources: Record<string, string>;
 }
 
 export type SkillInputs = Record<string, string | number>;
 
-/** SKILL.md 원문을 선언부(YAML)와 본문으로 나눠 검증한다. policy.yaml이 있으면 입력값 규칙으로 읽는다. */
-export function parseSkill(source: string, policySource?: string): Skill {
+/**
+ * SKILL.md 원문을 선언부(YAML)와 본문으로 나눠 검증한다. policy.yaml이 있으면 입력값 규칙으로 읽는다.
+ * files는 스킬 폴더의 다른 파일 (경로 → 내용, 예: "scripts/merge.mjs"). 선언한 스크립트의 내용으로 쓴다.
+ */
+export function parseSkill(source: string, policySource?: string, files: Record<string, string> = {}): Skill {
   source = source.replace(/\r\n/g, '\n');
   const m =/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/.exec(source.replace(/^﻿/, ''));
   if (!m) throw new Error('스킬 선언부(--- 로 감싼 YAML)를 찾을 수 없습니다');
@@ -94,6 +102,13 @@ export function parseSkill(source: string, policySource?: string): Skill {
   for (const s of parsed.data.submit_steps) {
     if (s > steps.length) throw new Error(`submit_steps의 ${s}번 단계가 본문에 없습니다`);
   }
+  const names = new Set<string>();
+  for (const s of parsed.data.scripts) {
+    if (names.has(s.name)) throw new Error(`스크립트 이름 "${s.name}"이(가) 겹칩니다`);
+    names.add(s.name);
+  }
+  const scriptSources: Record<string, string> = {};
+  for (const s of parsed.data.scripts) if (s.file in files) scriptSources[s.file] = files[s.file];
   let rules: InputRule[] = [];
   if (policySource) {
     const policy = PolicyFile.safeParse(parseYaml(policySource));
@@ -104,7 +119,7 @@ export function parseSkill(source: string, policySource?: string): Skill {
       if (!names.has(r.field)) throw new Error(`policy.yaml의 field "${r.field}"는 스킬 입력에 없습니다`);
     }
   }
-  return { ...parsed.data, body, steps, rules };
+  return { ...parsed.data, body, steps, rules, scriptSources };
 }
 
 /** "## 단계" 절의 번호 항목을 꺼낸다. 각 항목에는 딸린 줄(확인 조건 등)이 함께 들어간다. */

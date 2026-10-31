@@ -7,6 +7,7 @@ import { parseSkill, type Skill } from '../../src/core';
  * - 개인: ~/.dogent/skills/<id>/SKILL.md  (자유 요청을 저장한 것, 받은 것)
  * - 팀:   사내 GitHub Enterprise의 dogent-skills 저장소를 받아 둔 폴더 (skills/<id>/SKILL.md)
  * - 기본: 클라이언트에 넣은 것
+ * 스킬 폴더의 scripts/ 아래 파일은 스킬의 스크립트로 함께 읽는다 (run_script).
  */
 export type SkillSource = '개인' | '팀' | '기본';
 
@@ -18,9 +19,23 @@ export interface SkillEntry {
 }
 
 const ORDER: SkillSource[] = ['개인', '팀', '기본'];
+const SCRIPT_FILE = /\.(mjs|js|py)$/;
+
+type Found = { path: string; source: string; policy?: string; files: Record<string, string> };
+
+/** 스킬 폴더의 scripts/ 아래 파일 (키는 "scripts/<이름>") */
+export function readScripts(skillDir: string): Record<string, string> {
+  const dir = join(skillDir, 'scripts');
+  if (!existsSync(dir)) return {};
+  return Object.fromEntries(
+    readdirSync(dir, { withFileTypes: true })
+      .filter((f) => f.isFile() && SCRIPT_FILE.test(f.name))
+      .map((f) => [`scripts/${f.name}`, readFileSync(join(dir, f.name), 'utf8')]),
+  );
+}
 
 /** 폴더 아래의 <id>/SKILL.md를 모두 읽는다. 팀 저장소처럼 skills/ 아래에 있으면 그쪽을 본다. */
-function readFolder(dir: string): { path: string; source: string; policy?: string }[] {
+function readFolder(dir: string): Found[] {
   if (!existsSync(dir)) return [];
   const root = existsSync(join(dir, 'skills')) ? join(dir, 'skills') : dir;
   return readdirSync(root, { withFileTypes: true })
@@ -28,7 +43,12 @@ function readFolder(dir: string): { path: string; source: string; policy?: strin
     .map((d) => {
       const path = join(root, d.name, 'SKILL.md');
       const policyFile = join(root, d.name, 'policy.yaml');
-      return { path, source: readFileSync(path, 'utf8'), ...(existsSync(policyFile) ? { policy: readFileSync(policyFile, 'utf8') } : {}) };
+      return {
+        path,
+        source: readFileSync(path, 'utf8'),
+        ...(existsSync(policyFile) ? { policy: readFileSync(policyFile, 'utf8') } : {}),
+        files: readScripts(join(root, d.name)),
+      };
     });
 }
 
@@ -39,10 +59,10 @@ export function loadSkills(
 ): { skills: SkillEntry[]; errors: string[] } {
   const errors: string[] = [];
   const found: SkillEntry[] = [];
-  const add = (source: SkillSource, files: { path: string; source: string; policy?: string }[], shown: (p: string) => string) => {
+  const add = (source: SkillSource, files: Found[], shown: (p: string) => string) => {
     for (const f of files) {
       try {
-        found.push({ skill: parseSkill(f.source, f.policy), source, path: f.path });
+        found.push({ skill: parseSkill(f.source, f.policy, f.files), source, path: f.path });
       } catch (e) {
         errors.push(`${source} 스킬 ${shown(f.path)}: ${(e as Error).message}`);
       }
@@ -51,9 +71,18 @@ export function loadSkills(
   add('개인', readFolder(dirs.personal), (p) => p);
   if (dirs.team) add('팀', readFolder(dirs.team), (p) => p);
   if (dirs.teamCache) add('팀', readFolder(dirs.teamCache), (p) => p);
+  // 기본 스킬의 키: <id>/SKILL.md, <id>/policy.yaml, <id>/scripts/<이름>
   const builtIn = Object.entries(bundled)
     .filter(([p]) => p.endsWith('SKILL.md'))
-    .map(([p, source]) => ({ path: p, source, policy: bundled[p.replace(/SKILL\.md$/, 'policy.yaml')] }));
+    .map(([p, source]) => {
+      const dir = p.replace(/SKILL\.md$/, '');
+      const files = Object.fromEntries(
+        Object.entries(bundled)
+          .filter(([k]) => k.startsWith(`${dir}scripts/`))
+          .map(([k, v]) => [k.slice(dir.length), v]),
+      );
+      return { path: p, source, policy: bundled[`${dir}policy.yaml`], files };
+    });
   add(
     '기본',
     builtIn.map((b) => ({ ...b, path: '' })),

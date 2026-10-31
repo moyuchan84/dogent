@@ -30,6 +30,8 @@ export const SkillIndex = z.object({
       sha256: z.string().optional(),
       policy: relativePath.optional(),
       policy_sha256: z.string().optional(),
+      /** 스킬에 딸린 스크립트 (<id>/scripts/<이름>). 해시를 적으면 대조한다 */
+      files: z.array(z.object({ path: relativePath, sha256: z.string().optional() })).default([]),
     }),
   ),
 });
@@ -41,6 +43,8 @@ export interface SharedSkill {
   version: string;
   source: string;
   policy?: string;
+  /** 스킬에 딸린 스크립트 (scripts/<이름> → 내용) */
+  files?: Record<string, string>;
 }
 
 export interface SyncResult {
@@ -87,11 +91,18 @@ export async function syncSkills(indexUrl: string, ports: SyncPorts): Promise<Sy
       seen.add(entry.id);
       const source = await get(entry.path, entry.sha256);
       const policy = entry.policy ? await get(entry.policy, entry.policy_sha256) : undefined;
-      const report = lintSkill(source, policy);
+      // 스크립트는 목록에 적힌 것만 받는다. 키는 스킬 폴더 기준 경로 (scripts/<이름>)
+      const files: Record<string, string> = {};
+      for (const f of entry.files) {
+        const key = /(?:^|\/)(scripts\/[^/]+)$/.exec(f.path)?.[1];
+        if (!key) throw new Error(`${f.path}: 스킬 폴더의 scripts/ 아래 파일만 받습니다`);
+        files[key] = await get(f.path, f.sha256);
+      }
+      const report = lintSkill(source, policy, files);
       const failed = report.findings.filter((f) => f.level === 'error');
       if (failed.length > 0 || !report.skill) throw new Error(failed.map((f) => f.message).join(' / '));
       if (report.skill.id !== entry.id) throw new Error(`파일의 id는 "${report.skill.id}"입니다`);
-      skills.push({ id: entry.id, version: report.skill.version, source, policy });
+      skills.push({ id: entry.id, version: report.skill.version, source, policy, ...(entry.files.length ? { files } : {}) });
     } catch (e) {
       errors.push(`${entry.id}: ${(e as Error).message}`);
     }

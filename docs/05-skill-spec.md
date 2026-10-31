@@ -13,6 +13,8 @@ skills/
   firewall-request/
     SKILL.md          # 스킬 본문 (필수)
     policy.yaml       # 입력값 규칙 (선택)
+    scripts/          # 스크립트 (선택, 4.6절)
+      merge.mjs
 ```
 
 `skills/<id>/`에 넣고 빌드하면 사이드 패널의 스킬 목록에 나타납니다. 형식이 잘못되면 패널 상단에 오류가 표시되고 그 스킬은 목록에서 빠집니다.
@@ -36,6 +38,7 @@ skills/
 | `submit_labels` |  | 승인 후 누를 수 있는 버튼 이름. 적으면 그 버튼만 가능 (예: `[상신]`이면 "임시 저장"은 차단) |
 | `schedulable` |  | 스케줄 실행 허용 여부 (Phase 3) |
 | `limits` |  | `max_steps` (기본 40), `timeout_sec` (기본 300) |
+| `scripts` |  | 스킬에 딸린 스크립트. `name`, `file`(`scripts/` 아래 .mjs·.js·.py), `description`, `network`(기본 false), `timeout_sec`(기본 60, 최대 300). 4.6절 |
 
 ### 입력 항목
 
@@ -189,6 +192,8 @@ skills/
 | `fill_table` | `ref`, `dataset`, `add_ref` | 입력 칸이 있는 표의 빈 행에 데이터셋을 통째로 채운다. 입력 칸 없는 그리드는 붙여 넣는다 (4.1절). `risk`가 R2 이상인 스킬만 가능 |
 | `transform` | `source`, `target`, `steps` | `filter`, `group`, `sort`, `select`, `limit` |
 | `write_excel` | `filename`, `sheets` | 새 엑셀 파일을 결과 폴더에 저장 |
+| `write_html` | `filename`, `title`, `content`, `datasets`, `charts` | 인터랙티브 HTML 보고서(검색·정렬되는 표, 막대·꺾은선 차트)를 결과 폴더에 저장 |
+| `run_script` | `script`, `datasets`, `args`, `name` | 선언한 스크립트를 실행한다. 돌려준 표는 데이터셋, 글은 `{out.name}`, 파일은 결과 폴더로 (4.6절). 데스크탑 앱·터미널 클라이언트에서만 |
 | `excel_docs` | | 사용자의 Excel에 열린 문서 목록 (클라이언트 + 오피스 도구가 있을 때) |
 | `excel_read` | `doc`, `dataset`, `sheet`, `range` | 열린 문서(이름) 또는 파일 경로의 시트를 데이터셋으로 읽는다. 문서 보안 문서도 사용자의 Excel로 읽는다 |
 | `excel_write` | `doc`, `dataset`, `sheet`, `start` | 데이터셋을 문서의 시트에 쓴다 (저장은 안 함). **R3 스킬 또는 저장·상신 허용일 때만**, 쓰기 전에 사용자 허락을 받는다. 시험 실행이면 쓰기 직전에 멈춘다 |
@@ -308,6 +313,38 @@ skills/
 - 저장한 동작이 지금 화면에서 통하지 않으면(요소가 없어짐, 동작 실패) 그 단계는 모델이 다시 맡고, 새로 찾은 경로로 바꿔 저장합니다.
 - 단계를 넘길지(`next_step`), 끝맺는 말(`finish`), 질문은 저장하지 않습니다. 검사가 없는 단계는 넘길 때마다 모델을 한 번 부릅니다. 검사를 적어 두면 모델 없이 넘어갑니다.
 - 스킬의 버전이나 본문이 바뀌면 예전 경로는 쓰지 않습니다. 설정에서 끄거나 지울 수 있습니다.
+
+### 4.6 스크립트 (`run_script`)
+
+`transform`(필터·집계·정렬)으로 못 하는 가공 — 여러 표를 키로 합치기, 정규식으로 글에서 값 뽑기, 날짜 계산, 통계, 복잡한 판정 — 은 스킬 폴더의 스크립트로 합니다. 말로 스킬 만들기에서 필요하면 모델이 스크립트까지 써서 초안에 넣습니다(`보기`로 내용 확인).
+
+```yaml
+scripts:
+  - name: merge
+    file: scripts/merge.mjs
+    description: 재공 표와 HOLD 표를 LOT으로 합쳐 merged 표를 돌려준다
+```
+
+```markdown
+3. run_script로 두 표를 합친다. args는 다음을 그대로 쓴다.
+   `{"script":"merge","datasets":["wip","hold"],"args":{"key":"LOT"},"name":"note"}`
+   - 검사: did("run_script")
+```
+
+주고받기는 표준 입출력의 JSON 한 덩이입니다.
+
+- 입력: `{"args": {...}, "datasets": {"wip": {"columns": [...], "rows": [[...]]}}}`
+- 출력: `{"datasets": {"merged": {"columns", "rows"}}, "text": "보고에 넣을 글", "files": [{"name": "결과.csv", "text": "..."}]}` (모두 선택). 앞에 로그를 찍어도 되고, 마지막 JSON 줄을 결과로 읽습니다. 실패하면 0이 아닌 코드로 끝내고 이유를 표준 오류에 씁니다(모델이 그 끝부분을 봅니다)
+
+통제
+
+- 선언한 스크립트만, 스킬 폴더에 있는 내용 그대로 실행합니다. 모델이 실행 중에 코드를 지어 돌리지 않습니다.
+- **처음 실행할 때와 내용이 바뀌었을 때** 코드(앞 40줄)·실행 방식·네트워크 선언을 보여 주고 승인을 받습니다. 승인은 내용의 해시로 `~/.dogent/scripts/approved.json`에 남고, 한 글자라도 바뀌면 다시 묻습니다. 거절하면 실행을 멈춥니다.
+- **Node(.mjs)**: 앱의 Node를 권한 모드(`--permission`)로 띄웁니다. 스크립트 파일 하나만 읽을 수 있고 파일 읽기·쓰기, 다른 프로그램 실행, 워커가 막힙니다. 네트워크는 막지 못하므로 쓰면 `network: true`로 선언합니다(품질 검사가 선언 없는 네트워크 사용을 경고합니다). 데스크탑 앱은 Electron의 Node를 쓰므로 PC에 Node가 없어도 됩니다.
+- **Python(.py)**: 설치된 Python 3을 `-I`(격리 모드)로 띄웁니다. 권한을 막을 방법이 없어 PC 권한 그대로 돕니다. 품질 검사가 경고하고, 승인 창에도 그렇게 적습니다. 되도록 Node로 씁니다.
+- 빈 임시 폴더에서 실행하고, 환경 변수 중 KEY·TOKEN·SECRET·PASSWORD가 든 것은 넘기지 않습니다. 시간 제한(기본 60초)과 출력 크기 제한(20MB)이 있고, 중지하면 끊습니다.
+- 확장(사이드 패널)은 프로그램을 실행할 수 없어 `run_script`가 실패합니다. 데스크탑 앱이나 터미널 클라이언트에서 실행합니다.
+- 팀 저장소(index.json)로 나눌 때는 `pnpm skill:index`가 `files`에 스크립트와 해시를 적습니다. 목록에 없는 스크립트는 받지 않고, 해시가 다르면 그 스킬을 쓰지 않습니다.
 
 ## 5. 저장·상신 (R3)
 

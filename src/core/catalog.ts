@@ -107,6 +107,25 @@ function score(d: SkillDoc, words: string[], grams: Set<string>): number {
   return total;
 }
 
+/** 이 PC 안의 주소 (목업 사이트 pnpm mock:site 등) */
+const LOCAL_HOST = /^(localhost|127(?:\.\d{1,3}){3}|\[::1\])(:\d+)?$/i;
+
+/** 주소(또는 domains의 한 줄)가 이 PC 안의 시험용 사이트인지 */
+export function isLocalSite(entry: string): boolean {
+  const host = entry.trim().replace(/^[a-z][a-z0-9+.-]*:\/\//i, '').split('/')[0];
+  return LOCAL_HOST.test(host);
+}
+
+/**
+ * 시험용 예시 스킬인지: 다루는 사이트가 모두 이 PC 안(localhost)이거나 태그에 "예시"가 있다.
+ * 목업 사이트용 스킬을 개인·팀 폴더에 복사해 두었어도 업무 목록에 섞이지 않게 앱이 따로 둔다.
+ */
+export function isSampleSkill(d: SkillDoc): boolean {
+  if ((d.tags ?? []).includes('예시')) return true;
+  const domains = (d.domains ?? []).filter((x) => x !== '*');
+  return domains.length > 0 && domains.every(isLocalSite);
+}
+
 /** 지금 화면 주소가 스킬이 다루는 사이트인지 */
 export function skillCoversUrl(d: SkillDoc, url: string | undefined): boolean {
   if (!url || !d.domains?.length) return false;

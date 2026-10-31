@@ -16,7 +16,7 @@ import {
   type Skill,
 } from '../../src/core';
 import type { Ui } from './session';
-import type { SkillEntry } from './skills';
+import { readScripts, type SkillEntry } from './skills';
 
 /**
  * 말로 스킬 만들기 (dogent skill new, 앱의 "스킬 만들기").
@@ -65,6 +65,10 @@ export function describeDraft(d: ComposeDraft): string {
       const head = stripCheckLines(s).split('\n')[0].replace(/\. args는 다음을 그대로 쓴다\..*$/, '');
       out.push(`    ${k + 1}. ${head}${check ? `\n       확인: ${check}` : ''}`);
     });
+    if (skill.scripts.length) {
+      out.push('  스크립트 ("보기"로 내용 확인):');
+      for (const s of skill.scripts) out.push(`    ${s.file} — ${s.description}${s.network ? ' (네트워크 씀)' : ''}`);
+    }
   }
   out.push(...describeFindings(d.report).map((l) => `  ${l}`));
   for (const n of d.notes) out.push(`  참고: ${n}`);
@@ -112,6 +116,7 @@ export async function composeFlow(deps: ComposeDeps, request?: string): Promise<
     }
     if (line === '보기') {
       ui.print(`\n${draft.source}`);
+      for (const [path, text] of Object.entries(draft.files)) ui.print(`\n----- ${path} -----\n${text}`);
       continue;
     }
     if (line === '시험') {
@@ -144,6 +149,15 @@ export async function composeFlow(deps: ComposeDeps, request?: string): Promise<
   }
 }
 
+/** 스킬 폴더에 딸린 파일(scripts/<이름>)을 쓴다 */
+function writeFiles(dir: string, files: Record<string, string>) {
+  for (const [path, text] of Object.entries(files)) {
+    if (!/^scripts\/[A-Za-z0-9_.-]+$/.test(path)) continue;
+    mkdirSync(join(dir, 'scripts'), { recursive: true });
+    writeFileSync(join(dir, path), text);
+  }
+}
+
 async function save(deps: ComposeDeps, draft: ComposeDraft): Promise<string | null> {
   const { ui } = deps;
   let owner = deps.owner ?? '';
@@ -171,7 +185,8 @@ async function save(deps: ComposeDeps, draft: ComposeDraft): Promise<string | nu
   mkdirSync(dir, { recursive: true });
   const file = join(dir, 'SKILL.md');
   writeFileSync(file, final.source);
-  ui.print(`\n저장했습니다: ${file}\n  등급 ${final.report.grade}. 쓸수록 성공한 동작을 기억해 빨라집니다. 팀에 나누려면 팀 스킬 저장소에 PR로 올리세요.`);
+  writeFiles(dir, final.files);
+  ui.print(`\n저장했습니다: ${file}${Object.keys(final.files).length ? `\n  스크립트: ${Object.keys(final.files).join(', ')} (처음 실행할 때 내용을 보여 주고 승인을 받습니다)` : ''}\n  등급 ${final.report.grade}. 쓸수록 성공한 동작을 기억해 빨라집니다. 팀에 나누려면 팀 스킬 저장소에 PR로 올리세요.`);
   return file;
 }
 
@@ -191,6 +206,8 @@ export async function editSkill(ui: Ui, entry: SkillEntry, personalDir: string, 
         const policy = join(dirname(file), 'policy.yaml');
         if (existsSync(policy)) copyFileSync(policy, join(dirname(target), 'policy.yaml'));
       } else writeFileSync(target, bundledSource ?? '');
+      // 딸린 스크립트도 함께 옮긴다
+      writeFiles(dirname(target), entry.skill.scriptSources);
     }
     file = target;
   }
@@ -203,7 +220,7 @@ export async function editSkill(ui: Ui, entry: SkillEntry, personalDir: string, 
     child.on('error', (e) => (ui.print(`편집기를 열지 못했습니다: ${e.message}`), resolve()));
   });
   const policyFile = join(dirname(file), 'policy.yaml');
-  const report = lintSkill(readFileSync(file, 'utf8'), existsSync(policyFile) ? readFileSync(policyFile, 'utf8') : undefined);
+  const report = lintSkill(readFileSync(file, 'utf8'), existsSync(policyFile) ? readFileSync(policyFile, 'utf8') : undefined, readScripts(dirname(file)));
   ui.print(describeFindings(report).join('\n'));
   return file;
 }

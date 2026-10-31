@@ -11,6 +11,7 @@ import { buildSummarizeMessages, buildTurnMessages } from './prompt';
 import { checkInputRules, extractSteps, fillTemplate, fillValue, type Skill, type SkillInputs } from './skill';
 import { buildHtmlReport, checkReport } from './html-report';
 import { tableMarkdown } from './markdown';
+import { approvalText, parseScriptOutput, SCRIPT_OUTPUT_MAX, scriptHash, scriptLang, toCell, type ScriptPort } from './script';
 import { findInSnapshot, renderSnapshot } from './snapshot';
 import { listForPrompt, prepareChild, summarizeChild } from './subagent';
 import { transform } from './transform';
@@ -45,6 +46,8 @@ export interface RunDeps {
   office?: OfficePort;
   /** 외부 도구(MCP 서버)를 부르는 통로. 주면 call_tool을 쓸 수 있다. */
   tools?: ToolPort;
+  /** 스킬에 딸린 스크립트를 실행하는 통로. 주면 run_script를 쓸 수 있다 (데스크탑 앱·터미널 클라이언트). */
+  scripts?: ScriptPort;
   /** 다른 스킬을 부르는 통로. 주면 run_skill을 쓸 수 있다. */
   skills?: SkillCatalogPort;
   /** run_skill로 불린 스킬이면 1. 불린 스킬 안에서는 다시 부를 수 없다. */
@@ -516,6 +519,62 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps, memo: PathM
         }
         const note = dataset ? '\n(결과가 JSON 표(객체 배열)가 아니라 데이터셋에 담지 못했습니다)' : '';
         return { ok: true, result: (clipText(r.text, READ_TEXT_MAX) || '(결과가 비어 있습니다)') + note };
+      }
+      case 'run_script': {
+        const decl = skill.scripts.find((s) => s.name === action.args.script);
+        if (!decl) {
+          return { ok: false, result: `스크립트 "${action.args.script}"은(는) 이 스킬에 없습니다. 있는 스크립트: ${skill.scripts.map((s) => s.name).join(', ') || '(없음)'}` };
+        }
+        const port = deps.scripts;
+        if (!port) return { ok: false, result: '이 환경에서는 스크립트를 실행할 수 없습니다. 데스크탑 앱이나 터미널 클라이언트에서 실행하세요' };
+        const code = skill.scriptSources[decl.file];
+        if (code === undefined) return { ok: false, result: `스킬 폴더에 ${decl.file}이(가) 없습니다` };
+        const lang = scriptLang(decl.file);
+        const hash = await scriptHash(skill.id, decl.file, code);
+        if (!(await port.approved(hash))) {
+          // 사람이 코드를 읽는 동안은 실행 시간에 넣지 않는다
+          const since = Date.now();
+          const ok = !!ui.confirm && (await ui.confirm(approvalText(skill.id, decl, code, port.sandbox(lang), hash)));
+          waited += Date.now() - since;
+          if (!ok) return { ok: false, result: `사용자가 스크립트 ${decl.file} 실행을 허락하지 않았습니다`, end: 'aborted' };
+          await port.remember(hash, { skill: skill.id, file: decl.file });
+        }
+        const input = JSON.stringify({
+          args: action.args.args,
+          datasets: Object.fromEntries(action.args.datasets.map((n) => {
+            const ds = datasets.get(n);
+            return [ds.name, { columns: ds.columns, rows: ds.rows }];
+          })),
+        });
+        const run = await port.run({ skill: skill.id, name: decl.name, file: decl.file, lang, code, input, timeoutMs: decl.timeout_sec * 1000, signal });
+        const tail = (s: string) => clipText(s.trim().split(/\r?\n/).slice(-15).join('\n'), 1500);
+        if (run.timedOut) return { ok: false, result: `스크립트 ${decl.file}이(가) ${decl.timeout_sec}초 안에 끝나지 않아 멈췄습니다` };
+        if (run.code !== 0) return { ok: false, result: `스크립트 ${decl.file}이(가) 실패했습니다 (종료 코드 ${run.code}): ${tail(run.stderr) || tail(run.stdout) || '(출력 없음)'}` };
+        if (run.stdout.length > SCRIPT_OUTPUT_MAX) return { ok: false, result: `스크립트 출력이 너무 큽니다 (${run.stdout.length}자)` };
+        let out;
+        try {
+          out = parseScriptOutput(run.stdout);
+        } catch (e) {
+          return { ok: false, result: (e as Error).message };
+        }
+        const made: string[] = [];
+        for (const [name, t] of Object.entries(out.datasets)) {
+          const ds = datasets.set(name, t.columns, t.rows.map((r) => r.map(toCell)));
+          made.push(`"${ds.name}" ${ds.rows.length}행, 컬럼 ${JSON.stringify(ds.columns)}`);
+        }
+        for (const f of out.files) {
+          const filename = f.name.replace(/[\\/:*?"<>|]/g, '_');
+          const data = 'text' in f ? (new TextEncoder().encode(f.text).buffer as ArrayBuffer) : (Uint8Array.from(atob(f.base64), (c) => c.charCodeAt(0)).buffer as ArrayBuffer);
+          await files.save(filename, data);
+          savedFiles.push(filename);
+        }
+        if (out.text !== undefined) outputs[action.args.name] = out.text;
+        const parts = [
+          ...(made.length ? [`데이터셋 ${made.join(' / ')}`] : []),
+          ...(out.files.length ? [`파일 ${out.files.map((f) => f.name).join(', ')} 저장`] : []),
+          ...(out.text !== undefined ? [`글을 {out.${action.args.name}}에 남김: ${clipText(out.text, 300)}`] : []),
+        ];
+        return { ok: true, result: `스크립트 ${decl.name} 완료. ${parts.join('. ') || '돌려준 것이 없습니다'}` };
       }
       case 'run_skill': {
         const prep = prepareChild(action.args, {

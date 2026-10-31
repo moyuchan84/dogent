@@ -2,7 +2,7 @@
 //
 //   pnpm skill:index [폴더]        기본은 skills
 //
-// 폴더 안의 <id>/SKILL.md (와 policy.yaml)를 찾아 해시와 함께 적는다. 스킬을 고치거나 더한 뒤 다시 실행해
+// 폴더 안의 <id>/SKILL.md (와 policy.yaml, scripts/*)를 찾아 해시와 함께 적는다. 스킬을 고치거나 더한 뒤 다시 실행해
 // index.json을 함께 올린다. 확장은 이 목록에 적힌 파일만 읽고, 해시가 다르면 쓰지 않는다.
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
@@ -32,6 +32,14 @@ for (const entry of readdirSync(dir, { withFileTypes: true })) {
   if (existsSync(policyFile)) {
     item.policy = `${entry.name}/policy.yaml`;
     item.policy_sha256 = hash(policyFile);
+  }
+  // 스킬에 딸린 스크립트 (run_script)
+  const scriptDir = join(dir, entry.name, 'scripts');
+  if (existsSync(scriptDir)) {
+    const files = readdirSync(scriptDir, { withFileTypes: true })
+      .filter((f) => f.isFile() && /\.(mjs|js|py)$/.test(f.name))
+      .map((f) => ({ path: `${entry.name}/scripts/${f.name}`, sha256: hash(join(scriptDir, f.name)) }));
+    if (files.length) item.files = files;
   }
   skills.push(item);
 }

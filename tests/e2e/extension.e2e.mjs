@@ -24,6 +24,8 @@ import { createOllamaProxy } from '../../tools/ollama-proxy.mjs';
 
 const ROOT = join(import.meta.dirname, '../..');
 const EXT = join(ROOT, '.output/chrome-mv3');
+// 기본 빌드는 모든 http·https 사이트를 조작한다. 허용 목록으로 막는 시나리오는 WXT_ALL_SITES=false 로 빌드했을 때만 본다
+const ALL_SITES = JSON.parse(await readFile(join(EXT, 'manifest.json'), 'utf8')).host_permissions.includes('http://*/*');
 const SITE = 'http://localhost:4173';
 const OLLAMA = process.argv.includes('--ollama');
 const MODEL = process.env.OLLAMA_MODEL ?? 'llama3';
@@ -550,6 +552,7 @@ try {
   });
 
   await scenario('화면 점검: 허용 목록 밖의 화면은 막힘과 넣어야 할 주소를 알려 줌', async () => {
+    if (ALL_SITES) return '모든 사이트 빌드라 건너뜀 (WXT_ALL_SITES=false 로 빌드하면 봄)';
     // 같은 모의 사이트라도 127.0.0.1은 허용 목록(localhost:4173)에 없다.
     const target = await context.newPage();
     await target.goto('http://127.0.0.1:4173/wip.html');
@@ -577,6 +580,7 @@ try {
   });
 
   await scenario('연결 시험: 권한이 없는 모델 주소는 원인과 허용 버튼을 보여 줌', async (openPages) => {
+    if (ALL_SITES) return '모든 사이트 빌드라 건너뜀 (모델 주소도 권한 안에 있음)';
     const { panel } = await openPages('/wip.html');
     await panel.click('#open-settings');
     // 127.0.0.1:4173은 확장 권한이 없고 CORS도 답하지 않는다. 엣지에서 사이트 액세스가 막힌 경우와 같은 증상이다.
@@ -669,7 +673,8 @@ try {
     const want = generateWip('7라인').filter((row) => row[1].includes('NV2-1T')).length;
     check(r, () => {
       assert.equal(r.status, 'done');
-      assert.match(r.text, new RegExp(`- ${want}행`));
+      // 보고는 마크다운이라 "- 34행"이 목록으로 그려져 화면 글에는 "34행"만 남는다
+      assert.match(r.text, new RegExp(`(^|\\n)${want}행`));
     });
     return `${r.sec}초`;
   });

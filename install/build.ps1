@@ -13,6 +13,7 @@
   -Install     다 만든 뒤 이 PC에 바로 설치한다 (묶음의 install.ps1)
   -Reinstall   node_modules가 있어도 pnpm install을 다시 한다
   -Test        빌드 전에 typecheck와 단위 시험을 돌린다
+  -Update      -Install과 함께: 묻지 않는 업데이트로 설치한다 (update.cmd가 쓴다)
 
   회사 모드로 만든 묶음에는 API 키가 들어간다. 저장소·메일·메신저로 옮기지 않고 사내에서만 나눈다.
 #>
@@ -23,7 +24,8 @@ param(
   [switch]$Zip,
   [switch]$Install,
   [switch]$Reinstall,
-  [switch]$Test
+  [switch]$Test,
+  [switch]$Update
 )
 
 $ErrorActionPreference = 'Stop'
@@ -89,10 +91,16 @@ if ($Mode -ne 'dev') {
   Ok "빌드 설정 $envFile"
 }
 
-if ($Reinstall -or -not (Test-Path node_modules)) {
+# pnpm-lock.yaml이 마지막으로 설치한 때와 달라졌으면(받은 코드에 새 의존성이 있으면) 다시 설치한다
+$lockHash = (Get-FileHash pnpm-lock.yaml -Algorithm SHA256).Hash
+$lockMark = 'node_modules\.dogent-lock'
+$lockChanged = (Test-Path node_modules) -and ((-not (Test-Path $lockMark)) -or ((Get-Content -Raw $lockMark).Trim() -ne $lockHash))
+if ($lockChanged -and -not $Reinstall) { Warn 'pnpm-lock.yaml이 바뀌어 의존성을 다시 설치합니다' }
+if ($Reinstall -or $lockChanged -or -not (Test-Path node_modules)) {
   Step '의존성 설치 (pnpm install)'
   if ($env:ELECTRON_MIRROR) { Ok "Electron 미러: $env:ELECTRON_MIRROR" }
   Run 'pnpm install' @('pnpm', 'install')
+  Set-Content -Encoding ASCII $lockMark $lockHash
 } else {
   Ok 'node_modules 있음 (다시 받으려면 -Reinstall)'
 }
@@ -190,7 +198,7 @@ if ($Mode -eq 'company') { Warn '회사 모드 묶음에는 API 키가 들어 �
 Write-Host ''
 Write-Host '완료했습니다.' -ForegroundColor Green
 if ($Install) {
-  & (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe') -NoProfile -ExecutionPolicy Bypass -File (Join-Path $pkg 'install.ps1')
+  & (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe') -NoProfile -ExecutionPolicy Bypass -File (Join-Path $pkg 'install.ps1') @(if ($Update) { '-Update' })
   exit $LASTEXITCODE
 }
 Write-Host "이 PC에 설치하려면: release\$name\install.cmd"

@@ -1,6 +1,7 @@
 import { TOOL_ARGS, directParts, type ToolName } from './actions';
 import { stepCaptures, stepCheck } from './check';
 import { SUBMIT_PATTERN, downloadBlocked, hostAllowed } from './policy';
+import { scriptLang } from './script';
 import { parseSkill, type Skill } from './skill';
 
 /**
@@ -51,10 +52,11 @@ function report(findings: Finding[], direct: { count: number; total: number }, s
   };
 }
 
-export function lintSkill(source: string, policySource?: string): LintReport {
+/** files는 스킬 폴더의 다른 파일 (경로 → 내용). 주면 선언한 스크립트가 실제로 있는지도 본다 */
+export function lintSkill(source: string, policySource?: string, files?: Record<string, string>): LintReport {
   let skill: Skill;
   try {
-    skill = parseSkill(source, policySource);
+    skill = parseSkill(source, policySource, files);
   } catch (e) {
     return report([{ level: 'error', rule: 'E01', message: (e as Error).message }], { count: 0, total: 0 });
   }
@@ -146,6 +148,13 @@ export function lintSkill(source: string, policySource?: string): LintReport {
         if (blocked) error('E04', `${blocked}. 저장·상신은 click 단계로 적고 R3로 선언하세요`, n);
       }
       if (tool === 'run_skill') unknownDatasets = true;
+      if (tool === 'run_script') {
+        if (!skill.scripts.some((s) => s.name === args.script)) error('E07', `스크립트 "${args.script}"을(를) 선언부의 scripts에 적지 않았습니다`, n);
+        for (const d of args.datasets ?? []) needDataset(d, n);
+        // 스크립트가 돌려주는 데이터셋은 이름을 미리 알 수 없다
+        unknownDatasets = true;
+        outputs.add(args.name ?? 'script');
+      }
       if (tool === 'transform') needDataset(args.source, n);
       if (tool === 'fill_table') needDataset(args.dataset, n);
       if (tool === 'write_excel') for (const s of args.sheets) needDataset(s.dataset, n);
@@ -193,6 +202,14 @@ export function lintSkill(source: string, policySource?: string): LintReport {
   }
   if (!/^##\s*예외\s*$/m.test(skill.body)) {
     warn('W08', '"## 예외" 절이 없습니다. 오류 메시지가 나오거나 결과가 없을 때 어떻게 할지 적으세요');
+  }
+  for (const s of skill.scripts) {
+    const code = skill.scriptSources[s.file];
+    if (files && code === undefined) error('E07', `스크립트 ${s.file}이(가) 스킬 폴더에 없습니다`);
+    if (scriptLang(s.file) === 'python') warn('W10', `${s.file}: Python 스크립트는 권한 모드 없이 PC 권한 그대로 돕니다. 되도록 Node(.mjs)로 쓰세요`);
+    if (code !== undefined && !s.network && /\b(fetch\s*\(|https?\.request|XMLHttpRequest|WebSocket|urllib|requests\.|http\.client|socket\.)/.test(code)) {
+      warn('W10', `${s.file}이(가) 네트워크를 쓰는 것 같은데 network: true로 선언하지 않았습니다`);
+    }
   }
   if (skill.limits.max_steps < skill.steps.length * 2) {
     warn('W09', `max_steps(${skill.limits.max_steps})가 단계 수(${skill.steps.length})의 2배보다 작아 재시도 여유가 없습니다`);

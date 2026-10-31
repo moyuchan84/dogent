@@ -2,9 +2,19 @@ import { defineConfig } from 'wxt';
 import { EXTENSION_KEY } from './bridge/extension-key.mjs';
 import { dogentConfig } from './dogent.config';
 
+// 빌드마다 다른 표시. 코드와 폴더의 build.json에 함께 넣어, 설치 프로그램이 폴더를 새 판으로 덮어쓰면
+// 확장이 둘이 다른 것을 보고 스스로 다시 읽는다 (src/ext/self-update.ts)
+const BUILD_STAMP = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+
 export default defineConfig({
   modules: ['@wxt-dev/module-react'],
   imports: false,
+  vite: () => ({ define: { __DOGENT_EXT_STAMP__: JSON.stringify(BUILD_STAMP) } }),
+  hooks: {
+    'build:publicAssets': (_wxt, files) => {
+      files.push({ relativeDest: 'build.json', contents: `${JSON.stringify({ stamp: BUILD_STAMP, at: new Date().toISOString() })}\n` });
+    },
+  },
   // 함수로 두어야 .env 파일의 값을 읽은 뒤에 만들어진다.
   manifest: ({ mode, command }) => {
     // 배포 환경의 모델 API 주소(.env.local의 WXT_LLM_BASE_URL)가 있으면 그 호스트도 허용한다.
