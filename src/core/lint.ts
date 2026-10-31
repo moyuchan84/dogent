@@ -149,6 +149,9 @@ export function lintSkill(source: string, policySource?: string): LintReport {
       if (tool === 'transform') needDataset(args.source, n);
       if (tool === 'fill_table') needDataset(args.dataset, n);
       if (tool === 'write_excel') for (const s of args.sheets) needDataset(s.dataset, n);
+      if (tool === 'write_html') {
+        for (const d of [...(args.datasets ?? []), ...(args.charts ?? []).map((c: { dataset: string }) => c.dataset)]) needDataset(d, n);
+      }
       if (tool === 'excel_write') needDataset(args.dataset, n);
       if (tool === 'extract_table' || tool === 'download_table' || tool === 'excel_read') datasets.add(args.dataset);
       if (tool === 'call_tool' && args.dataset) datasets.add(args.dataset);

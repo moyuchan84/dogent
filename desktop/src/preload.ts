@@ -15,6 +15,7 @@ const api: DogentApi = {
   selectBrowser: (which) => ipcRenderer.invoke('dogent:select-browser', which),
   excelDocs: () => ipcRenderer.invoke('dogent:excel-docs'),
   show: (path) => ipcRenderer.invoke('dogent:show', path),
+  open: (path) => ipcRenderer.invoke('dogent:open', path),
   options: (patch) => ipcRenderer.invoke('dogent:options', patch),
   token: () => ipcRenderer.invoke('dogent:token'),
   extension: (register) => ipcRenderer.invoke('dogent:extension', register),

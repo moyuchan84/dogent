@@ -185,6 +185,11 @@ ipcMain.handle('dogent:browsers', () => session.browsersNow());
 ipcMain.handle('dogent:select-browser', (_e, which: string) => work(() => session.useBrowser(which)));
 ipcMain.handle('dogent:excel-docs', async () => (await session.officeTool()).userWorkbooks());
 ipcMain.handle('dogent:show', (_e, path: string) => shell.showItemInFolder(path));
+// 결과 HTML 보고서를 기본 브라우저로 연다. 다른 종류의 파일은 열지 않는다
+ipcMain.handle('dogent:open', async (_e, path: string) => {
+  if (!/\.html$/i.test(path)) return;
+  await shell.openPath(path);
+});
 ipcMain.handle('dogent:options', (_e, patch: Partial<SessionOptions>) => Object.assign(options, patch));
 ipcMain.handle('dogent:token', () => loadToken());
 ipcMain.handle('dogent:extension', (_e, register?: string) => setupExtensionLink(register?.trim() || undefined));

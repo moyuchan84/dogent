@@ -60,6 +60,30 @@ export const TOOL_ARGS = {
     filename: z.string().min(1),
     sheets: z.array(z.object({ name: z.string().min(1), dataset: z.string().min(1) })).min(1),
   }),
+  /**
+   * 인터랙티브 HTML 보고서를 파일로 저장한다. content는 마크다운({rows.이름}, {out.이름}, {table.이름} 사용 가능).
+   * datasets의 표는 검색·정렬·CSV 내려받기가 되고, charts는 데이터셋 값으로 막대·꺾은선 차트를 그린다.
+   */
+  write_html: z.object({
+    filename: z.string().min(1),
+    title: z.string().min(1),
+    content: z.string().default(''),
+    datasets: z.array(z.string().min(1)).default([]),
+    charts: z
+      .array(
+        z.object({
+          dataset: z.string().min(1),
+          type: z.enum(['bar', 'line']).default('bar'),
+          /** 항목 이름(가로축·막대 이름)이 든 열 */
+          label: z.string().min(1),
+          /** 값이 든 열. 여러 개면 묶어서 그린다 */
+          values: z.array(z.string().min(1)).min(1).max(6),
+          title: z.string().optional(),
+        }),
+      )
+      .max(10)
+      .default([]),
+  }),
   /** 사용자의 Excel에 열려 있는 문서 목록을 다시 본다. */
   excel_docs: z.object({}),
   /** 열린 엑셀 문서(이름) 또는 파일 경로의 시트를 데이터셋으로 읽는다. 첫 행은 열 이름. */
@@ -126,7 +150,7 @@ export type ToolName = keyof typeof TOOL_ARGS;
 
 /** 모델 없이 실행할 수 있는 단계의 첫머리. 예: "select로 ...", "click으로 ..." */
 const DIRECT_STEP =
-  /^(navigate|open_tab|click|close_tab|press_key|scroll|go_back|type|select|extract_table|download_table|fill_table|transform|write_excel|excel_docs|excel_read|excel_write|excel_save|call_tool|run_skill|read_text|summarize|finish)(?:으로|로)\s/;
+  /^(navigate|open_tab|click|close_tab|press_key|scroll|go_back|type|select|extract_table|download_table|fill_table|transform|write_excel|write_html|excel_docs|excel_read|excel_write|excel_save|call_tool|run_skill|read_text|summarize|finish)(?:으로|로)\s/;
 
 /**
  * 단계가 "도구로 ..."로 시작하고 `{...}` 인자가 적혀 있으면 그 도구 이름과 인자 원문을 돌려준다.

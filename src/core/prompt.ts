@@ -43,6 +43,7 @@ export const AGENT_SYSTEM_PROMPT = `당신은 사내 웹 시스템을 조작하�
   {"op":"select","cols":[컬럼]}
   {"op":"limit","n":숫자}
 - write_excel {"filename", "sheets":[{"name","dataset"}]}: 데이터셋을 엑셀 파일로 저장.
+- write_html {"filename", "title", "content", "datasets":[이름], "charts":[{"dataset", "type":"bar"|"line", "label":열, "values":[열], "title"}]}: 인터랙티브 HTML 보고서를 파일로 저장. 사용자가 HTML·웹 페이지·인터랙티브·대시보드 형태로 정리해 달라고 할 때 씁니다. content는 마크다운 본문(결론, 핵심 항목, {out.이름}·{rows.이름}). datasets의 표는 검색·정렬·CSV 내려받기가 되고, charts는 데이터셋 값으로 차트를 그립니다(막대는 앞의 40행). 값은 데이터셋에서 가져오므로 content에 표를 옮겨 적지 않습니다. 그래프로 볼 값은 transform으로 집계해 차트에 씁니다.
 - read_text {"ref"}: 화면(ref를 주면 그 요소)에 보이는 글을 읽습니다. 게시글, 공지, 상세 내용처럼 글이 필요할 때 씁니다.
 - find {"query"}: 화면에서 말에 맞는 요소만 골라 봅니다(예: "검색 버튼", "사번 입력"). 화면이 길어 원하는 요소가 안 보일 때 씁니다. 화면은 바뀌지 않습니다.
 - press_key {"key", "ref"}: 키를 누릅니다. key는 Enter, Escape, Tab, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, PageUp, PageDown, Home, End, Backspace, Space 중 하나입니다. ref가 있으면 그 요소에서 누릅니다. 검색 칸에 입력한 뒤 Enter, 떠 있는 창을 Escape로 닫을 때 씁니다. 조회·저장 버튼이 있으면 키 대신 버튼을 누릅니다.

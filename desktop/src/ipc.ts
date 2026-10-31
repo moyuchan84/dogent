@@ -76,6 +76,8 @@ export interface DogentApi {
   selectBrowser(which: string): Promise<void>;
   excelDocs(): Promise<{ name: string; full_name: string; read_only: boolean }[]>;
   show(path: string): Promise<void>;
+  /** HTML 보고서를 기본 브라우저로 연다 */
+  open(path: string): Promise<void>;
   options(patch: { allowWrite?: boolean; dryRun?: boolean }): Promise<unknown>;
   token(): Promise<string>;
   /** 확장 연결(Native Messaging 등록) 상태. register를 주면 그 확장 ID도 허용해 등록한다. */
