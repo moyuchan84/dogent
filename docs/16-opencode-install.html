@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>opencode 설치 자동화</title>
+<style>
+:root {
+  --bg: #f4f6fa; --paper: #ffffff; --ink: #152033; --muted: #5a6577; --line: #d9dfe8;
+  --accent: #1f5fd6; --accent-soft: #e6eefc; --ok: #1d7a4c; --ok-soft: #e1f3e9;
+  --warn: #8a5a00; --warn-soft: #fff4d6; --risk: #b3261e; --risk-soft: #fbe8e6;
+  --code-bg: #1b2232; --code-fg: #e4e9f2; --code-dim: #8d98ad;
+  --sans: "IBM Plex Sans KR", "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif;
+  --mono: "JetBrains Mono", Consolas, "D2Coding", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f141d; --paper: #171e2a; --ink: #e5eaf2; --muted: #9aa6b8; --line: #2a3445;
+    --accent: #78a6ff; --accent-soft: #1b2944; --ok: #6fd3a0; --ok-soft: #163425;
+    --warn: #f8dc8c; --warn-soft: #3a2e10; --risk: #ff8b80; --risk-soft: #3c1d1a;
+    --code-bg: #0b0f16; --code-fg: #dfe5ef; --code-dim: #7d889c;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f141d; --paper: #171e2a; --ink: #e5eaf2; --muted: #9aa6b8; --line: #2a3445;
+  --accent: #78a6ff; --accent-soft: #1b2944; --ok: #6fd3a0; --ok-soft: #163425;
+  --warn: #f8dc8c; --warn-soft: #3a2e10; --risk: #ff8b80; --risk-soft: #3c1d1a;
+  --code-bg: #0b0f16; --code-fg: #dfe5ef; --code-dim: #7d889c;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.7 var(--sans); }
+a { color: var(--accent); }
+.layout { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 36px; max-width: 1120px; margin: 0 auto; padding: 32px 16px 72px; }
+nav { position: sticky; top: 24px; align-self: start; font-size: 14px; }
+nav .brand { font-weight: 700; font-size: 16px; margin-bottom: 10px; }
+nav ol { list-style: none; margin: 0; padding: 0; }
+nav a { display: block; padding: 4px 10px; border-radius: 6px; color: var(--muted); text-decoration: none; }
+nav a:hover { background: var(--accent-soft); color: var(--accent); }
+nav .group { margin: 14px 0 4px 10px; font-size: 12px; font-weight: 700; color: var(--muted); letter-spacing: .04em; }
+main { min-width: 0; }
+h1 { font-size: 28px; margin: 0 0 6px; line-height: 1.3; }
+h2 { font-size: 21px; margin: 48px 0 12px; padding-top: 8px; scroll-margin-top: 16px; }
+h3 { font-size: 16px; margin: 22px 0 6px; }
+p { margin: 6px 0; }
+.sub { color: var(--muted); }
+code { font-family: var(--mono); font-size: 0.88em; background: var(--accent-soft); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
+pre { background: var(--code-bg); color: var(--code-fg); border-radius: 10px; padding: 14px 16px; overflow-x: auto; font: 13px/1.6 var(--mono); margin: 10px 0; }
+pre code { background: none; padding: 0; color: inherit; font-size: inherit; }
+pre .c { color: var(--code-dim); }
+.flow { display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; margin: 16px 0; }
+.flow div { flex: 1 1 140px; background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font-size: 14px; }
+.flow div b { display: block; color: var(--accent); font-size: 12px; }
+.steps { counter-reset: s; list-style: none; padding: 0; margin: 14px 0; }
+.steps > li { counter-increment: s; position: relative; background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px 14px 56px; margin: 10px 0; }
+.steps > li::before { content: counter(s); position: absolute; left: 16px; top: 14px; width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color: var(--paper); font-weight: 700; font-size: 14px; display: grid; place-items: center; }
+.steps > li > b:first-child { display: block; font-size: 15.5px; }
+.note { border-left: 4px solid var(--accent); background: var(--accent-soft); border-radius: 0 8px 8px 0; padding: 10px 14px; margin: 12px 0; font-size: 14px; }
+.note.warn { border-color: var(--warn); background: var(--warn-soft); }
+.note.risk { border-color: var(--risk); background: var(--risk-soft); }
+.note.ok { border-color: var(--ok); background: var(--ok-soft); }
+.wrap { overflow-x: auto; margin: 10px 0; }
+table { width: 100%; border-collapse: collapse; background: var(--paper); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; font-size: 14px; }
+th, td { text-align: left; vertical-align: top; padding: 9px 12px; border-bottom: 1px solid var(--line); }
+th { background: var(--accent-soft); font-weight: 700; white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
+td:first-child { white-space: nowrap; }
+kbd { font: 12px var(--mono); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; background: var(--paper); }
+.check { list-style: none; padding: 0; margin: 10px 0; }
+.check li { background: var(--paper); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px 8px 38px; margin: 6px 0; position: relative; }
+.check li::before { content: "☐"; position: absolute; left: 13px; top: 7px; color: var(--accent); font-size: 16px; }
+footer { margin-top: 48px; color: var(--muted); font-size: 13px; }
+@media (max-width: 820px) {
+  .layout { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  nav { position: static; }
+  nav ol { display: flex; flex-wrap: wrap; gap: 2px; }
+  nav .group { width: 100%; margin: 8px 0 0 10px; }
+  td:first-child { white-space: normal; }
+}
+.copy-wrap { position: relative; }
+.copy-wrap button { position: absolute; top: 8px; right: 8px; font: 12px var(--sans); border: 1px solid var(--code-dim); background: transparent; color: var(--code-fg); border-radius: 6px; padding: 3px 10px; cursor: pointer; }
+.copy-wrap button:hover { border-color: var(--code-fg); }
+.copy-wrap pre { padding-right: 76px; }
+.who { display: inline-block; font-size: 12px; font-weight: 700; padding: 1px 8px; border-radius: 999px; margin-left: 6px; vertical-align: 2px; }
+.who.ai { background: var(--accent-soft); color: var(--accent); }
+.who.me { background: var(--warn-soft); color: var(--warn); }
+</style>
+</head>
+<body>
+<div class="layout">
+<nav aria-label="목차">
+  <div class="brand">opencode 설치 자동화</div>
+  <ol>
+    <li><a href="#what">무엇을 맡기나</a></li>
+    <li><a href="#prompt">opencode에 넣을 요청</a></li>
+    <li class="group">처음 설치</li>
+    <li><a href="#rules">opencode가 지킬 규칙</a></li>
+    <li><a href="#steps">에이전트 절차</a></li>
+    <li><a href="#verify">설치 확인</a></li>
+    <li><a href="#human">사람이 할 일</a></li>
+    <li class="group">그 뒤로</li>
+    <li><a href="#update">업데이트</a></li>
+    <li class="group">도움</li>
+    <li><a href="#trouble">실패했을 때</a></li>
+    <li><a href="#report">보고 양식</a></li>
+  </ol>
+</nav>
+<main>
+
+<h1>opencode로 회사 PC 설치 자동화</h1>
+<p class="sub">회사 PC의 opencode에 Dogent 빌드·설치를 맡기는 안내입니다. 사람이 손으로 하는 순서는 <a href="15-company-reinstall.html">15. 회사 PC 재설치 안내</a>에 있고, 이 문서는 그 순서를 <b>묻지 않고 멈추지 않는 명령</b>으로 바꾼 것입니다. 같은 내용의 Markdown판은 <a href="16-opencode-install.md">16-opencode-install.md</a>이며, opencode에는 그 파일을 읽게 합니다.</p>
+
+<div class="flow" aria-label="전체 흐름">
+  <div><b>1 · 점검</b>Node · pnpm · 설정 빈칸</div>
+  <div><b>2 · 빌드</b><code>build.ps1 -Mode company -Test</code></div>
+  <div><b>3 · 설치</b><code>install.ps1 -Quiet</code></div>
+  <div><b>4 · 확인</b>파일 · 모드 · 연결 등록</div>
+  <div><b>5 · 사람</b>확장 로드 · 패널 설정</div>
+</div>
+
+<h2 id="what">무엇을 맡기나</h2>
+<div class="wrap"><table>
+  <tr><th>누가</th><th>하는 일</th></tr>
+  <tr><td>opencode <span class="who ai">자동</span></td><td>준비물 점검 → 빌드와 시험 → <code>%LOCALAPPDATA%\Dogent</code>에 설치 → 앱 실행 → 결과 확인 → 보고</td></tr>
+  <tr><td>사람 <span class="who me">처음 한 번</span></td><td>브라우저에 확장을 로드하고, 사이드 패널에서 연결 방식과 사용자 ID를 설정합니다. 브라우저 화면 조작이라 opencode가 할 수 없습니다.</td></tr>
+</table></div>
+<div class="note">전제: 저장소를 받았고, 저장소 루트에 <code>.env.company.local</code>을 채워 두었습니다.</div>
+
+<h2 id="prompt">opencode에 넣을 요청</h2>
+<p>저장소 루트에서 opencode를 열고 아래를 그대로 붙여 넣습니다.</p>
+<h3>처음 설치</h3>
+<div class="copy-wrap"><button type="button">복사</button><pre><code>docs/16-opencode-install.md 를 읽고 "2. 에이전트 절차"를 순서대로 실행해 줘.
+- 명령은 문서에 적힌 그대로 쓰고, 대화형 스크립트(.cmd)는 실행하지 마.
+- .env.company.local 의 값은 화면에 출력하거나 커밋하지 마.
+- 단계가 실패하면 "4. 실패했을 때" 표대로 한 번만 조치해 보고, 그래도 안 되면 멈추고 오류 메시지를 그대로 보여 줘.
+- 끝나면 "5. 보고 양식"으로 보고해 줘.</code></pre></div>
+<h3>업데이트만</h3>
+<div class="copy-wrap"><button type="button">복사</button><pre><code>docs/16-opencode-install.md 의 "3. 업데이트 절차"를 실행하고 "5. 보고 양식"으로 보고해 줘.</code></pre></div>
+
+<h2 id="rules">opencode가 지킬 규칙</h2>
+<ol class="steps">
+  <li><b><code>.cmd</code>는 실행하지 않습니다</b>끝에 <code>pause</code>나 <code>timeout</code>이 있어 멈춥니다. 항상 <code>powershell -NoProfile -ExecutionPolicy Bypass -File install\*.ps1 …</code>로 부릅니다.</li>
+  <li><b><code>install.ps1</code>은 반드시 <code>-Quiet</code>로</b>빼면 <code>Read-Host</code>에서 입력을 기다리며 멈춥니다. <code>build.ps1 -Install</code>도 첫 설치에서는 확장 로드를 기다리며 멈추므로 쓰지 않습니다.</li>
+  <li><b>키를 출력하지 않습니다</b><code>.env.company.local</code>을 <code>cat</code>이나 <code>Get-Content</code>로 출력하지 않습니다. 빈칸 검사는 변수 이름만 찾습니다.</li>
+  <li><b>커밋하지 않을 것</b><code>release\</code> 폴더와 <code>.env.*.local</code>은 <code>.gitignore</code>에 있습니다. <code>git add -f</code>를 쓰지 않습니다.</li>
+  <li><b>관리자 권한 없이</b>필요하지 않습니다. 관리자 권한을 요구하는 조치는 하지 말고 멈춥니다.</li>
+  <li><b>셸</b>저장소 루트에서 PowerShell로 실행합니다. 셸이 bash라면 각 명령을 <code>powershell -NoProfile -Command "…"</code>로 감쌉니다.</li>
+</ol>
+
+<h2 id="steps">에이전트 절차 (처음 설치)</h2>
+
+<h3>2-1. 준비물 점검</h3>
+<pre><code>node -v                         <span class="c"># v22 이상이어야 한다</span>
+pnpm -v                         <span class="c"># 없으면: corepack enable pnpm  (그래도 없으면 npm install -g pnpm)</span>
+git status --short              <span class="c"># 저장소 루트인지 확인. 고친 파일이 있으면 보고에 적는다</span>
+Test-Path .env.company.local    <span class="c"># True 여야 한다</span>
+Test-Path "$env:SystemRoot\Microsoft.NET\Framework64\v4.0.30319\csc.exe"   <span class="c"># False면 오피스 도구만 뺀다</span></code></pre>
+
+<h3>2-2. 회사 설정 빈칸 검사 (값은 출력하지 않음)</h3>
+<pre><code>Select-String -Path .env.company.local -Pattern '=\((api_base_url|credential_key|model|user_type)\)' | ForEach-Object { $_.Line.Split('=')[0] }</code></pre>
+<div class="note warn">아무것도 나오지 않아야 합니다. 변수 이름이 나오면 <b>멈추고</b> 사람에게 채워 달라고 합니다. 이 상태로 빌드하면 스크립트가 메모장을 띄우고 실패합니다.</div>
+
+<h3>2-3. 빌드하고 배포 묶음 만들기</h3>
+<pre><code>powershell -NoProfile -ExecutionPolicy Bypass -File install\build.ps1 -Mode company -Test</code></pre>
+<ul>
+  <li>확장, 터미널 클라이언트, 오피스 도구, 데스크탑 앱을 빌드하고 <code>release\Dogent-company-&lt;판&gt;\</code>에 묶습니다.</li>
+  <li><code>-Test</code>는 typecheck와 단위 시험을 먼저 돌립니다. 실패하면 멈추고 실패한 시험 이름을 보고합니다. 시험 없이 설치만 급하면 사람에게 물은 뒤 뺍니다.</li>
+  <li>처음에는 <code>pnpm install</code>과 Electron 다운로드로 수 분이 걸립니다. 명령 제한 시간을 10분 이상으로 잡습니다.</li>
+  <li>마지막에 <code>✓ release\Dogent-company-&lt;판&gt;</code>과 <code>완료했습니다.</code>가 나와야 합니다.</li>
+</ul>
+
+<h3>2-4. 이 PC에 설치</h3>
+<pre><code>$ver = (Get-Content -Raw package.json | ConvertFrom-Json).version
+powershell -NoProfile -ExecutionPolicy Bypass -File "release\Dogent-company-$ver\install.ps1" -Quiet</code></pre>
+<p><code>-Quiet</code>라서 묻지 않고 브라우저와 앱도 띄우지 않습니다. 켜져 있던 Dogent 앱은 닫고 덮어씁니다. 출력에 <code>브라우저에 확장 로드</code> 안내가 나오는 것은 정상입니다. 그 단계는 사람이 합니다.</p>
+
+<h3>2-5. 앱 실행 (브라우저 연결 등록)</h3>
+<pre><code>Start-Process "$env:LOCALAPPDATA\Dogent\Dogent.exe"
+Start-Sleep -Seconds 5
+Get-Process Dogent -ErrorAction SilentlyContinue | Select-Object Id, StartTime</code></pre>
+<p>앱은 처음 뜰 때 Native Messaging 호스트(<code>com.dogent.bridge</code>)를 스스로 등록합니다.</p>
+
+<h2 id="verify">설치 확인 (2-6)</h2>
+<pre><code>$d = "$env:LOCALAPPDATA\Dogent"
+'extension\manifest.json', 'Dogent.exe', 'dogent-office.exe', 'dogent.mjs', 'bin\dogent.cmd', 'build-info.txt' |
+  ForEach-Object { '{0,-24} {1}' -f $_, (Test-Path (Join-Path $d $_)) }
+Get-Content -Encoding UTF8 "$d\build-info.txt" -TotalCount 5      <span class="c"># "모드: company" 여야 한다</span>
+reg query "HKCU\Software\Google\Chrome\NativeMessagingHosts\com.dogent.bridge" 2&gt;$null
+reg query "HKCU\Software\Microsoft\Edge\NativeMessagingHosts\com.dogent.bridge" 2&gt;$null</code></pre>
+<div class="wrap"><table>
+  <tr><th>확인할 것</th><th>기대 값</th></tr>
+  <tr><td><code>extension\manifest.json</code>, <code>Dogent.exe</code>, <code>dogent.mjs</code></td><td>True</td></tr>
+  <tr><td><code>dogent-office.exe</code></td><td>True (csc.exe가 없어 뺐으면 False가 맞음)</td></tr>
+  <tr><td><code>build-info.txt</code>의 모드</td><td><code>company</code></td></tr>
+  <tr><td>NativeMessagingHosts 레지스트리</td><td>쓰는 브라우저 쪽에 값이 있음. 없으면 앱이 아직 등록 전이니 10초 뒤 다시 봅니다</td></tr>
+</table></div>
+
+<h2 id="human">사람이 할 일 (2-7, 처음 한 번)</h2>
+<p>opencode는 이 내용을 안내만 하고 끝냅니다.</p>
+<ol class="steps">
+  <li><b>확장 관리 화면 열기</b><code>chrome://extensions</code> (엣지는 <code>edge://extensions</code>)</li>
+  <li><b>예전 Dogent 삭제</b>다른 폴더(<code>…\dogent\.output\…</code>, <code>…\release\Dogent-…</code>)에서 로드한 Dogent가 있으면 삭제합니다.</li>
+  <li><b>확장 로드</b>오른쪽 위 <b>개발자 모드</b>를 켜고 <b>압축해제된 확장 프로그램을 로드합니다</b> → <code>C:\Users\&lt;나&gt;\AppData\Local\Dogent\extension</code>. 처음 한 번만 하면 됩니다.</li>
+  <li><b>연결 설정</b>Dogent 사이드 패널 → <b>설정 → 클라이언트 연결</b>에서 <b>Native Messaging</b>을 고르고 저장합니다. 같은 화면에서 사용자 ID와 조작할 사이트를 넣습니다.</li>
+  <li><b>연결 확인</b>Dogent 앱 위쪽에 브라우저 이름이 보이면 연결된 것입니다.</li>
+  <li><b>화면 점검</b>실제 업무 스킬을 돌리기 전에 대상 사내 화면을 열어 두고, 패널이 화면을 제대로 읽는지 먼저 확인합니다.</li>
+</ol>
+
+<h2 id="update">업데이트</h2>
+<p>확장을 <code>%LOCALAPPDATA%\Dogent\extension</code>에서 한 번 로드해 둔 PC라면 명령 하나입니다.</p>
+<pre><code>powershell -NoProfile -ExecutionPolicy Bypass -File install\update.ps1 -Mode company -Test</code></pre>
+<ul>
+  <li><code>git pull --ff-only</code> → 의존성이 바뀌었으면 <code>pnpm install</code> → 전부 빌드 → 덮어써 설치 → 켜져 있던 앱을 새 판으로 다시 띄웁니다.</li>
+  <li>고친 파일이 있으면 pull을 건너뛰고 지금 코드로 빌드합니다. <code>고친 파일이 N개</code> 경고가 보이면 보고에 적습니다.</li>
+  <li>git 없이 코드를 옮겨 온 PC면 <code>-NoPull</code>을 붙입니다.</li>
+  <li>확장은 다시 로드하지 않습니다. 폴더의 새 판을 알아채고 1분 안에 스스로 다시 읽습니다.</li>
+  <li><code>Dogent를 다른 폴더(…)에서 로드해 두었습니다</code>가 보이거나 확장 로드를 기다리며 멈추면, 확장이 아직 이 폴더에서 로드되지 않은 것입니다. <a href="#human">사람이 할 일</a>을 안내합니다.</li>
+  <li>끝나면 <a href="#verify">설치 확인</a>을 다시 돌립니다.</li>
+</ul>
+
+<h2 id="trouble">실패했을 때</h2>
+<p>표대로 한 번만 조치합니다. 표에 없는 오류는 조치하지 말고 멈춘 뒤 마지막 30줄을 그대로 보여 줍니다.</p>
+<div class="wrap"><table>
+  <tr><th>출력에 보이는 것</th><th>한 번 해 볼 조치</th></tr>
+  <tr><td><code>Node.js가 없습니다</code> / <code>22 이상이 필요합니다</code></td><td>멈추고, 사내 소프트웨어 센터에서 Node.js LTS(22 이상) 설치를 요청</td></tr>
+  <tr><td><code>pnpm을 켜지 못했습니다</code></td><td><code>npm install -g pnpm</code> 후 새 셸에서 2-3 다시</td></tr>
+  <tr><td><code>채우지 않은 (…) 값이 있습니다</code></td><td>멈추고 2-2에서 나온 변수를 채워 달라고 요청</td></tr>
+  <tr><td><code>pnpm install 실패</code> (ETIMEDOUT, ECONNREFUSED, 403)</td><td>사내 npm 미러 주소를 받아 <code>npm config set registry &lt;주소&gt;</code> 후 2-3을 <code>-Reinstall</code>과 함께 다시</td></tr>
+  <tr><td>Electron 다운로드 실패</td><td>미러가 있으면 <code>$env:ELECTRON_MIRROR='&lt;주소&gt;'</code> 후 다시. 없으면 <code>-Parts extension,client,office</code>로 데스크탑 앱을 빼고 보고에 적기</td></tr>
+  <tr><td><code>오피스 도구 빌드 실패</code> / csc.exe 없음</td><td><code>-Parts extension,client,desktop</code>으로 다시 (Excel 기능만 빠짐)</td></tr>
+  <tr><td><code>typecheck 실패</code> / <code>단위 시험 실패</code></td><td>코드를 고치지 말고 멈춤. 실패한 파일·시험 이름과 메시지를 보고</td></tr>
+  <tr><td><code>확장 폴더를 복사하지 못했습니다 (robocopy …)</code></td><td>확장 폴더를 연 탐색기 창을 닫아 달라고 요청한 뒤 2-4 다시</td></tr>
+  <tr><td><code>Dogent.exe</code> 덮어쓰기 실패 (사용 중)</td><td><code>Get-Process Dogent, dogent-office -ErrorAction SilentlyContinue | Stop-Process -Force</code> 후 2-4 다시</td></tr>
+  <tr><td>실행 정책 오류</td><td>명령에 <code>-ExecutionPolicy Bypass</code>가 빠졌는지 확인. 정책 자체는 바꾸지 않음</td></tr>
+</table></div>
+
+<h2 id="report">보고 양식</h2>
+<div class="copy-wrap"><button type="button">복사</button><pre><code>Dogent 설치 결과 (처음 설치 | 업데이트)
+- 판 / 커밋: 0.1.0 / abc1234        (build-info.txt)
+- 모드: company
+- 시험: 통과 | 건너뜀 | 실패(이름)
+- 설치된 부분: 확장 ✓  데스크탑 앱 ✓  오피스 도구 ✓/✗  터미널 클라이언트 ✓
+- 앱 실행: 됨 (PID 1234)
+- 브라우저 연결 등록: 크롬 ✓ / 엣지 ✓
+- 빼거나 우회한 것: (없음 | 예: 데스크탑 앱 — Electron 미러 없음)
+- 경고: (예: 고친 파일 2개로 pull 건너뜀)
+- 사람이 할 일: 2-7의 1~6 (업데이트였고 확장이 이미 로드돼 있으면 "없음")</code></pre></div>
+
+<footer>Dogent opencode 설치 자동화 · 손으로 하는 순서는 <a href="15-company-reinstall.html">15. 회사 PC 재설치 안내</a>, 설치 전반은 <a href="12-install-guide.html">12. 설치 안내</a></footer>
+</main>
+</div>
+<script>
+document.querySelectorAll('.copy-wrap').forEach(function (w) {
+  var btn = w.querySelector('button');
+  btn.addEventListener('click', function () {
+    var text = w.querySelector('pre').innerText;
+    var done = function () { btn.textContent = '복사됨'; setTimeout(function () { btn.textContent = '복사'; }, 1500); };
+    try { navigator.clipboard.writeText(text).then(done, function () {}); } catch (e) {}
+  });
+});
+</script>
+</body>
+</html>

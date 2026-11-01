@@ -1,6 +1,6 @@
 # 16. opencode로 회사 PC 설치 자동화
 
-회사 PC의 opencode에 Dogent 빌드·설치를 맡기는 안내입니다. 사람이 손으로 하는 순서는 [15-company-reinstall.html](15-company-reinstall.html)에 있고, 이 문서는 그 순서를 **사람에게 묻지 않고 멈추지 않는 명령**으로 바꾼 것입니다.
+회사 PC의 opencode에 Dogent 빌드·설치를 맡기는 안내입니다. 사람이 읽기 좋은 HTML판은 [16-opencode-install.html](16-opencode-install.html), 사람이 손으로 하는 순서는 [15-company-reinstall.html](15-company-reinstall.html)에 있고, 이 문서는 그 순서를 **사람에게 묻지 않고 멈추지 않는 명령**으로 바꾼 것입니다.
 
 - 전제: 저장소를 받았고, 저장소 루트에 `.env.company.local`을 채워 두었습니다.
 - opencode가 하는 일: 점검 → 빌드 → `%LOCALAPPDATA%\Dogent`에 설치 → 앱 실행 → 결과 확인 → 보고
