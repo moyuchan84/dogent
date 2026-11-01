@@ -108,20 +108,21 @@ footer { margin-top: 48px; color: var(--muted); font-size: 13px; }
 <div class="flow" aria-label="전체 흐름">
   <div><b>1 · 정리</b>다른 폴더에서 로드한 Dogent 확장 삭제</div>
   <div><b>2 · 설치</b><code>build.cmd -Mode company -Install</code></div>
-  <div><b>3 · 로드</b><code>%LOCALAPPDATA%\Dogent\extension</code></div>
+  <div><b>3 · 로드</b><code>D:\Multimedia\Dogent\extension</code></div>
   <div><b>4 · 연결</b>Native Messaging · 사용자 ID</div>
   <div><b>이후</b><code>update.cmd</code>만 누름</div>
 </div>
 
 <h2 id="why">왜 다시 설치하나</h2>
 <p>지금까지는 업데이트할 때마다 빌드하고, 크롬 확장을 지웠다가 폴더를 다시 지정해 로드했습니다. 확장을 저장소의 빌드 폴더(<code>.output\chrome-mv3-company</code>)나 판마다 이름이 다른 묶음 폴더(<code>release\Dogent-company-&lt;판&gt;</code>)에서 로드했기 때문입니다.</p>
-<p>이제는 모든 부분을 늘 같은 곳(<code>%LOCALAPPDATA%\Dogent</code>)에 설치하고, 확장은 그 폴더에서 <b>한 번만</b> 로드합니다. 그 뒤로는 설치 프로그램이 폴더를 새 판으로 덮어쓰면 확장이 그것을 알아채고 스스로 다시 읽습니다.</p>
+<p>이제는 모든 부분을 늘 같은 곳(<code>D:\Multimedia\Dogent</code>)에 설치하고, 확장은 그 폴더에서 <b>한 번만</b> 로드합니다. 그 뒤로는 설치 프로그램이 폴더를 새 판으로 덮어쓰면 확장이 그것을 알아채고 스스로 다시 읽습니다.</p>
+<div class="note warn"><b>왜 D:\Multimedia인가</b> — 사내 보안 프로그램(EDM/NASCA) 때문에 크롬은 <code>D:\Multimedia</code> 아래 폴더의 확장만 로드할 수 있습니다. 그래서 설치 프로그램은 <code>D:\Multimedia</code>가 있으면 <code>D:\Multimedia\Dogent</code>에 설치하고, 없는 PC(집 PC 등)에서는 예전처럼 <code>%LOCALAPPDATA%\Dogent</code>에 설치합니다. 다른 곳에 두려면 <code>-Target &lt;폴더&gt;</code>나 환경 변수 <code>DOGENT_HOME</code>을 씁니다.<br>예전에 <code>%LOCALAPPDATA%\Dogent</code>에 설치했다면 새 설치가 그 폴더와 PATH의 예전 <code>dogent</code> 명령을 정리합니다. 내 스킬·설정은 <code>%USERPROFILE%\.dogent</code>에 있어 그대로 남습니다.</div>
 <div class="wrap"><table>
   <tr><th>무엇</th><th>설치되는 곳</th><th>업데이트할 때</th></tr>
-  <tr><td>브라우저 확장</td><td><code>%LOCALAPPDATA%\Dogent\extension\</code></td><td>폴더를 덮어쓰면 확장이 1분 안에 스스로 다시 읽음 (패널을 열면 바로)</td></tr>
-  <tr><td>데스크탑 앱</td><td><code>%LOCALAPPDATA%\Dogent\Dogent.exe</code></td><td>닫았다가 새 판으로 다시 띄움</td></tr>
-  <tr><td>오피스 도구 (Excel)</td><td><code>%LOCALAPPDATA%\Dogent\dogent-office.exe</code></td><td>덮어씀</td></tr>
-  <tr><td>터미널 클라이언트</td><td><code>%LOCALAPPDATA%\Dogent\dogent.mjs</code> · <code>dogent</code> 명령</td><td>덮어씀</td></tr>
+  <tr><td>브라우저 확장</td><td><code>D:\Multimedia\Dogent\extension\</code></td><td>폴더를 덮어쓰면 확장이 1분 안에 스스로 다시 읽음 (패널을 열면 바로)</td></tr>
+  <tr><td>데스크탑 앱</td><td><code>D:\Multimedia\Dogent\Dogent.exe</code></td><td>닫았다가 새 판으로 다시 띄움</td></tr>
+  <tr><td>오피스 도구 (Excel)</td><td><code>D:\Multimedia\Dogent\dogent-office.exe</code></td><td>덮어씀</td></tr>
+  <tr><td>터미널 클라이언트</td><td><code>D:\Multimedia\Dogent\dogent.mjs</code> · <code>dogent</code> 명령</td><td>덮어씀</td></tr>
   <tr><td>내 스킬 · 설정 · 실행 기록</td><td><code>%USERPROFILE%\.dogent\</code></td><td>건드리지 않음</td></tr>
 </table></div>
 
@@ -143,8 +144,8 @@ footer { margin-top: 48px; color: var(--muted); font-size: 13px; }
   <li><b>다른 폴더에서 로드한 Dogent 확장을 지웁니다</b>
     <p><code>chrome://extensions</code>(엣지는 <code>edge://extensions</code>)에서 Dogent 카드의 <b>세부정보</b>를 눌러 <b>소스</b> 경로를 봅니다.</p>
     <ul>
-      <li>경로가 <code>%LOCALAPPDATA%\Dogent\extension</code>(예: <code>C:\Users\&lt;나&gt;\AppData\Local\Dogent\extension</code>)이면 <b>지우지 않습니다</b>. 그대로 둡니다.</li>
-      <li>저장소의 <code>.output\…</code>이나 <code>release\Dogent-…</code> 같은 다른 경로면 <b>삭제</b>를 누릅니다. 이번 한 번만 하면 됩니다.</li>
+      <li>경로가 <code>D:\Multimedia\Dogent\extension</code>이면 <b>지우지 않습니다</b>. 그대로 둡니다.</li>
+      <li>저장소의 <code>.output\…</code>, <code>release\Dogent-…</code>, 예전 설치 위치 <code>C:\Users\&lt;나&gt;\AppData\Local\Dogent\extension</code> 같은 다른 경로면 <b>삭제</b>를 누릅니다. 이번 한 번만 하면 됩니다.</li>
     </ul>
     <div class="note warn">확장을 지우면 사이드 패널에 저장한 값(사용자 ID, 설정에서 더한 조작할 사이트, 클라이언트 연결 방식)이 지워집니다. 5단계에서 다시 넣습니다. 빌드에 넣은 모델 주소·키는 그대로 들어 있습니다.</div></li>
   <li><b>(선택) 목업 스킬 복사본을 지웁니다</b>
@@ -168,7 +169,7 @@ WXT_LLM_HEADERS='{"x-dep-ticket":"{key}", …}'</code></pre>
   <li><b>빌드하고 바로 설치합니다</b>
     <p>저장소 폴더의 <code>install\build.cmd</code>를 명령 창에서 옵션과 함께 실행합니다.</p>
 <pre><code>install\build.cmd -Mode company -Install</code></pre>
-    <p>순서대로 진행됩니다: 준비물 확인 → (처음이거나 의존성이 바뀌었으면) <code>pnpm install</code> → 확장·클라이언트·오피스 도구·데스크탑 앱 빌드 → 묶음 <code>release\Dogent-company-&lt;판&gt;</code> → <code>%LOCALAPPDATA%\Dogent</code>에 설치 → 바탕화면·시작 메뉴 바로 가기.</p>
+    <p>순서대로 진행됩니다: 준비물 확인 → (처음이거나 의존성이 바뀌었으면) <code>pnpm install</code> → 확장·클라이언트·오피스 도구·데스크탑 앱 빌드 → 묶음 <code>release\Dogent-company-&lt;판&gt;</code> → <code>D:\Multimedia\Dogent</code>에 설치 → 바탕화면·시작 메뉴 바로 가기.</p>
     <p class="sub">처음에는 의존성을 받느라 몇 분 걸립니다. 회사망에서 Electron을 받지 못하면 <a href="#trouble">문제 해결</a>의 <code>ELECTRON_MIRROR</code>를 봅니다. 빌드 전에 시험까지 돌리려면 <code>-Test</code>를 붙입니다.</p></li>
 </ol>
 
@@ -178,7 +179,7 @@ WXT_LLM_HEADERS='{"x-dep-ticket":"{key}", …}'</code></pre>
   <li><b>개발자 모드를 켭니다</b>
     <p>크롬은 오른쪽 위, 엣지는 왼쪽 아래에 있습니다.</p></li>
   <li><b>압축해제된 확장 프로그램을 로드합니다</b>
-    <p>버튼을 누르고 폴더 칸에 <kbd>Ctrl</kbd>+<kbd>V</kbd>(경로 <code>%LOCALAPPDATA%\Dogent\extension</code>) → <b>폴더 선택</b>.</p></li>
+    <p>버튼을 누르고 폴더 칸에 <kbd>Ctrl</kbd>+<kbd>V</kbd>(경로 <code>D:\Multimedia\Dogent\extension</code>) → <b>폴더 선택</b>.</p></li>
   <li><b>툴바에 고정합니다</b>
     <p>퍼즐 조각 아이콘 → Dogent의 핀을 누릅니다.</p></li>
   <li><b>설치 창으로 돌아가 <kbd>Enter</kbd></b>
@@ -224,7 +225,7 @@ install\update.cmd -Test            <span class="c">← 빌드 전에 typecheck�
 
 <h2 id="fresh">완전히 새로 설치하고 싶을 때</h2>
 <p>보통은 필요 없습니다. 설치 폴더가 꼬였다고 생각되면 지우고 다시 설치합니다.</p>
-<pre><code>%LOCALAPPDATA%\Dogent\uninstall.cmd          <span class="c">← 프로그램, 바로 가기, dogent 명령, 브라우저 연결 등록을 지움</span>
+<pre><code>D:\Multimedia\Dogent\uninstall.cmd          <span class="c">← 프로그램, 바로 가기, dogent 명령, 브라우저 연결 등록을 지움</span>
 install\build.cmd -Mode company -Install     <span class="c">← 다시 설치 (위의 "빌드하고 설치"부터)</span></code></pre>
 <div class="note risk"><code>uninstall.cmd -Purge</code>는 <code>%USERPROFILE%\.dogent</code>(내 스킬, 설정, 실행 기록, 승인한 스크립트)까지 지웁니다. 내 스킬을 남기려면 <code>-Purge</code> 없이 씁니다. 확장은 확장 관리 화면에서 직접 <b>삭제</b>합니다.</div>
 
@@ -237,7 +238,7 @@ install\build.cmd -Mode company -Install     <span class="c">← 다시 설치 (
   <tr><td>Electron을 받지 못함</td><td>사내 미러가 있으면 명령 창에서 <code>set ELECTRON_MIRROR=&lt;미러 주소&gt;</code> 뒤에 다시 실행합니다. 데스크탑 앱만 빼고 빌드하려면 <code>-Parts extension,client,office</code>.</td></tr>
   <tr><td>C# 컴파일러(csc.exe)를 찾지 못함</td><td>오피스 도구만 못 만듭니다. <code>-Parts extension,client,desktop</code>으로 나머지를 설치하고 Excel 기능은 쓰지 않습니다.</td></tr>
   <tr><td>개발자 모드가 회색이거나 로드가 막힘</td><td>회사 크롬 정책이 압축해제 확장을 막고 있습니다. <code>chrome://policy</code>에서 확인하고, 엣지로 시도하거나 IT에 허용을 요청합니다.</td></tr>
-  <tr><td>앱에 브라우저가 안 보임 (연결 안 됨)</td><td>사이드 패널 → 설정 → 클라이언트 연결이 <b>Native Messaging</b>인지 보고 저장합니다. 확장의 소스 경로가 <code>%LOCALAPPDATA%\Dogent\extension</code>인지 보고, 아니면 지우고 그 폴더로 다시 로드한 뒤 앱을 다시 켭니다.</td></tr>
+  <tr><td>앱에 브라우저가 안 보임 (연결 안 됨)</td><td>사이드 패널 → 설정 → 클라이언트 연결이 <b>Native Messaging</b>인지 보고 저장합니다. 확장의 소스 경로가 <code>D:\Multimedia\Dogent\extension</code>인지 보고, 아니면 지우고 그 폴더로 다시 로드한 뒤 앱을 다시 켭니다.</td></tr>
   <tr><td>앱 왼쪽 위가 <code>기본</code>으로 보임</td><td><code>-Mode company</code> 없이 빌드했습니다. <code>install\update.cmd -Mode company</code>로 다시 설치합니다.</td></tr>
   <tr><td>목업 재공 스킬이 여전히 보임</td><td>앱의 <b>스킬 관리</b>에서 <b>예시 스킬 보이기</b>가 켜져 있는지 봅니다. 그래도 보이면 그 스킬이 localhost가 아닌 사이트도 다루는 것이니 스킬 관리에서 끕니다.</td></tr>
   <tr><td>업데이트했는데 확장이 옛 판 그대로</td><td>확장을 다른 폴더에서 로드했습니다. 위의 <a href="#clean">예전 것 정리</a> 2번을 다시 봅니다. 맞는 폴더라면 Dogent 패널을 열면 바로 바뀝니다.</td></tr>

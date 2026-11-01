@@ -3,8 +3,9 @@
 회사 PC의 opencode에 Dogent 빌드·설치를 맡기는 안내입니다. 사람이 읽기 좋은 HTML판은 [16-opencode-install.html](16-opencode-install.html), 사람이 손으로 하는 순서는 [15-company-reinstall.html](15-company-reinstall.html)에 있고, 이 문서는 그 순서를 **사람에게 묻지 않고 멈추지 않는 명령**으로 바꾼 것입니다.
 
 - 전제: 저장소를 받았고, 저장소 루트에 `.env.company.local`을 채워 두었습니다.
-- opencode가 하는 일: 점검 → 빌드 → `%LOCALAPPDATA%\Dogent`에 설치 → 앱 실행 → 결과 확인 → 보고
+- opencode가 하는 일: 점검 → 빌드 → `D:\Multimedia\Dogent`에 설치 → 앱 실행 → 결과 확인 → 보고
 - 사람이 하는 일: 브라우저에 확장을 처음 한 번 로드하고, 사이드 패널에서 연결과 사용자 ID를 설정합니다. 브라우저 화면 조작이라 opencode가 할 수 없습니다.
+- 설치 폴더가 `D:\Multimedia\Dogent`인 이유: 사내 보안 프로그램(EDM/NASCA) 때문에 크롬은 `D:\Multimedia` 아래 폴더의 확장만 로드할 수 있습니다. 설치 프로그램은 `D:\Multimedia`가 있으면 그 아래에, 없으면 `%LOCALAPPDATA%\Dogent`에 설치합니다. 예전 `%LOCALAPPDATA%\Dogent` 설치는 새 설치가 정리합니다.
 
 ## 1. opencode에 넣을 요청
 
@@ -33,7 +34,8 @@ docs/16-opencode-install.md 의 "3. 업데이트 절차"를 실행하고 "5. 보
 > 3. `.env.company.local`을 `cat`/`Get-Content`로 출력하지 않습니다. 키가 들어 있습니다. 검사는 아래 명령처럼 빈 자리만 찾습니다.
 > 4. `release\` 폴더와 `.env.*.local` 파일은 커밋하지 않습니다. `.gitignore`에 들어 있으니 `git add -f`를 쓰지 않습니다.
 > 5. 관리자 권한은 필요 없습니다. 관리자 권한을 요구하는 조치는 하지 말고 멈춥니다.
-> 6. 명령은 저장소 루트에서 PowerShell로 실행합니다. 셸이 bash라면 각 명령을 `powershell -NoProfile -Command "..."`로 감쌉니다.
+> 6. 명령은 저장소 루트에서 PowerShell로 실행합니다. 셸이 bash라면 각 명령을 `powershell -NoProfile -Command "..."`로 감쌉니다. `powershell`을 찾지 못하면 전체 경로 `C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe`를 씁니다.
+> 7. 설치 폴더에 `-Target`을 넘기지 않습니다. 기본값(`D:\Multimedia\Dogent`)이어야 크롬이 확장을 로드할 수 있고, 예전 `%LOCALAPPDATA%\Dogent` 설치도 정리됩니다.
 
 ### 2-1. 준비물 점검
 
@@ -43,6 +45,7 @@ pnpm -v                         # 없으면: corepack enable pnpm  (그래도 �
 git status --short              # 저장소 루트인지 확인. 고친 파일이 있으면 보고에 적는다
 Test-Path .env.company.local    # True 여야 한다
 Test-Path "$env:SystemRoot\Microsoft.NET\Framework64\v4.0.30319\csc.exe"   # False면 오피스 도구만 뺀다 (4절)
+Test-Path D:\Multimedia         # True 여야 한다. False면 멈추고 보고 (그대로 설치하면 %LOCALAPPDATA%\Dogent에 깔려 크롬이 확장을 못 읽는다)
 ```
 
 ### 2-2. 회사 설정 빈칸 검사 (값은 출력하지 않음)
@@ -76,7 +79,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "release\Dogent-company-$ver
 ### 2-5. 앱 실행 (브라우저 연결 등록)
 
 ```powershell
-Start-Process "$env:LOCALAPPDATA\Dogent\Dogent.exe"
+Start-Process "D:\Multimedia\Dogent\Dogent.exe"
 Start-Sleep -Seconds 5
 Get-Process Dogent -ErrorAction SilentlyContinue | Select-Object Id, StartTime
 ```
@@ -86,7 +89,7 @@ Get-Process Dogent -ErrorAction SilentlyContinue | Select-Object Id, StartTime
 ### 2-6. 설치 확인
 
 ```powershell
-$d = "$env:LOCALAPPDATA\Dogent"
+$d = "D:\Multimedia\Dogent"
 'extension\manifest.json', 'Dogent.exe', 'dogent-office.exe', 'dogent.mjs', 'bin\dogent.cmd', 'build-info.txt' |
   ForEach-Object { '{0,-24} {1}' -f $_, (Test-Path (Join-Path $d $_)) }
 Get-Content -Encoding UTF8 "$d\build-info.txt" -TotalCount 5      # "모드: company" 여야 한다
@@ -106,15 +109,15 @@ reg query "HKCU\Software\Microsoft\Edge\NativeMessagingHosts\com.dogent.bridge" 
 opencode는 아래 내용을 그대로 사람에게 보여 주고 끝냅니다. 확장 폴더 경로는 실제 값으로 바꿔 적습니다.
 
 1. `chrome://extensions`(엣지는 `edge://extensions`)를 엽니다.
-2. 다른 폴더(`...\dogent\.output\...`, `...\release\Dogent-...`)에서 로드한 Dogent가 있으면 **삭제**합니다.
-3. 오른쪽 위 **개발자 모드**를 켜고 **압축해제된 확장 프로그램을 로드합니다**를 누른 뒤 `C:\Users\<나>\AppData\Local\Dogent\extension`을 고릅니다. 이 로드는 처음 한 번만 하면 됩니다.
+2. 다른 폴더(`...\dogent\.output\...`, `...\release\Dogent-...`, 예전 설치 위치 `...\AppData\Local\Dogent\extension`)에서 로드한 Dogent가 있으면 **삭제**합니다.
+3. 오른쪽 위 **개발자 모드**를 켜고 **압축해제된 확장 프로그램을 로드합니다**를 누른 뒤 `D:\Multimedia\Dogent\extension`을 고릅니다. 이 로드는 처음 한 번만 하면 됩니다.
 4. 툴바에서 Dogent 사이드 패널을 열고 **설정 → 클라이언트 연결**에서 **Native Messaging**을 고른 뒤 저장합니다. 같은 화면에서 사용자 ID와 조작할 사이트를 넣습니다.
 5. Dogent 앱 위쪽에 브라우저 이름이 보이면 연결된 것입니다.
 6. 실제 업무 스킬을 돌리기 전에 대상 사내 화면을 열어 놓고, 패널이 화면을 제대로 읽는지(화면 점검) 먼저 확인합니다.
 
 ## 3. 업데이트 절차
 
-확장을 `%LOCALAPPDATA%\Dogent\extension`에서 한 번 로드해 둔 PC라면 업데이트는 명령 하나입니다.
+확장을 `D:\Multimedia\Dogent\extension`에서 한 번 로드해 둔 PC라면 업데이트는 명령 하나입니다.
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File install\update.ps1 -Mode company -Test

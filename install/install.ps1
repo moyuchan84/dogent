@@ -2,12 +2,16 @@
   Dogent 통합 설치 (사용자 PC, 관리자 권한 불필요)
 
   배포 묶음 폴더의 install.cmd 를 두 번 누르면 이 스크립트가 돈다.
-    1. 프로그램을 %LOCALAPPDATA%\Dogent 에 복사 (확장, 데스크탑 앱, 오피스 도구, 터미널 클라이언트)
+    1. 프로그램을 설치 폴더에 복사 (확장, 데스크탑 앱, 오피스 도구, 터미널 클라이언트)
     2. 바탕화면·시작 메뉴 바로 가기
     3. 브라우저 확장 로드 안내 (폴더 경로를 클립보드에 넣고 확장 관리 화면을 연다)
     4. Dogent 앱 실행 → 앱이 브라우저 연결(Native Messaging)을 스스로 등록
 
-  -Target      설치 폴더 (기본 %LOCALAPPDATA%\Dogent). 업데이트 때도 같은 폴더를 쓴다 (확장 ID는 매니페스트의 key로 정해져 있다)
+  -Target      설치 폴더. 업데이트 때도 같은 폴더를 쓴다 (확장 ID는 매니페스트의 key로 정해져 있다)
+               비우면 차례로: 환경 변수 DOGENT_HOME → D:\Multimedia\Dogent (D:\Multimedia가 있을 때) → %LOCALAPPDATA%\Dogent
+               회사 PC는 보안 프로그램(EDM/NASCA) 때문에 크롬이 D:\Multimedia 아래 폴더의 확장만 로드할 수 있어 그곳이 기본이다
+               기본 위치(D:\Multimedia\Dogent)에 설치하는데 %LOCALAPPDATA%\Dogent 에 예전 설치가 남아 있으면 지운다
+               (-Target 이나 DOGENT_HOME 으로 직접 정했으면 지우지 않는다. 내 스킬·설정은 %USERPROFILE%\.dogent 라 그대로)
   -Browser     chrome | edge | both (기본: 설치된 것)
   -NoShortcut  바로 가기를 만들지 않는다
   -Quiet       묻지 않고, 브라우저와 앱을 띄우지 않는다 (복사와 등록만)
@@ -15,7 +19,7 @@
                건드리지 않는다 (확장이 새 판을 알아채고 스스로 다시 읽는다). 끝나고 Enter를 기다리지 않는다
 #>
 param(
-  [string]$Target = (Join-Path $env:LOCALAPPDATA 'Dogent'),
+  [string]$Target = '',
   [ValidateSet('', 'chrome', 'edge', 'both')][string]$Browser = '',
   [switch]$NoShortcut,
   [switch]$Quiet,
@@ -29,6 +33,16 @@ function Step($text) { Write-Host ''; Write-Host "▶ $text" -ForegroundColor Cy
 function Ok($text) { Write-Host "  ✓ $text" -ForegroundColor Green }
 function Warn($text) { Write-Host "  ! $text" -ForegroundColor Yellow }
 function Fail($text) { Write-Host ''; Write-Host "✗ $text" -ForegroundColor Red; if (-not $Quiet) { Read-Host '닫으려면 Enter' | Out-Null }; exit 1 }
+
+# 설치 폴더: 회사 보안 프로그램이 크롬의 확장 로드를 D:\Multimedia 아래로만 허용하므로 그곳을 먼저 쓴다
+$OldDefault = Join-Path $env:LOCALAPPDATA 'Dogent'
+$AutoTarget = -not $Target -and -not $env:DOGENT_HOME   # 직접 정한 폴더면 예전 설치를 지우지 않는다
+if (-not $Target) {
+  $Target = if ($env:DOGENT_HOME) { $env:DOGENT_HOME }
+            elseif (Test-Path 'D:\Multimedia') { 'D:\Multimedia\Dogent' }
+            else { $OldDefault }
+}
+$Target = [IO.Path]::GetFullPath($Target).TrimEnd('\')
 
 if (-not (Test-Path (Join-Path $Src 'extension\manifest.json'))) {
   Fail "배포 묶음 폴더가 아닙니다 ($Src). 개발 PC라면 install\build.cmd 로 묶음을 먼저 만드세요."
@@ -80,6 +94,22 @@ if ($copied['dogent.mjs']) {
     Ok 'dogent 명령을 PATH에 더했습니다 (새로 연 창부터)'
   }
   if (-not (Get-Command node -ErrorAction SilentlyContinue)) { Warn '터미널 클라이언트(dogent 명령)는 Node.js가 있어야 돕니다. 데스크탑 앱은 Node 없이 됩니다.' }
+}
+
+# ── 예전 기본 위치(%LOCALAPPDATA%\Dogent)의 설치 정리 ─────────
+# 설치 폴더가 D:\Multimedia\Dogent 로 바뀌면 예전 폴더는 쓰지 않는다. 남겨 두면 PATH의 dogent 명령과
+# 확장 로드 위치가 헷갈리므로 지운다. Dogent 설치 폴더로 보일 때만 지운다 (내 스킬·설정은 %USERPROFILE%\.dogent)
+if ($AutoTarget -and $OldDefault.TrimEnd('\') -ne $Target -and(Test-Path (Join-Path $OldDefault 'extension\manifest.json')) -and (Test-Path (Join-Path $OldDefault 'build-info.txt'))) {
+  Step "예전 설치 정리 ($OldDefault)"
+  $oldBin = Join-Path $OldDefault 'bin'
+  $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+  if ($userPath -and (($userPath -split ';') -contains $oldBin)) {
+    [Environment]::SetEnvironmentVariable('Path', (@($userPath -split ';' | Where-Object { $_ -and $_ -ne $oldBin }) -join ';'), 'User')
+    Ok "PATH에서 뺌: $oldBin"
+  }
+  try { Remove-Item -Recurse -Force $OldDefault; Ok '예전 폴더를 지웠습니다' }
+  catch { Warn "예전 폴더를 다 지우지 못했습니다 ($($_.Exception.Message)). 쓰지 않으니 나중에 직접 지워도 됩니다" }
+  Warn "브라우저에 예전 폴더에서 로드한 Dogent가 있으면 지우고 $Target\extension 을 로드하세요"
 }
 
 # ── 바로 가기 ────────────────────────────────────────

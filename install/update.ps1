@@ -8,18 +8,20 @@
     1. git pull (고친 파일이 있으면 받지 않고 지금 코드로 빌드)
     2. 의존성이 바뀌었으면 pnpm install
     3. 확장, 터미널 클라이언트, 오피스 도구, 데스크탑 앱을 모두 빌드 (build.ps1)
-    4. %LOCALAPPDATA%\Dogent 에 덮어써 설치하고 켜져 있던 앱을 새 판으로 다시 띄움 (install.ps1 -Update)
+    4. 설치 폴더(D:\Multimedia\Dogent, 없으면 %LOCALAPPDATA%\Dogent)에 덮어써 설치하고 켜져 있던 앱을 새 판으로 다시 띄움 (install.ps1 -Update)
     5. 브라우저 확장은 지우거나 다시 로드하지 않는다. 확장이 폴더의 새 판을 알아채고 1분 안에 스스로 다시 읽는다
        (Dogent 패널을 열면 바로). 처음 한 번만 그 폴더를 로드해 두면 된다
 
   -Mode     company | home | dev. 비우면 지난번 모드 (처음이면 company)
   -NoPull   git pull 하지 않는다 (코드를 직접 옮겨 온 경우)
   -Test     빌드 전에 typecheck와 단위 시험
+  -Target   설치 폴더 (비우면 install.ps1 기본)
 #>
 param(
   [ValidateSet('', 'company', 'home', 'dev')][string]$Mode = '',
   [switch]$NoPull,
-  [switch]$Test
+  [switch]$Test,
+  [string]$Target = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -58,6 +60,7 @@ if (-not $NoPull -and (Test-Path (Join-Path $Root '.git')) -and (Get-Command git
 # ── 빌드와 설치 ──────────────────────────────────────
 $buildArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $PSScriptRoot 'build.ps1'), '-Mode', $Mode, '-Install', '-Update')
 if ($Test) { $buildArgs += '-Test' }
+if ($Target) { $buildArgs += @('-Target', $Target) }
 & (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe') @buildArgs
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 if (Test-Path (Join-Path $Root 'node_modules')) { Set-Content -Encoding ASCII $modeFile $Mode }

@@ -122,10 +122,11 @@ footer { margin-top: 48px; color: var(--muted); font-size: 13px; }
 <h2 id="what">무엇을 맡기나</h2>
 <div class="wrap"><table>
   <tr><th>누가</th><th>하는 일</th></tr>
-  <tr><td>opencode <span class="who ai">자동</span></td><td>준비물 점검 → 빌드와 시험 → <code>%LOCALAPPDATA%\Dogent</code>에 설치 → 앱 실행 → 결과 확인 → 보고</td></tr>
+  <tr><td>opencode <span class="who ai">자동</span></td><td>준비물 점검 → 빌드와 시험 → <code>D:\Multimedia\Dogent</code>에 설치 → 앱 실행 → 결과 확인 → 보고</td></tr>
   <tr><td>사람 <span class="who me">처음 한 번</span></td><td>브라우저에 확장을 로드하고, 사이드 패널에서 연결 방식과 사용자 ID를 설정합니다. 브라우저 화면 조작이라 opencode가 할 수 없습니다.</td></tr>
 </table></div>
 <div class="note">전제: 저장소를 받았고, 저장소 루트에 <code>.env.company.local</code>을 채워 두었습니다.</div>
+<div class="note warn"><b>설치 폴더가 D:\Multimedia\Dogent인 이유</b> — 사내 보안 프로그램(EDM/NASCA) 때문에 크롬은 <code>D:\Multimedia</code> 아래 폴더의 확장만 로드할 수 있습니다. 설치 프로그램은 <code>D:\Multimedia</code>가 있으면 그 아래에, 없으면 <code>%LOCALAPPDATA%\Dogent</code>에 설치합니다. 예전 <code>%LOCALAPPDATA%\Dogent</code> 설치는 새 설치가 정리합니다(내 스킬·설정은 <code>%USERPROFILE%\.dogent</code>라 그대로).</div>
 
 <h2 id="prompt">opencode에 넣을 요청</h2>
 <p>저장소 루트에서 opencode를 열고 아래를 그대로 붙여 넣습니다.</p>
@@ -145,7 +146,8 @@ footer { margin-top: 48px; color: var(--muted); font-size: 13px; }
   <li><b>키를 출력하지 않습니다</b><code>.env.company.local</code>을 <code>cat</code>이나 <code>Get-Content</code>로 출력하지 않습니다. 빈칸 검사는 변수 이름만 찾습니다.</li>
   <li><b>커밋하지 않을 것</b><code>release\</code> 폴더와 <code>.env.*.local</code>은 <code>.gitignore</code>에 있습니다. <code>git add -f</code>를 쓰지 않습니다.</li>
   <li><b>관리자 권한 없이</b>필요하지 않습니다. 관리자 권한을 요구하는 조치는 하지 말고 멈춥니다.</li>
-  <li><b>셸</b>저장소 루트에서 PowerShell로 실행합니다. 셸이 bash라면 각 명령을 <code>powershell -NoProfile -Command "…"</code>로 감쌉니다.</li>
+  <li><b>셸</b>저장소 루트에서 PowerShell로 실행합니다. 셸이 bash라면 각 명령을 <code>powershell -NoProfile -Command "…"</code>로 감쌉니다. <code>powershell</code>을 찾지 못하면 전체 경로 <code>C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe</code>를 씁니다.</li>
+  <li><b><code>-Target</code>을 넘기지 않습니다</b>기본값(<code>D:\Multimedia\Dogent</code>)이어야 크롬이 확장을 로드할 수 있고, 예전 <code>%LOCALAPPDATA%\Dogent</code> 설치도 정리됩니다.</li>
 </ol>
 
 <h2 id="steps">에이전트 절차 (처음 설치)</h2>
@@ -155,7 +157,8 @@ footer { margin-top: 48px; color: var(--muted); font-size: 13px; }
 pnpm -v                         <span class="c"># 없으면: corepack enable pnpm  (그래도 없으면 npm install -g pnpm)</span>
 git status --short              <span class="c"># 저장소 루트인지 확인. 고친 파일이 있으면 보고에 적는다</span>
 Test-Path .env.company.local    <span class="c"># True 여야 한다</span>
-Test-Path "$env:SystemRoot\Microsoft.NET\Framework64\v4.0.30319\csc.exe"   <span class="c"># False면 오피스 도구만 뺀다</span></code></pre>
+Test-Path "$env:SystemRoot\Microsoft.NET\Framework64\v4.0.30319\csc.exe"   <span class="c"># False면 오피스 도구만 뺀다</span>
+Test-Path D:\Multimedia         <span class="c"># True 여야 한다. False면 멈추고 보고 (그대로 설치하면 크롬이 확장을 못 읽는다)</span></code></pre>
 
 <h3>2-2. 회사 설정 빈칸 검사 (값은 출력하지 않음)</h3>
 <pre><code>Select-String -Path .env.company.local -Pattern '=\((api_base_url|credential_key|model|user_type)\)' | ForEach-Object { $_.Line.Split('=')[0] }</code></pre>
@@ -176,13 +179,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "release\Dogent-company-$ver
 <p><code>-Quiet</code>라서 묻지 않고 브라우저와 앱도 띄우지 않습니다. 켜져 있던 Dogent 앱은 닫고 덮어씁니다. 출력에 <code>브라우저에 확장 로드</code> 안내가 나오는 것은 정상입니다. 그 단계는 사람이 합니다.</p>
 
 <h3>2-5. 앱 실행 (브라우저 연결 등록)</h3>
-<pre><code>Start-Process "$env:LOCALAPPDATA\Dogent\Dogent.exe"
+<pre><code>Start-Process "D:\Multimedia\Dogent\Dogent.exe"
 Start-Sleep -Seconds 5
 Get-Process Dogent -ErrorAction SilentlyContinue | Select-Object Id, StartTime</code></pre>
 <p>앱은 처음 뜰 때 Native Messaging 호스트(<code>com.dogent.bridge</code>)를 스스로 등록합니다.</p>
 
 <h2 id="verify">설치 확인 (2-6)</h2>
-<pre><code>$d = "$env:LOCALAPPDATA\Dogent"
+<pre><code>$d = "D:\Multimedia\Dogent"
 'extension\manifest.json', 'Dogent.exe', 'dogent-office.exe', 'dogent.mjs', 'bin\dogent.cmd', 'build-info.txt' |
   ForEach-Object { '{0,-24} {1}' -f $_, (Test-Path (Join-Path $d $_)) }
 Get-Content -Encoding UTF8 "$d\build-info.txt" -TotalCount 5      <span class="c"># "모드: company" 여야 한다</span>
@@ -200,15 +203,15 @@ reg query "HKCU\Software\Microsoft\Edge\NativeMessagingHosts\com.dogent.bridge" 
 <p>opencode는 이 내용을 안내만 하고 끝냅니다.</p>
 <ol class="steps">
   <li><b>확장 관리 화면 열기</b><code>chrome://extensions</code> (엣지는 <code>edge://extensions</code>)</li>
-  <li><b>예전 Dogent 삭제</b>다른 폴더(<code>…\dogent\.output\…</code>, <code>…\release\Dogent-…</code>)에서 로드한 Dogent가 있으면 삭제합니다.</li>
-  <li><b>확장 로드</b>오른쪽 위 <b>개발자 모드</b>를 켜고 <b>압축해제된 확장 프로그램을 로드합니다</b> → <code>C:\Users\&lt;나&gt;\AppData\Local\Dogent\extension</code>. 처음 한 번만 하면 됩니다.</li>
+  <li><b>예전 Dogent 삭제</b>다른 폴더(<code>…\dogent\.output\…</code>, <code>…\release\Dogent-…</code>, 예전 설치 위치 <code>…\AppData\Local\Dogent\extension</code>)에서 로드한 Dogent가 있으면 삭제합니다.</li>
+  <li><b>확장 로드</b>오른쪽 위 <b>개발자 모드</b>를 켜고 <b>압축해제된 확장 프로그램을 로드합니다</b> → <code>D:\Multimedia\Dogent\extension</code>. 처음 한 번만 하면 됩니다.</li>
   <li><b>연결 설정</b>Dogent 사이드 패널 → <b>설정 → 클라이언트 연결</b>에서 <b>Native Messaging</b>을 고르고 저장합니다. 같은 화면에서 사용자 ID와 조작할 사이트를 넣습니다.</li>
   <li><b>연결 확인</b>Dogent 앱 위쪽에 브라우저 이름이 보이면 연결된 것입니다.</li>
   <li><b>화면 점검</b>실제 업무 스킬을 돌리기 전에 대상 사내 화면을 열어 두고, 패널이 화면을 제대로 읽는지 먼저 확인합니다.</li>
 </ol>
 
 <h2 id="update">업데이트</h2>
-<p>확장을 <code>%LOCALAPPDATA%\Dogent\extension</code>에서 한 번 로드해 둔 PC라면 명령 하나입니다.</p>
+<p>확장을 <code>D:\Multimedia\Dogent\extension</code>에서 한 번 로드해 둔 PC라면 명령 하나입니다.</p>
 <pre><code>powershell -NoProfile -ExecutionPolicy Bypass -File install\update.ps1 -Mode company -Test</code></pre>
 <ul>
   <li><code>git pull --ff-only</code> → 의존성이 바뀌었으면 <code>pnpm install</code> → 전부 빌드 → 덮어써 설치 → 켜져 있던 앱을 새 판으로 다시 띄웁니다.</li>

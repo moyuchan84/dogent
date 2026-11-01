@@ -14,6 +14,7 @@
   -Reinstall   node_modules가 있어도 pnpm install을 다시 한다
   -Test        빌드 전에 typecheck와 단위 시험을 돌린다
   -Update      -Install과 함께: 묻지 않는 업데이트로 설치한다 (update.cmd가 쓴다)
+  -Target      -Install과 함께: 설치 폴더 (비우면 install.ps1 기본: D:\Multimedia\Dogent, 없으면 %LOCALAPPDATA%\Dogent)
 
   회사 모드로 만든 묶음에는 API 키가 들어간다. 저장소·메일·메신저로 옮기지 않고 사내에서만 나눈다.
 #>
@@ -25,7 +26,8 @@ param(
   [switch]$Install,
   [switch]$Reinstall,
   [switch]$Test,
-  [switch]$Update
+  [switch]$Update,
+  [string]$Target = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -198,7 +200,7 @@ if ($Mode -eq 'company') { Warn '회사 모드 묶음에는 API 키가 들어 �
 Write-Host ''
 Write-Host '완료했습니다.' -ForegroundColor Green
 if ($Install) {
-  & (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe') -NoProfile -ExecutionPolicy Bypass -File (Join-Path $pkg 'install.ps1') @(if ($Update) { '-Update' })
+  & (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe') -NoProfile -ExecutionPolicy Bypass -File (Join-Path $pkg 'install.ps1') @(if ($Update) { '-Update' }) @(if ($Target) { '-Target', $Target })
   exit $LASTEXITCODE
 }
 Write-Host "이 PC에 설치하려면: release\$name\install.cmd"

@@ -10,7 +10,7 @@
 
 ```bat
 install\build.cmd -Mode company -Zip     :: 빌드 → release\Dogent-company-<판>\ 과 .zip
-release\Dogent-company-<판>\install.cmd  :: 사용자 PC: %LOCALAPPDATA%\Dogent 에 설치, 확장 로드 안내, 앱 실행
+release\Dogent-company-<판>\install.cmd  :: 사용자 PC: D:\Multimedia\Dogent 에 설치, 확장 로드 안내, 앱 실행
 install\update.cmd                        :: 업데이트: git pull → 전부 빌드 → 덮어써 설치 → 앱 다시 띄움. 확장은 스스로 새 판을 다시 읽는다
 ```
 
