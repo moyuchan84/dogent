@@ -84,13 +84,13 @@ Start-Sleep -Seconds 5
 Get-Process Dogent -ErrorAction SilentlyContinue | Select-Object Id, StartTime
 ```
 
-앱은 처음 뜰 때 Native Messaging 호스트(`com.dogent.bridge`)를 스스로 등록합니다.
+앱은 뜰 때마다 Native Messaging 호스트(`com.dogent.bridge`)를 스스로 등록합니다. 크롬이 띄우는 호스트 파일은 `D:\Multimedia\Dogent\native\`에 두고, 예전 위치(`%USERPROFILE%\.dogent`)에 남은 호스트 파일은 지웁니다. 토큰과 내 스킬·기록은 `%USERPROFILE%\.dogent`에 그대로 있습니다.
 
 ### 2-6. 설치 확인
 
 ```powershell
 $d = "D:\Multimedia\Dogent"
-'extension\manifest.json', 'Dogent.exe', 'dogent-office.exe', 'dogent.mjs', 'bin\dogent.cmd', 'build-info.txt' |
+'extension\manifest.json', 'Dogent.exe', 'dogent-office.exe', 'dogent.mjs', 'bin\dogent.cmd', 'build-info.txt', 'native\native-host.cmd', 'native\com.dogent.bridge.json' |
   ForEach-Object { '{0,-24} {1}' -f $_, (Test-Path (Join-Path $d $_)) }
 Get-Content -Encoding UTF8 "$d\build-info.txt" -TotalCount 5      # "모드: company" 여야 한다
 reg query "HKCU\Software\Google\Chrome\NativeMessagingHosts\com.dogent.bridge" 2>$null
@@ -102,7 +102,8 @@ reg query "HKCU\Software\Microsoft\Edge\NativeMessagingHosts\com.dogent.bridge" 
 | `extension\manifest.json`, `Dogent.exe`, `dogent.mjs` | True |
 | `dogent-office.exe` | True (csc.exe가 없어 뺐으면 False가 맞음) |
 | `build-info.txt`의 모드 | `company` |
-| NativeMessagingHosts 레지스트리 | 쓰는 브라우저 쪽에 값이 있음. 없으면 앱이 아직 안 떴거나 등록 전이니 10초 뒤 다시 본다 |
+| `native\native-host.cmd`, `native\com.dogent.bridge.json` | True (앱이 뜬 뒤) |
+| NativeMessagingHosts 레지스트리 | 쓰는 브라우저 쪽 값이 `D:\Multimedia\Dogent\native\com.dogent.bridge.json`. 없으면 앱이 아직 안 떴거나 등록 전이니 10초 뒤 다시 본다 |
 
 ### 2-7. 사람에게 넘길 일 (opencode는 안내만)
 

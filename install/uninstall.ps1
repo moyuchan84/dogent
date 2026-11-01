@@ -41,9 +41,16 @@ Step '브라우저 연결 등록'
 foreach ($key in @('HKCU:\Software\Google\Chrome\NativeMessagingHosts\com.dogent.bridge', 'HKCU:\Software\Microsoft\Edge\NativeMessagingHosts\com.dogent.bridge', 'HKCU:\Software\Chromium\NativeMessagingHosts\com.dogent.bridge')) {
   if (Test-Path $key) { Remove-Item -Recurse -Force $key; Ok "지움: $key" }
 }
-foreach ($f in @('com.dogent.bridge.json', 'native-host.cmd', 'native-host.mjs', 'protocol.mjs')) {
-  $p = Join-Path $dotDogent $f
-  if (Test-Path $p) { Remove-Item -Force $p }
+# 호스트 파일은 D:\Multimedia\Dogent\native (회사 PC) 또는 ~/.dogent 에 있다 (bridge/register.mjs의 hostHome)
+$hostDirs = @($dotDogent, 'D:\Multimedia\Dogent\native')
+if ($env:DOGENT_HOME) { $hostDirs += (Join-Path $env:DOGENT_HOME 'native') }
+if ($Target) { $hostDirs += (Join-Path $Target 'native') }
+foreach ($dir in $hostDirs) {
+  foreach ($f in @('com.dogent.bridge.json', 'native-host.cmd', 'native-host.mjs', 'protocol.mjs')) {
+    $p = Join-Path $dir $f
+    if (Test-Path $p) { Remove-Item -Force $p }
+  }
+  if ($dir -ne $dotDogent -and (Test-Path $dir) -and -not (Get-ChildItem $dir -Force)) { Remove-Item -Force $dir }
 }
 Ok '호스트 파일 정리'
 

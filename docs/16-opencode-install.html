@@ -182,11 +182,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "release\Dogent-company-$ver
 <pre><code>Start-Process "D:\Multimedia\Dogent\Dogent.exe"
 Start-Sleep -Seconds 5
 Get-Process Dogent -ErrorAction SilentlyContinue | Select-Object Id, StartTime</code></pre>
-<p>앱은 처음 뜰 때 Native Messaging 호스트(<code>com.dogent.bridge</code>)를 스스로 등록합니다.</p>
+<p>앱은 뜰 때마다 Native Messaging 호스트(<code>com.dogent.bridge</code>)를 스스로 등록합니다. 크롬이 띄우는 호스트 파일은 <code>D:\Multimedia\Dogent\native\</code>에 두고, 예전 위치(<code>%USERPROFILE%\.dogent</code>)에 남은 호스트 파일은 지웁니다. 토큰과 내 스킬·기록은 <code>%USERPROFILE%\.dogent</code>에 그대로 있습니다.</p>
 
 <h2 id="verify">설치 확인 (2-6)</h2>
 <pre><code>$d = "D:\Multimedia\Dogent"
-'extension\manifest.json', 'Dogent.exe', 'dogent-office.exe', 'dogent.mjs', 'bin\dogent.cmd', 'build-info.txt' |
+'extension\manifest.json', 'Dogent.exe', 'dogent-office.exe', 'dogent.mjs', 'bin\dogent.cmd', 'build-info.txt', 'native\native-host.cmd', 'native\com.dogent.bridge.json' |
   ForEach-Object { '{0,-24} {1}' -f $_, (Test-Path (Join-Path $d $_)) }
 Get-Content -Encoding UTF8 "$d\build-info.txt" -TotalCount 5      <span class="c"># "모드: company" 여야 한다</span>
 reg query "HKCU\Software\Google\Chrome\NativeMessagingHosts\com.dogent.bridge" 2&gt;$null
@@ -196,7 +196,8 @@ reg query "HKCU\Software\Microsoft\Edge\NativeMessagingHosts\com.dogent.bridge" 
   <tr><td><code>extension\manifest.json</code>, <code>Dogent.exe</code>, <code>dogent.mjs</code></td><td>True</td></tr>
   <tr><td><code>dogent-office.exe</code></td><td>True (csc.exe가 없어 뺐으면 False가 맞음)</td></tr>
   <tr><td><code>build-info.txt</code>의 모드</td><td><code>company</code></td></tr>
-  <tr><td>NativeMessagingHosts 레지스트리</td><td>쓰는 브라우저 쪽에 값이 있음. 없으면 앱이 아직 등록 전이니 10초 뒤 다시 봅니다</td></tr>
+  <tr><td><code>native\native-host.cmd</code>, <code>native\com.dogent.bridge.json</code></td><td>True (앱이 뜬 뒤)</td></tr>
+  <tr><td>NativeMessagingHosts 레지스트리</td><td>쓰는 브라우저 쪽 값이 <code>D:\Multimedia\Dogent\native\com.dogent.bridge.json</code>. 없으면 앱이 아직 등록 전이니 10초 뒤 다시 봅니다</td></tr>
 </table></div>
 
 <h2 id="human">사람이 할 일 (2-7, 처음 한 번)</h2>

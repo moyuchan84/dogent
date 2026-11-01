@@ -2,11 +2,32 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { findInstalledExtensions, isExtensionId } from '../bridge/register.mjs';
+import { existsSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { findInstalledExtensions, hostHome, isExtensionId, launcherPath } from '../bridge/register.mjs';
 
 const id = 'abcdefghijklmnopabcdefghijklmnop';
 const saved = process.env.LOCALAPPDATA;
-afterEach(() => (process.env.LOCALAPPDATA = saved));
+const savedHome = process.env.DOGENT_HOME;
+afterEach(() => {
+  process.env.LOCALAPPDATA = saved;
+  if (savedHome === undefined) delete process.env.DOGENT_HOME;
+  else process.env.DOGENT_HOME = savedHome;
+});
+
+describe('호스트 파일 폴더', () => {
+  it('DOGENT_HOME이 있으면 그 아래 native', () => {
+    process.env.DOGENT_HOME = join('X:', 'apps', 'Dogent');
+    expect(hostHome()).toBe(join('X:', 'apps', 'Dogent', 'native'));
+    expect(launcherPath()).toBe(join('X:', 'apps', 'Dogent', 'native', 'native-host.cmd'));
+  });
+
+  it('없으면 D:\\Multimedia가 있을 때 그 아래, 아니면 ~/.dogent', () => {
+    delete process.env.DOGENT_HOME;
+    const multimedia = process.platform === 'win32' && existsSync('D:\\Multimedia');
+    expect(hostHome()).toBe(multimedia ? join('D:\\Multimedia', 'Dogent', 'native') : join(homedir(), '.dogent'));
+  });
+});
 
 describe('Native Messaging 등록', () => {
   it('확장 ID 형식은 a~p 32글자', () => {

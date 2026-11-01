@@ -5,7 +5,7 @@ import { homedir, tmpdir, userInfo } from 'node:os';
 import { join } from 'node:path';
 import { WebSocket } from 'ws';
 import { EXTENSION_ID } from '../../bridge/extension-key.mjs';
-import { REGISTRY_KEYS, findInstalledExtensions, registerNativeHost } from '../../bridge/register.mjs';
+import { REGISTRY_KEYS, findInstalledExtensions, launcherPath, registerNativeHost } from '../../bridge/register.mjs';
 import { DEFAULT_PORT, NATIVE_HOST_NAME, pipePath } from '../../bridge/protocol.mjs';
 import { openBridge } from './bridge';
 
@@ -14,7 +14,7 @@ import { openBridge } from './bridge';
  *
  * 클라이언트와 확장은 두 길로 이어진다.
  *   WebSocket         확장이 ws://127.0.0.1:<포트>로 붙는다. 토큰이 맞아야 한다.
- *   Native Messaging  브라우저가 호스트(~/.dogent/native-host.cmd)를 띄우고, 호스트가 클라이언트의 파이프에 붙는다.
+ *   Native Messaging  브라우저가 호스트(D:\Multimedia\Dogent\native\native-host.cmd, 없으면 ~/.dogent/native-host.cmd)를 띄우고, 호스트가 클라이언트의 파이프에 붙는다.
  *                     호스트가 레지스트리에 등록되어 있어야 하고, 회사 정책이 막으면 안 된다.
  * 터미널 클라이언트는 호스트를 등록하지 않는다 (등록은 데스크탑 앱이 하거나 doctor --fix가 한다).
  *
@@ -378,7 +378,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<boolean> {
     }
 
     // 호스트가 실제로 뜨는지
-    const launcher = join(dogentDir(), 'native-host.cmd');
+    const launcher = launcherPath();
     if (existsSync(launcher)) {
       const parsed = parseLauncher(readFileSync(launcher, 'utf8'));
       if (!parsed) {

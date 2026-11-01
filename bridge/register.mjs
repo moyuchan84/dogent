@@ -1,8 +1,12 @@
 // Native Messaging 호스트를 이 PC에 등록한다 (관리자 권한 불필요, 현재 사용자만). install.mjs와 데스크탑 앱이 같이 쓴다.
 //
-//   ~/.dogent/native-host.cmd        크롬이 띄울 실행 파일
-//   ~/.dogent/com.dogent.bridge.json 호스트 매니페스트 (허용할 확장 ID)
+//   <호스트 폴더>\native-host.cmd        크롬이 띄울 실행 파일
+//   <호스트 폴더>\com.dogent.bridge.json 호스트 매니페스트 (허용할 확장 ID)
 //   HKCU\Software\<브라우저>\NativeMessagingHosts\com.dogent.bridge → 위 매니페스트
+//
+// 호스트 폴더 (hostHome): DOGENT_HOME\native → D:\Multimedia\Dogent\native (D:\Multimedia가 있을 때) → ~/.dogent
+// 회사 PC는 보안 프로그램(EDM/NASCA) 때문에 크롬이 D:\Multimedia 아래 파일만 읽고 띄울 수 있어 그곳을 먼저 쓴다.
+// 예전 위치(~/.dogent)의 호스트 파일은 새로 등록할 때 지운다. 토큰(~/.dogent/bridge-token)과 내 스킬·기록은 그대로 둔다.
 import { execFileSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -28,15 +32,42 @@ const USER_DATA = {
 const ID_PATTERN = /^[a-p]{32}$/;
 export const isExtensionId = (id) => ID_PATTERN.test(String(id).trim());
 
-const dogentDir = () => join(homedir(), '.dogent');
-const manifestPath = () => join(dogentDir(), `${NATIVE_HOST_NAME}.json`);
-const launcherPath = () => join(dogentDir(), 'native-host.cmd');
+const legacyDir = () => join(homedir(), '.dogent');
+const MULTIMEDIA = 'D:\\Multimedia';
 
-/** 이미 등록된 허용 확장 ID */
+/** 호스트 파일(실행 파일·매니페스트·스크립트)을 둘 폴더 */
+export function hostHome() {
+  if (process.env.DOGENT_HOME) return join(process.env.DOGENT_HOME, 'native');
+  if (process.platform === 'win32' && existsSync(MULTIMEDIA)) return join(MULTIMEDIA, 'Dogent', 'native');
+  return legacyDir();
+}
+const HOST_FILES = [`${NATIVE_HOST_NAME}.json`, 'native-host.cmd', 'native-host.mjs', 'protocol.mjs'];
+const manifestPath = (dir = hostHome()) => join(dir, `${NATIVE_HOST_NAME}.json`);
+export const launcherPath = (dir = hostHome()) => join(dir, 'native-host.cmd');
+
+function idsIn(manifest) {
+  if (!existsSync(manifest)) return [];
+  try {
+    const origins = JSON.parse(readFileSync(manifest, 'utf8')).allowed_origins ?? [];
+    return origins.map((o) => o.replace(/^chrome-extension:\/\/|\/$/g, ''));
+  } catch {
+    return [];
+  }
+}
+
+/** 이미 등록된 허용 확장 ID (예전 위치에 남은 등록도 합친다) */
 export function registeredIds() {
-  if (!existsSync(manifestPath())) return [];
-  const origins = JSON.parse(readFileSync(manifestPath(), 'utf8')).allowed_origins ?? [];
-  return origins.map((o) => o.replace(/^chrome-extension:\/\/|\/$/g, ''));
+  const dirs = [...new Set([hostHome(), legacyDir()])];
+  return [...new Set(dirs.flatMap((d) => idsIn(manifestPath(d))))];
+}
+
+/** 호스트 폴더가 바뀌었으면 예전 위치의 호스트 파일을 지운다 */
+function removeLegacyHostFiles() {
+  if (hostHome() === legacyDir()) return;
+  for (const f of HOST_FILES) {
+    const p = join(legacyDir(), f);
+    if (existsSync(p)) rmSync(p, { force: true });
+  }
 }
 
 /** 크롬·엣지 프로필에 설치된 Dogent 확장을 찾는다. 압축해제 설치는 설정 파일에 manifest가 남는다. */
@@ -70,7 +101,8 @@ export function findInstalledExtensions() {
  * 호스트를 등록한다. ids는 더 허용할 확장 ID(이미 등록된 것은 남긴다).
  * 매니페스트의 key로 정해진 Dogent 확장 ID(EXTENSION_ID)는 늘 허용하므로, 확장을 아직 로드하지 않았어도 미리 등록해 둘 수 있다.
  * runtime을 주면 node 대신 그 실행 파일을 쓴다 (묶어 낸 앱: Electron을 ELECTRON_RUN_AS_NODE로 돌린다).
- * 이때 호스트 스크립트(hostDir의 native-host.mjs, protocol.mjs)는 ~/.dogent로 복사한다. 묶어 낸 앱은 압축 파일 안이라 크롬이 읽을 수 없고, 휴대용 실행본은 경로가 바뀔 수 있다.
+ * 호스트 스크립트(hostDir의 native-host.mjs, protocol.mjs)는 늘 호스트 폴더(hostHome)로 복사한다. 묶어 낸 앱은 압축 파일 안이라
+ * 크롬이 읽을 수 없고, 휴대용 실행본은 경로가 바뀔 수 있고, 회사 PC는 D:\Multimedia 밖의 파일을 크롬이 띄우지 못할 수 있다.
  */
 export function registerNativeHost({ ids = [], browsers = ['chrome', 'edge'], runtime, hostDir = import.meta.dirname, log = () => {} }) {
   if (process.platform !== 'win32') throw new Error('지금은 Windows만 지원합니다');
@@ -78,13 +110,11 @@ export function registerNativeHost({ ids = [], browsers = ['chrome', 'edge'], ru
   for (const id of ids) if (!isExtensionId(id)) throw new Error(`확장 ID 형식이 아닙니다: ${id} (a~p 32글자)`);
   const allIds = [...new Set([EXTENSION_ID, ...registeredIds(), ...ids.map((i) => i.trim())])];
 
-  mkdirSync(dogentDir(), { recursive: true });
-  let hostScript = join(hostDir, 'native-host.mjs');
-  if (runtime) {
-    hostScript = join(dogentDir(), 'native-host.mjs');
-    copyFileSync(join(hostDir, 'native-host.mjs'), hostScript);
-    copyFileSync(join(hostDir, 'protocol.mjs'), join(dogentDir(), 'protocol.mjs'));
-  }
+  const home = hostHome();
+  mkdirSync(home, { recursive: true });
+  const hostScript = join(home, 'native-host.mjs');
+  copyFileSync(join(hostDir, 'native-host.mjs'), hostScript);
+  copyFileSync(join(hostDir, 'protocol.mjs'), join(home, 'protocol.mjs'));
   // 크롬은 Windows에서 .cmd를 띄울 수 있다.
   const line = runtime
     ? `set ELECTRON_RUN_AS_NODE=1\r\n"${runtime}" "${hostScript}" %*\r\n`
@@ -102,6 +132,7 @@ export function registerNativeHost({ ids = [], browsers = ['chrome', 'edge'], ru
     execFileSync(REG, ['add', `${REGISTRY_KEYS[b]}\\${NATIVE_HOST_NAME}`, '/ve', '/t', 'REG_SZ', '/d', manifestPath(), '/f'], { stdio: 'ignore' });
     log(`${b}: 등록했습니다`);
   }
+  removeLegacyHostFiles();
   return { manifest: manifestPath(), ids: allIds };
 }
 
@@ -114,5 +145,7 @@ export function unregisterNativeHost({ browsers = ['chrome', 'edge'], log = () =
       log(`${b}: 등록되어 있지 않습니다`);
     }
   }
-  for (const f of [manifestPath(), launcherPath()]) if (existsSync(f)) rmSync(f);
+  for (const dir of new Set([hostHome(), legacyDir()])) {
+    for (const f of HOST_FILES) if (existsSync(join(dir, f))) rmSync(join(dir, f), { force: true });
+  }
 }
