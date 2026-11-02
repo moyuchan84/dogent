@@ -408,6 +408,60 @@ try {
     return '도구 목록·권한·거절·허락';
   });
 
+  await scenario('dogent serve: Claude Code처럼 MCP로 사내 웹 업무를 맡기면 스킬로 처리하고 결과를 돌려줌', async () => {
+    await open('/wip.html');
+    const child = spawn(process.execPath, [CLIENT, 'serve', '--wait', '45'], {
+      env: { ...process.env, DOGENT_HOME: home, DOGENT_BRIDGE_TOKEN: TOKEN, DOGENT_BRIDGE_PORT: String(PORT), DOGENT_BRIDGE_PIPE: `\\\\.\\pipe\\dogent-client-e2e-${process.pid}` },
+    });
+    let buf = '';
+    let errText = '';
+    const waiting = new Map();
+    child.stderr.on('data', (d) => (errText += d));
+    child.stdout.on('data', (d) => {
+      buf += d;
+      let i;
+      while ((i = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0, i);
+        buf = buf.slice(i + 1);
+        if (!line.trim()) continue;
+        const msg = JSON.parse(line);
+        waiting.get(msg.id)?.(msg);
+        waiting.delete(msg.id);
+      }
+    });
+    let nextId = 1;
+    const rpc = (method, params) =>
+      new Promise((resolve, reject) => {
+        const id = nextId++;
+        const timer = setTimeout(() => reject(new Error(`${method}: 90초 안에 답이 없음\n${errText}`)), 90_000);
+        waiting.set(id, (m) => (clearTimeout(timer), resolve(m)));
+        child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id, method, params })}\n`);
+      });
+    try {
+      const init = await rpc('initialize', { protocolVersion: '2025-06-18', clientInfo: { name: 'claude-code' }, capabilities: {} });
+      assert.equal(init.result.serverInfo.name, 'dogent');
+      child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' })}\n`);
+      const list = await rpc('tools/list', {});
+      assert.ok(list.result.tools.some((t) => t.name === 'dogent_request'));
+      const skills = await rpc('tools/call', { name: 'dogent_skills', arguments: { query: '재공' } });
+      assert.match(skills.result.content[0].text, /wip-check/);
+      const r = await rpc('tools/call', { name: 'dogent_request', arguments: { request: '7라인 재공 확인해줘' } });
+      const text = r.result.content[0].text;
+      assert.equal(r.result.isError, false, text);
+      const head = JSON.parse(text.split('\n\n---')[0]);
+      assert.equal(head.status, 'done', text);
+      assert.ok(head.files.some((f) => /재공확인_7라인( \(\d+\))?\.xlsx$/.test(f)), text);
+      assert.match(text, /스킬: 재공 확인/);
+      // 맡긴 일은 대화 기록에 남아, 다음 요청에서 "방금 것"으로 이어 갈 수 있다
+      const conv = JSON.parse(readFileSync(join(home, 'conversation.json'), 'utf8'));
+      assert.equal(conv.turns.at(-1).request, '7라인 재공 확인해줘');
+      return `동작 ${head.actions}개, ${head.elapsed_sec}초`;
+    } finally {
+      child.stdin.end();
+      child.kill();
+    }
+  });
+
   await scenario('브라우저가 둘이면 목록을 보여 주고, --browser로 고른 브라우저를 조작', async () => {
     // 두 번째 브라우저(따로 띄운 Chromium, 확장 설치도 따로)를 같은 클라이언트에 붙인다.
     const second = await chromium.launchPersistentContext(await mkdtemp(join(tmpdir(), 'dogent-client-2-')), {

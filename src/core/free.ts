@@ -19,6 +19,8 @@ export function buildFreeSkill(
   tools = false,
   extraHosts: string[] = [],
   anySite = false,
+  /** 지침(DOGENT.md)과 앞선 대화 (client/src/conversation.ts contextNote) */
+  context?: string,
 ): Skill {
   // pageUrl이 null이면 브라우저 없이 엑셀 도구만 쓰는 요청이다. 허용 도메인이 없으므로 화면 동작은 모두 막힌다.
   let host = '(브라우저 없음)';
@@ -76,7 +78,13 @@ limits:
 ## 결과
 
 한 일과, 요청이 물어본 내용에 대한 답.
-${systemInfo ? `
+${context ? `
+## 대화 맥락
+
+지침은 늘 지킵니다. 앞선 대화는 이번 요청의 "그거", "방금 것"이 무엇인지 알아듣는 데 쓰고, 앞선 요청을 다시 하지 않습니다. 앞선 실행의 데이터셋이 남아 있으면 그대로 씁니다.
+
+${context.replace(/^## /gm, '### ')}
+` : ''}${systemInfo ? `
 ## 시스템 정보
 
 사내 시스템 사전의 설명입니다. 화면을 찾고 용어를 이해하는 데만 쓰고, 요청에 없는 일은 하지 않습니다.

@@ -26,6 +26,7 @@ import {
   skillCoversUrl,
   systemForUrl,
   type ApprovalRequest,
+  type Dataset,
   type HistoryEntry,
   type RunEvent,
   type RunResult,
@@ -38,6 +39,8 @@ import type { BrowserLink } from '../../bridge/hub.mjs';
 import { openBridge, type Bridge } from './bridge';
 import { composeFlow, editSkill } from './compose-skill';
 import { setConfig, type ClientConfig } from './config';
+import { enabledAgents, loadAgents, mentionedAgents } from './agents';
+import { Conversation, addInstruction, contextNote, conversationFile, describeInstructions, loadInstructions, personalInstructionsFile } from './conversation';
 import { loadSystems, type SystemEntry } from './systems';
 import { McpHub, enabledServers, loadMcpConfig, mentionedServers } from './mcp-hub';
 import { Office, OfficeDocs, findOfficeExe, looksLikePath } from './office';
@@ -77,6 +80,11 @@ export interface SessionOptions {
   waitSec: number;
   /** 이번에 쓸 브라우저 (이름 일부나 번호) */
   browser?: string;
+  /**
+   * 대화 맥락: new = 새 대화로 시작 (기본), continue = 저장해 둔 마지막 대화를 이어 감 (--continue),
+   * recent = 마지막 대화가 오래되지 않았으면 이어 감 (앱: 설정을 바꿔 세션을 새로 만들어도 대화가 끊기지 않게)
+   */
+  conversation?: 'new' | 'continue' | 'recent';
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -116,6 +124,9 @@ function stoppable<T extends object>(port: T, signal: AbortSignal, keep: string[
   });
 }
 
+/** "기억해: …", "memory add …" — 개인 지침에 한 줄 더하기 */
+const MEMORY_ADD = /^(memory\s+add|기억해\s*줘?\s*[:：])\s*/;
+
 /** 로그인을 기다리는 최대 시간 (사이드 패널과 같다) */
 const LOGIN_WAIT_MS = 5 * 60_000;
 
@@ -138,13 +149,60 @@ export class Session {
   private abort: AbortController | null = null;
   /** 스킬을 실행하는 중인지 */
   private executing = false;
+  /** 앞선 요청과 결과 (이어지는 요청을 알아듣게 모델에 보여 준다) */
+  readonly conversation: Conversation;
+  /** 앞선 자유 요청·스킬이 만든 데이터셋. 다음 자유 요청이 "방금 조회한 것"으로 이어서 쓴다 (메모리에만 둔다) */
+  private carry: Dataset[] = [];
 
   constructor(
     private term: Ui,
     private cfg: ClientConfig,
     private flags: SessionOptions,
   ) {
+    const file = conversationFile(cfg.home);
+    const mode = flags.conversation ?? 'new';
+    this.conversation = mode === 'new' ? new Conversation(file) : Conversation.resume(file);
+    if (mode === 'recent' && this.conversation.stale()) this.conversation.turns = [];
     this.reloadSkills();
+  }
+
+  /** 새 대화: 앞선 요청과 데이터셋을 잊는다 */
+  newConversation(): void {
+    this.conversation.clear();
+    this.carry = [];
+    this.term.print('새 대화를 시작합니다. 앞선 요청은 이제 참고하지 않습니다.');
+  }
+
+  /** 모델에 함께 보여 줄 지침과 앞선 대화 */
+  private context(): string | undefined {
+    return contextNote({ instructions: describeInstructions(loadInstructions(this.cfg.home, this.cfg.teamSkills)), conversation: this.conversation.context() });
+  }
+
+  /** 지침 보기 / 한 줄 더하기 (memory, "기억해: …") */
+  memory(add?: string): void {
+    if (add?.trim()) {
+      const file = addInstruction(this.cfg.home, add);
+      this.term.print(`기억했습니다. 다음 요청부터 함께 봅니다 (${file})`);
+      return;
+    }
+    const i = loadInstructions(this.cfg.home, this.cfg.teamSkills);
+    if (!i.personal && !i.team) {
+      this.term.print(`지침이 없습니다. "기억해: 결과 엑셀은 늘 라인별로 시트를 나눈다"처럼 말하거나 ${personalInstructionsFile(this.cfg.home)}에 적으세요`);
+      return;
+    }
+    if (i.team) this.term.print(`[팀 지침] ${this.cfg.teamSkills}\\DOGENT.md\n${i.team}`);
+    if (i.personal) this.term.print(`[내 지침] ${personalInstructionsFile(this.cfg.home)}\n${i.personal}`);
+  }
+
+  /** 요청이 말하는 MCP 서버·에이전트 */
+  private mentioned(text: string): string[] {
+    let agents: string[] = [];
+    try {
+      agents = mentionedAgents(loadAgents(), text);
+    } catch {
+      // 설정이 틀렸으면 에이전트 없이
+    }
+    return [...mentionedServers(loadMcpConfig(), text), ...agents];
   }
 
   reloadSkills(): string[] {
@@ -357,9 +415,16 @@ export class Session {
   private async toolPort(): Promise<McpHub | null> {
     if (this.mcp) return this.mcp.list().length ? this.mcp : null;
     const cfg = loadMcpConfig();
-    if (enabledServers(cfg).length === 0) return null;
-    this.term.print('MCP 서버를 연결하는 중…');
-    this.mcp = await McpHub.open(cfg);
+    let agents = { agents: {} } as ReturnType<typeof loadAgents>;
+    try {
+      agents = loadAgents();
+    } catch (e) {
+      this.term.print(`에이전트 설정을 읽지 못했습니다: ${(e as Error).message}`);
+    }
+    if (enabledServers(cfg).length === 0 && enabledAgents(agents).length === 0) return null;
+    this.term.print(enabledServers(cfg).length ? 'MCP 서버를 연결하는 중…' : '연결한 에이전트를 준비하는 중…');
+    // 에이전트(Claude Code, opencode)도 MCP 서버처럼 같은 목록에 넣는다. 맡기고 끝날 때까지 진행을 알린다
+    this.mcp = await McpHub.open(cfg, undefined, { config: agents, workdir: this.cfg.outputDir, log: (l) => this.term.print(`  ${l}`) });
     for (const f of this.mcp.failed) this.term.print(`MCP 서버 ${f.server}을(를) 시작하지 못했습니다: ${f.reason} (dogent mcp test 로 확인하세요)`);
     return this.mcp.list().length ? this.mcp : null;
   }
@@ -566,6 +631,12 @@ export class Session {
       toolsOnly?: boolean;
       /** 요청이 말한 다른 사이트들의 주소(host). 자유 요청의 허용 도메인에 더해 open_tab으로 오갈 수 있게 한다 */
       extraHosts?: string[];
+      /** 지침과 앞선 대화 (자유 요청) */
+      context?: string;
+      /** 대화 기록에 남길 요청 글. 없으면 "<스킬 이름> 실행" */
+      request?: string;
+      /** 대화 기록에 남기지 않는다 (스킬 만들기의 시험 실행) */
+      noRecord?: boolean;
     } = {},
   ): Promise<{ result: RunResult; entries: HistoryEntry[]; tabUrl: string }> {
     const stopped: RunResult = { status: 'stopped', message: '사용자가 중지했습니다', lastStep: 0, actions: 0, files: [], datasets: [], outputs: {}, elapsedMs: 0 };
@@ -590,6 +661,8 @@ export class Session {
     const office = isFree ? (excelOnly || opts.excel ? this.officePort() : null) : skillUsesOffice(skill) ? this.officePort() : null;
     if (excelOnly && !office) throw new Error('오피스 도구(dogent-office.exe)가 없어 엑셀 문서를 다룰 수 없습니다. pnpm office:build로 만들거나 dogent config officeExe <경로>로 알려 주세요');
     const datasets = new DatasetStore();
+    // 자유 요청은 앞선 실행의 데이터셋을 이어서 쓴다 ("방금 조회한 것을 라인별로 집계해 줘")
+    if (isFree) for (const d of this.carry) datasets.set(d.name, d.columns, d.rows);
     for (const spec of skill.inputs) {
       const path = filePaths[spec.name];
       if (spec.type !== 'file' || !spec.dataset || !path) continue;
@@ -600,7 +673,7 @@ export class Session {
     if (!target.allowed) {
       throw new Error(`지금 브라우저 탭(${target.url})은 조작할 사이트 목록에 없습니다. 업무 화면 탭을 앞에 두거나 확장 설정 → 조작할 사이트에서 더하세요`);
     }
-    const active = isFree ? buildFreeSkill(bridge ? target.url : null, this.flags.allowWrite, opts.systemInfo, !!office, !!tools, opts.extraHosts, true) : skill;
+    const active = isFree ? buildFreeSkill(bridge ? target.url : null, this.flags.allowWrite, opts.systemInfo, !!office, !!tools, opts.extraHosts, true, opts.context) : skill;
     const scale = Math.max(1, this.cfg.llm.timeoutScale || 1);
     const scaled = { ...active, limits: { ...active.limits, timeout_sec: active.limits.timeout_sec * scale } };
     const events: RunEvent[] = [];
@@ -663,6 +736,18 @@ export class Session {
     if (this.term.result) this.term.result(result, saved);
     else this.term.print(describeResult(result, saved));
     appendRun(this.cfg.home, { id: crypto.randomUUID(), startedAt, skill: { id: skill.id, version: skill.version }, inputs: values, tabUrl: target.url, events, result });
+    if (!opts.noRecord) {
+      const made = datasets.list();
+      if (made.length) this.carry = made.map((d) => ({ ...d, columns: [...d.columns], rows: d.rows.map((r) => [...r]) }));
+      this.conversation.add({
+        request: opts.request ?? `${skill.name} 실행 (${Object.entries(values).map(([k, v]) => `${k}=${v}`).join(', ')})`,
+        skill: skill.name,
+        status: result.status,
+        summary: result.message,
+        files: saved,
+        datasets: made.map((d) => ({ name: d.name, rows: d.rows.length, columns: d.columns })),
+      });
+    }
     return { result, entries: events.flatMap((e) => (e.type === 'action' ? [e.entry] : [])), tabUrl: target.url };
   }
 
@@ -806,6 +891,7 @@ export class Session {
     this.reloadSkills();
     await this.followActiveTab();
     const { named, systemInfo } = await this.systemsFor(text);
+    const context = this.context();
     if (named.length) this.term.print(`시스템: ${named.map((m) => m.name).join(', ')}`);
     this.term.print('요청을 해석하는 중…');
     let plan: { skill_id: string | null; inputs: Record<string, unknown> };
@@ -814,7 +900,7 @@ export class Session {
       const base = shortlistSkills(this.skills, (e) => docOfSkill(e.skill), text, { url: await this.currentUrl() });
       // 요청에 나온 시스템을 다루는 스킬도 후보에 넣는다 (그 시스템 화면이 아직 열려 있지 않아도)
       const extra = this.skills.filter((e) => !base.includes(e) && named.some((m) => skillCoversUrl(docOfSkill(e.skill), m.url)));
-      plan = await planRequest(text, [...base, ...extra].map((e) => e.skill), this.llm(), this.abort?.signal, systemInfo);
+      plan = await planRequest(text, [...base, ...extra].map((e) => e.skill), this.llm(), this.abort?.signal, systemInfo, context);
     } catch (e) {
       if (this.abort?.signal.aborted) throw e;
       this.term.print(`요청을 해석하지 못했습니다: ${(e as Error).message}`);
@@ -829,7 +915,7 @@ export class Session {
       if (!filled) return false;
       if (!this.flags.yes && !(await this.term.confirm('실행할까요?', true))) return false;
       if (!(await this.ensureStartTab(entry.skill, text))) return false;
-      const { result } = await this.execute(entry.skill, filled.values, filled.files);
+      const { result } = await this.execute(entry.skill, filled.values, filled.files, { request: text });
       return result.status === 'done' || result.status === 'dryrun';
     }
 
@@ -838,7 +924,7 @@ export class Session {
     const office = this.officePort();
     const docs = office ? await this.until(office.docs().catch(() => [])) : [];
     // 시스템 이름이 MCP 서버 이름과 겹치면(MES 등) 화면 단서가 따로 없는 한 서버로 처리한다
-    const viaServer = mentionedServers(loadMcpConfig(), text).length > 0;
+    const viaServer = this.mentioned(text).length > 0;
     const intent = officeIntent(text, { openDocs: docs.map((d) => d.name), hasUrl: !!asked, hasSystem: named.length > 0 && !viaServer });
     if (intent.excel && !office) {
       this.term.print('엑셀 문서가 필요한 요청 같지만 오피스 도구(dogent-office.exe)가 없습니다. pnpm office:build로 만들거나 dogent config officeExe <경로>로 알려 주세요');
@@ -847,7 +933,7 @@ export class Session {
     const excelOnly = intent.excel && !intent.web && !!office;
     const withExcel = intent.excel && !!office;
     // 요청이 MCP 서버(이름이나 keywords)를 말하고 엑셀·화면은 필요 없으면 브라우저 연결을 기다리지 않는다
-    const toolsOnly = !excelOnly && !intent.excel && !intent.web && mentionedServers(loadMcpConfig(), text).length > 0;
+    const toolsOnly = !excelOnly && !intent.excel && !intent.web && this.mentioned(text).length > 0;
     const noWeb = excelOnly || toolsOnly;
     if (withExcel) {
       this.term.print(docs.length ? `열려 있는 엑셀 문서 ${docs.length}개: ${docs.map((d) => d.name).join(', ')}` : '사용자의 Excel에 열려 있는 문서가 없습니다 (파일 경로를 요청에 쓰면 그 파일을 엽니다)');
@@ -881,7 +967,7 @@ export class Session {
       }
     };
     const extraHosts = [...named.map((m) => hostOf(m.url)), ...(asked ? [hostOf(asked)] : [])].filter(Boolean);
-    const run = await this.execute(free, { request: text }, {}, { systemInfo, excelOnly, toolsOnly, excel: withExcel, extraHosts });
+    const run = await this.execute(free, { request: text }, {}, { systemInfo, excelOnly, toolsOnly, excel: withExcel, extraHosts, context, request: text });
     if (run.result.status !== 'done') return false;
     // 화면 없이 도구만 다룬 실행은 화면 절차가 없어 스킬로 저장하지 않는다.
     if (noWeb) return true;
@@ -926,7 +1012,7 @@ export class Session {
           this.term.print('\n시험 실행합니다. 저장·상신은 직전에 멈춥니다.');
           const filled = await this.fillInputs(skill, {});
           if (!filled) return null;
-          return (await this.execute(skill, filled.values, filled.files, { dryRun: true })).result;
+          return (await this.execute(skill, filled.values, filled.files, { dryRun: true, noRecord: true })).result;
         },
       },
       request,
@@ -958,7 +1044,7 @@ export class Session {
 
   /** 대화: 요청을 한 줄씩 받는다. */
   async repl(): Promise<void> {
-    this.term.print(`Dogent 클라이언트 (${__DOGENT_BUILD__.mode}). 할 일을 말해 주세요. skills, 찾기 <말>, skills info <id>, systems, skill new, skill edit <id>, sync, tabs, browsers, browser <이름>, help, exit`);
+    this.term.print(`Dogent 클라이언트 (${__DOGENT_BUILD__.mode}). 할 일을 말해 주세요. 앞선 요청을 이어서 말해도 됩니다 ("그거 엑셀로도"). new(새 대화), 기억해: <지침>, memory, skills, 찾기 <말>, skills info <id>, systems, skill new, skill edit <id>, sync, tabs, browsers, browser <이름>, help, exit`);
     for (;;) {
       const line = await this.term.ask('\n무엇을 할까요? > ');
       if (line === null) return;
@@ -1007,6 +1093,9 @@ export class Session {
 
   private async handleNow(text: string): Promise<void> {
     if (text === 'help') this.term.print(this.help);
+    else if (text === 'new' || text === '새 대화' || text === '/new' || text === '/clear') this.newConversation();
+    else if (text === 'memory' || text === '기억' || text === '/memory') this.memory();
+    else if (MEMORY_ADD.test(text)) this.memory(text.replace(MEMORY_ADD, ''));
     else if (text === 'skills') this.listSkills();
     else if (text === 'skills all') this.listSkills(true);
     else if (/^skills\s+(on|off|samples)(\s|$)/.test(text)) this.skillSwitch(text.split(/\s+/).slice(1));

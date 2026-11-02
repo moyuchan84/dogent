@@ -113,6 +113,15 @@ MCP 클라이언트 ─stdio─ 브리지(bridge/hub.mjs) ─┬─ WebSocket(12
 - 토큰이 다르면 서로 연결하지 않습니다. 브리지인 척하는 다른 프로그램도 토큰을 모르면 확장에 명령할 수 없습니다.
 - 등록을 지우려면 `pnpm bridge:install --remove`.
 
+## Claude Code · opencode와 함께 쓰기
+
+Claude Desktop·Claude Code·Claude in Chrome과 기능을 대 본 목록과 남은 일은 [docs/17-claude-parity.md](docs/17-claude-parity.md)에 있습니다. 서로 부르는 길은 둘입니다.
+
+- **Dogent → 에이전트:** `dogent agents add claude` / `dogent agents add opencode --args "-m <제공자>/glm-5.3"`. 자유 요청이 PC의 파일·코드 일을 `claude.ask`·`opencode.ask`로 맡깁니다 (부를 때마다 묻습니다). 바로 맡기기: `dogent ask claude "<할 일>"`.
+- **에이전트 → Dogent:** Dogent를 MCP 서버로 붙입니다. 앱이 켜져 있으면 `dogent config mcpServePort 39218` 뒤 `claude mcp add --transport http dogent http://127.0.0.1:39218/mcp --header "Authorization: Bearer <dogent token>"`, 앱 없이는 `claude mcp add dogent -- node <설치 폴더>\dogent.mjs serve`. 도구: `dogent_request`, `dogent_run_skill`, `dogent_skills`, `dogent_systems`, `dogent_new_conversation`. 저장·상신은 그대로 브라우저 승인 창에서 사람이 승인합니다.
+
+대화는 이어집니다. "그거 엑셀로도 만들어 줘"처럼 앞선 요청을 이어 말하면 앞선 결과와 데이터셋을 씁니다 (`새 대화`로 비움, 한 번 실행은 `--continue`). 늘 지킬 것은 "기억해: …"나 `~/.dogent/DOGENT.md`(팀은 팀 스킬 폴더의 `DOGENT.md`)에 적습니다.
+
 ## 사내 Gemma에 연결하기
 
 집과 회사는 빌드 설정 파일 하나만 다릅니다. 코드와 명령은 같습니다.

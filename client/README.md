@@ -70,8 +70,20 @@ pnpm client schedule remove 아침재공
 pnpm client sync                              # 팀 스킬 저장소 git pull
 ```
 
+대화 모드와 앱에서는 앞선 요청을 이어 말할 수 있습니다 ("그거 엑셀로도", "방금 것 중 7라인만"). `새 대화`로 비우고, "기억해: <지침>"으로 늘 지킬 것을 더합니다 (`~/.dogent/DOGENT.md`).
+
+```bash
+pnpm client memory                            # 지침 보기 (memory add "<한 줄>", memory edit)
+pnpm client -c "방금 결과를 라인별로 나눠 줘"     # 마지막 대화를 이어서
+pnpm client agents add claude                 # Claude Code에 일을 맡길 수 있게 (opencode: agents add opencode --args "-m <제공자>/<모델>")
+pnpm client agents test                       # 짧은 일을 맡겨 답이 오는지
+pnpm client ask claude "Downloads의 재공.xlsx를 공정별로 요약"
+pnpm client serve                             # Dogent를 MCP 서버(stdio)로. Claude Code·opencode가 사내 웹 업무를 맡긴다 (docs/17)
+```
+
 | 옵션 | |
 |---|---|
+| `--continue`, `-c` | 마지막 대화를 이어 간다 |
 | `--yes` | 실행 전 확인을 묻지 않음 |
 | `--allow-write` | 자유 요청에서 저장·상신 버튼 허용 (누르기 전에 승인 창) |
 | `--dry-run` | 저장·상신 직전에 멈춤 |

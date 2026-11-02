@@ -11,6 +11,7 @@ import { loadToken } from '../../client/src/bridge';
 import { describeConfig, loadConfig, setConfig } from '../../client/src/config';
 import { addServers, parsePasted, patchServer, probeServer, removeServer, serverRows, serverRow } from '../../client/src/connectors';
 import { loadMcpConfig } from '../../client/src/mcp-hub';
+import { Collector, DogentMcp, serveHttp, sessionRunner, type DogentRunner, type RunReport } from '../../client/src/mcp-serve';
 import { Session, type SessionOptions, type Ui } from '../../client/src/session';
 import { findInstalledExtensions, registerNativeHost, registeredIds } from '../../bridge/register.mjs';
 import type { ExtensionStatus, SkillPrefPatch, SkillSummary, UiMessage } from './ipc';
@@ -51,6 +52,8 @@ let win: BrowserWindow | null = null;
 /** 세션의 묻기·출력을 창으로 보낸다. 답은 창에서 dogent:answer로 온다. */
 class WindowUi implements Ui {
   private nextId = 1;
+  /** Claude Code·opencode가 MCP로 맡긴 일을 하는 동안, 창에 보이는 것을 그쪽에도 모아 돌려준다 */
+  tap: Collector | undefined;
   private waiting = new Map<number, (value: string | null) => void>();
 
   send(message: UiMessage): void {
@@ -78,6 +81,7 @@ class WindowUi implements Ui {
   }
 
   print(text: string): void {
+    this.tap?.print(text);
     this.send({ kind: 'print', text });
   }
 
@@ -96,24 +100,29 @@ class WindowUi implements Ui {
   }
 
   started(skill: string, page: string): void {
+    this.tap?.started(skill, page);
     this.send({ kind: 'started', skill, page });
   }
 
   runEvent(event: RunEvent): void {
+    this.tap?.runEvent(event);
     this.send({ kind: 'run', event });
   }
 
   approval(request: Parameters<NonNullable<Ui['approval']>>[0]): void {
+    this.tap?.approval(request);
     this.send({ kind: 'approval', request });
   }
 
   result(result: Parameters<NonNullable<Ui['result']>>[0], saved: string[]): void {
+    this.tap?.result(result, saved);
     this.send({ kind: 'result', result, saved });
   }
 }
 
 const ui = new WindowUi();
-const options: SessionOptions = { yes: false, allowWrite: false, dryRun: false, waitSec: 60 };
+// 대화 맥락은 앱을 다시 켜거나 설정을 바꿔도 이어 간다 (오래되면 새로). 새로 하려면 "새 대화"
+const options: SessionOptions = { yes: false, allowWrite: false, dryRun: false, waitSec: 60, conversation: 'recent' };
 let session = new Session(ui, loadConfig(), options);
 let busy = false;
 
@@ -241,6 +250,38 @@ ipcMain.handle('dogent:connect-remove', (_e, name: string) => {
   return serverRows(loadMcpConfig());
 });
 
+/**
+ * Claude Code·opencode가 이 앱에 사내 웹 업무를 맡기는 MCP 주소 (client/src/mcp-serve.ts).
+ * dogent config mcpServePort 39218 로 켠다. 이 PC 안(127.0.0.1)에서만, 확장 연결 토큰이 있어야 받는다.
+ * 맡긴 일은 창의 대화에 보이고, 실행 확인·질문은 사람이 창에서 답한다.
+ */
+async function startMcpServe(): Promise<void> {
+  const port = loadConfig().mcpServePort;
+  if (!port) return;
+  const collector = new Collector();
+  const base = sessionRunner(() => session, options, collector, { before: (what, caller) => ui.print(`\n[${caller}에서 맡긴 일] ${what}`) });
+  const guard = async (job: () => Promise<RunReport>): Promise<RunReport> => {
+    if (busy) return { ok: false, transcript: 'Dogent 앱이 다른 일을 하는 중입니다. 끝난 뒤에 다시 부르세요', saved: [] };
+    busy = true;
+    ui.send({ kind: 'busy', busy: true });
+    ui.tap = collector;
+    try {
+      return await job();
+    } finally {
+      ui.tap = undefined;
+      busy = false;
+      ui.send({ kind: 'busy', busy: false });
+    }
+  };
+  const runner: DogentRunner = { ...base, request: (t, o) => guard(() => base.request(t, o)), runSkill: (id, inputs, o) => guard(() => base.runSkill(id, inputs, o)) };
+  try {
+    await serveHttp(new DogentMcp(runner), { port, token: loadToken() });
+    ui.print(`MCP 주소: http://127.0.0.1:${port}/mcp (Claude Code·opencode가 이 앱에 일을 맡길 수 있습니다)`);
+  } catch (e) {
+    ui.print(`MCP 주소(포트 ${port})를 열지 못했습니다: ${(e as Error).message}`);
+  }
+}
+
 function createWindow(): void {
   win = new BrowserWindow({
     width: 1200,
@@ -275,6 +316,7 @@ else {
     createWindow();
     // 브리지를 먼저 띄워 두면 브라우저 확장들이 미리 붙는다. 붙은 브라우저가 바뀌면 창에 알린다.
     await session.listen().catch((e: Error) => ui.print(`오류: ${e.message}`));
+    await startMcpServe();
     // 팀 스킬 저장소를 받아 오면 창의 스킬 목록을 다시 읽게 한다 (한 시간마다)
     const team = () => void session.refreshTeam({ quiet: true }).then((m) => m && ui.send({ kind: 'skills' }));
     team();

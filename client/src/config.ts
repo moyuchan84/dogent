@@ -32,6 +32,8 @@ export interface UserConfig {
   saveThroughExcel?: boolean;
   /** 스킬을 만들 때 넣을 담당 부서 (처음 저장할 때 물어 기억한다) */
   owner?: string;
+  /** 앱이 Claude Code·opencode에 내놓는 MCP 주소의 포트 (http://127.0.0.1:<포트>/mcp). 없으면 열지 않는다 */
+  mcpServePort?: number;
 }
 
 export interface ClientConfig {
@@ -47,6 +49,7 @@ export interface ClientConfig {
   saveThroughExcel: boolean;
   browser?: string;
   owner?: string;
+  mcpServePort?: number;
   /** 사용자 설정 파일 경로 */
   file: string;
 }
@@ -95,6 +98,7 @@ export function loadConfig(): ClientConfig {
     browser: user.browser,
     saveThroughExcel: user.saveThroughExcel === true,
     owner: user.owner,
+    mcpServePort: Number(user.mcpServePort) > 0 ? Number(user.mcpServePort) : undefined,
     file,
   };
 }
@@ -133,6 +137,7 @@ export function describeConfig(c: ClientConfig): string {
     `팀 스킬 주소   ${c.teamSkillsUrl ?? '(없음: dogent config teamSkillsUrl <index.json 주소>)'}${c.teamSkillsToken ? ' (토큰 있음)' : ''}`,
     `결과 저장      ${c.outputDir}${c.saveThroughExcel ? ' (Excel로 저장)' : ''}`,
     `오피스 도구    ${findOfficeExe(c.officeExe) ?? '(없음: pnpm office:build)'}`,
+    `MCP 주소(앱)   ${c.mcpServePort ? `http://127.0.0.1:${c.mcpServePort}/mcp` : '(꺼짐: dogent config mcpServePort 39218)'}`,
     `설정 파일      ${c.file}`,
   ].join('\n');
 }

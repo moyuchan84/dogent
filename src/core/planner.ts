@@ -40,7 +40,10 @@ export async function planRequest(
   signal?: AbortSignal,
   /** 요청에 나온 사내 시스템의 설명 (systems.ts describeSystem). 용어와 별칭을 이해하는 데 쓴다 */
   systemInfo?: string,
+  /** 지침(DOGENT.md)과 앞선 대화. "그거", "방금 것"을 알아듣는 데 쓴다 (client/src/conversation.ts) */
+  context?: string,
 ): Promise<Plan> {
+  const ctx = context ? `${context}\n\n` : '';
   if (skills.length > TWO_STAGE_MIN) {
     // 1단계: 이름과 설명 한 줄씩만 보고 고른다. 2단계: 고른 스킬의 입력만 보고 값을 뽑는다.
     const index = skills.map((s) => `- ${s.id}: ${s.name} — ${s.description}`).join('\n');
@@ -48,7 +51,7 @@ export async function planRequest(
     const picked = await llm.complete(
       [
         { role: 'system', content: PICK_SYSTEM_PROMPT },
-        { role: 'user', content: `${note}## 스킬 목록\n${index}\n\n## 사용자 요청\n${request}` },
+        { role: 'user', content: `${ctx}${note}## 스킬 목록\n${index}\n\n## 사용자 요청\n${request}` },
       ],
       signal,
     );
@@ -59,7 +62,7 @@ export async function planRequest(
     if (!one) {
       return { skill_id: null, inputs: {}, reason: choice.skill_id ? `모델이 없는 스킬(${choice.skill_id})을 골랐습니다` : choice.reason };
     }
-    return planRequest(request, [one], llm, signal, systemInfo);
+    return planRequest(request, [one], llm, signal, systemInfo, context);
   }
   const catalog = skills
     .map((s) => {
@@ -81,7 +84,7 @@ export async function planRequest(
   const text = await llm.complete(
     [
       { role: 'system', content: PLANNER_SYSTEM_PROMPT },
-      { role: 'user', content: `${systemInfo ? `## 사내 시스템 설명 (참고)\n${systemInfo}\n\n` : ''}## 스킬 목록\n${catalog}\n\n## 사용자 요청\n${request}` },
+      { role: 'user', content: `${ctx}${systemInfo ? `## 사내 시스템 설명 (참고)\n${systemInfo}\n\n` : ''}## 스킬 목록\n${catalog}\n\n## 사용자 요청\n${request}` },
     ],
     signal,
   );

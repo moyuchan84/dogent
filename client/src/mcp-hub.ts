@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { qualify, type ExternalTool, type ToolPort } from '../../src/core';
+import { AgentPeer, enabledAgents, type AgentsConfig } from './agents';
 import { dogentHome } from './config';
 import { connectRemote } from './mcp-http';
 import { normalizeServers } from './mcp-install';
@@ -93,9 +94,19 @@ export class McpHub implements ToolPort {
   readonly failed: { server: string; reason: string }[] = [];
   private servers: McpPeer[] = [];
 
-  static async open(cfg: McpConfig, log?: (line: string) => void): Promise<McpHub> {
+  /**
+   * agents를 주면 Claude Code·opencode 같은 에이전트도 서버 하나씩으로 넣는다 (도구 `<이름>.ask`, client/src/agents.ts).
+   * 이름이 MCP 서버와 겹치면 MCP 서버가 먼저다.
+   */
+  static async open(cfg: McpConfig, log?: (line: string) => void, agents?: { config: AgentsConfig; workdir: string; log?: (line: string) => void }): Promise<McpHub> {
     const hub = new McpHub();
     await Promise.all(enabledServers(cfg).map(([name, spec]) => hub.add(name, spec, log)));
+    for (const [name, spec] of agents ? enabledAgents(agents.config) : []) {
+      if (cfg.servers[name] && !cfg.servers[name].disabled) continue;
+      const peer = new AgentPeer(name, spec, agents!.workdir, agents!.log ?? log);
+      hub.servers.push(peer);
+      hub.register(name, peer, [peer.tool()], { permissions: spec.permission ? { ask: spec.permission } : { ask: 'ask' } });
+    }
     hub.tools.sort((a, b) => a.name.localeCompare(b.name));
     return hub;
   }
@@ -120,22 +131,21 @@ export class McpHub implements ToolPort {
       mcp = await Promise.race([started, limit]).finally(() => clearTimeout(timer));
       const listed: McpToolInfo[] = await mcp.listTools();
       this.servers.push(mcp);
-      for (const t of listed) {
-        const name = qualify(server, t.name);
-        const readOnly = t.annotations?.readOnlyHint === true;
-        this.rows.push({ tool: t.name, description: t.description ?? '', readOnly, permission: permissionOf(spec, t.name, readOnly) });
-        this.entries.set(name.toLowerCase(), { server, mcp, tool: t.name });
-        this.tools.push({
-          name,
-          description: t.description ?? '',
-          schema: t.inputSchema,
-          readOnly,
-          permission: permissionOf(spec, t.name, readOnly),
-        });
-      }
+      this.register(server, mcp, listed, spec);
     } catch (e) {
       this.failed.push({ server, reason: (e as Error).message });
       await mcp?.close(2000).catch(() => {});
+    }
+  }
+
+  private register(server: string, mcp: McpPeer, listed: McpToolInfo[], spec: Pick<McpServerSpec, 'permissions'>): void {
+    for (const t of listed) {
+      const name = qualify(server, t.name);
+      const readOnly = t.annotations?.readOnlyHint === true;
+      const permission = permissionOf(spec, t.name, readOnly);
+      this.rows.push({ tool: t.name, description: t.description ?? '', readOnly, permission });
+      this.entries.set(name.toLowerCase(), { server, mcp, tool: t.name });
+      this.tools.push({ name, description: t.description ?? '', schema: t.inputSchema, readOnly, permission });
     }
   }
 

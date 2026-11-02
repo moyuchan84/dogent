@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline/promises';
@@ -13,6 +13,9 @@ import { describeInstall, normalizeServers, parseMcpAdd } from './mcp-install';
 import { addSchedule, describeSchedule, listSchedules, parseSpec, removeSchedule } from './schedule';
 import { Session, type SessionOptions } from './session';
 import { readScripts } from './skills';
+import { AgentPeer, PRESETS, describeAgents, findExecutable, loadAgents, saveAgents, type AgentSpec } from './agents';
+import { addInstruction, personalInstructionsFile } from './conversation';
+import { Collector, DogentMcp, serveHttp, serveStdio, sessionRunner } from './mcp-serve';
 import { Terminal } from './terminal';
 
 const HELP = `Dogent 클라이언트 ${__DOGENT_BUILD__.version} (${__DOGENT_BUILD__.mode})
@@ -33,6 +36,12 @@ const HELP = `Dogent 클라이언트 ${__DOGENT_BUILD__.version} (${__DOGENT_BUI
   dogent excel <파일|열린 문서 이름>   Excel로 열어 시트와 앞부분을 보여 준다 (문서 보안 문서 확인)
   dogent excel docs               사용자의 Excel에 열린 문서 (문서 공유망에서 연 문서 등)
   dogent excel resave <원본> <새 경로>   Excel로 다시 저장 (문서 보안이 다시 암호화하는지 확인)
+  dogent agents [list|add|remove|test|on|off|allow|ask|deny]
+                                  사내 코딩 에이전트(Claude Code, opencode+GLM) 연결. 자유 요청이 PC의 파일·코드 일을 맡긴다
+  dogent ask <에이전트> "<할 일>"     에이전트에 바로 맡긴다 (예: dogent ask claude "Downloads의 재공.xlsx를 라인별로 요약")
+  dogent serve [--http <포트>]       Dogent를 MCP 서버로 띄운다. Claude Code·opencode가 사내 웹 업무를 Dogent에 맡긴다
+                                  (claude mcp add dogent -- node <경로>\dogent.mjs serve). 앱이 켜져 있으면 앱의 주소를 쓴다
+  dogent memory [add "<지침>"|edit]  늘 지킬 지침 (~/.dogent/DOGENT.md). 모든 요청에서 모델이 함께 본다
   dogent mcp [list|add|remove|test|allow|ask|deny|keyword|on|off]
                                   MCP 서버 연결 (사내 시스템 도구를 에이전트가 부른다). 설정은 ~/.dogent/mcp.json
   dogent schedule add <이름> --at 09:00 [--days 월,수,금] <스킬ID> [이름=값 …]   예약 실행 (매일, 또는 요일마다. 저장·상신은 하지 않는다)
@@ -42,6 +51,7 @@ const HELP = `Dogent 클라이언트 ${__DOGENT_BUILD__.version} (${__DOGENT_BUI
   dogent token                    확장의 "클라이언트 연결"에 넣을 토큰
   dogent config [키 값]            설정 보기 / 바꾸기 (예: dogent config llm.userId sso123)
 
+  --continue, -c 마지막 대화를 이어 간다 (앞선 요청과 결과를 모델이 함께 본다)
   --yes          실행 전 확인을 묻지 않는다
   --allow-write  자유 요청에서 저장·상신 버튼을 허용한다 (누르기 전에 확장의 승인 창으로 묻는다)
   --dry-run      저장·상신 직전에 멈춘다 (시험 실행)
@@ -187,6 +197,91 @@ async function runMcpCommand(rest: string[]): Promise<number> {
   throw new Error(MCP_USAGE);
 }
 
+const AGENTS_USAGE = `사용법:
+  dogent agents                              연결한 에이전트
+  dogent agents add claude [--command <claude.exe 경로>] [--args "<인자 …>"] [--workdir <폴더>]
+  dogent agents add opencode [--command <경로>] [--args "-m <제공자>/<모델>"] [--workdir <폴더>]
+  dogent agents add <이름> --command <실행 파일> [--args "…"]   그 밖의 CLI 에이전트 (할 일을 stdin으로 받고 답을 stdout으로 내는 것)
+  dogent agents test [<이름>]                 짧은 일을 맡겨 답이 오는지 본다
+  dogent agents remove|on|off <이름>
+  dogent agents allow|ask|deny <이름>          부를 때 묻지 않음 / 묻기(기본) / 금지`;
+
+/** --이름 값 꼴의 옵션을 뽑는다 */
+function takeOpt(a: string[], name: string): string | undefined {
+  const i = a.indexOf(`--${name}`);
+  if (i < 0) return undefined;
+  const v = a[i + 1];
+  a.splice(i, 2);
+  return v;
+}
+
+async function runAgentsCommand(rest: string[], workdir: string): Promise<number> {
+  const [sub, ...a] = rest;
+  const cfg = loadAgents();
+  const need = (name: string | undefined) => {
+    if (!name || !cfg.agents[name]) throw new Error(`에이전트 "${name ?? ''}"이(가) 없습니다 (dogent agents)`);
+    return cfg.agents[name];
+  };
+  if (!sub || sub === 'list') {
+    for (const l of describeAgents(cfg, workdir)) console.log(l);
+    return 0;
+  }
+  if (sub === 'add') {
+    const name = a.shift();
+    if (!name) throw new Error(AGENTS_USAGE);
+    const command = takeOpt(a, 'command');
+    const args = takeOpt(a, 'args');
+    const dir = takeOpt(a, 'workdir');
+    const kind: AgentSpec['kind'] = name === 'claude' || name === 'opencode' ? name : 'command';
+    if (kind === 'command' && !command) throw new Error(`${name}: 미리 정한 에이전트(claude, opencode)가 아니면 --command <실행 파일>이 필요합니다`);
+    const spec: AgentSpec = {
+      kind,
+      ...(command ? { command } : {}),
+      ...(args ? { args: args.split(/\s+/).filter(Boolean) } : {}),
+      ...(dir ? { workdir: dir } : {}),
+      permission: cfg.agents[name]?.permission ?? 'ask',
+    };
+    const exe = findExecutable(command ?? (kind === 'command' ? '' : kind));
+    console.log(`${name}: ${kind === 'command' ? command : PRESETS[kind].description}`);
+    console.log(`  실행 파일: ${exe ?? '(이 PC에서 찾지 못함. 설치한 뒤 --command <경로>로 알려 주세요)'}`);
+    console.log(`  할 일은 stdin으로 넘기고, 일할 폴더는 ${dir ?? workdir} 입니다. 부를 때마다 무엇을 맡기는지 보여 주고 묻습니다 (dogent agents allow ${name} 로 끔)`);
+    cfg.agents[name] = spec;
+    console.log(`${saveAgents(cfg)}에 저장했습니다`);
+    return exe ? 0 : 1;
+  }
+  if (sub === 'remove') {
+    need(a[0]);
+    delete cfg.agents[a[0]];
+    console.log(`${saveAgents(cfg)}에서 뺐습니다`);
+    return 0;
+  }
+  if (sub === 'on' || sub === 'off') {
+    need(a[0]).disabled = sub === 'off';
+    saveAgents(cfg);
+    console.log(sub === 'off' ? '껐습니다' : '켰습니다');
+    return 0;
+  }
+  if (sub === 'allow' || sub === 'ask' || sub === 'deny') {
+    need(a[0]).permission = sub;
+    saveAgents(cfg);
+    console.log(`${a[0]}: ${sub}`);
+    return 0;
+  }
+  if (sub === 'test') {
+    const names = a[0] ? [a[0]] : Object.keys(cfg.agents);
+    if (!names.length) throw new Error('연결한 에이전트가 없습니다 (dogent agents add claude)');
+    let failed = 0;
+    for (const n of names) {
+      const peer = new AgentPeer(n, { ...need(n), timeoutSec: 180 }, workdir, (l) => console.log(`  ${l}`));
+      const r = await peer.ask('연결 시험입니다. 파일을 만들거나 고치지 말고 "연결됨" 한 단어만 답하세요.');
+      console.log(`${n}: ${r.ok ? '연결됨' : '실패'} — ${r.text.split('\n')[0].slice(0, 200)}`);
+      if (!r.ok) failed++;
+    }
+    return failed ? 1 : 0;
+  }
+  throw new Error(AGENTS_USAGE);
+}
+
 function parseArgs(argv: string[]): { args: string[]; flags: SessionOptions } {
   const flags: SessionOptions = { yes: false, allowWrite: false, dryRun: false, waitSec: 60 };
   const args: string[] = [];
@@ -197,6 +292,7 @@ function parseArgs(argv: string[]): { args: string[]; flags: SessionOptions } {
     else if (a === '--dry-run') flags.dryRun = true;
     else if (a === '--wait') flags.waitSec = Number(argv[++i]) || 60;
     else if (a === '--browser') flags.browser = argv[++i];
+    else if (a === '--continue' || a === '-c') flags.conversation = 'continue';
     else args.push(a);
   }
   return { args, flags };
@@ -235,6 +331,37 @@ async function main(): Promise<number> {
       console.error(`오류: ${(e as Error).message}`);
       return 1;
     }
+  }
+  if (cmd === 'agents' || cmd === 'ask') {
+    try {
+      const workdir = loadConfig().outputDir;
+      if (cmd === 'agents') return await runAgentsCommand(rest, workdir);
+      const [name, ...task] = rest;
+      const cfgA = loadAgents();
+      const spec = name ? cfgA.agents[name] : undefined;
+      if (!spec) throw new Error(`사용법: dogent ask <에이전트> "<할 일>"  (연결한 에이전트: ${Object.keys(cfgA.agents).join(', ') || '없음 — dogent agents add claude'})`);
+      const r = await new AgentPeer(name, spec, workdir, (l) => console.error(l)).ask(task.join(' '));
+      console.log(r.text);
+      return r.ok ? 0 : 1;
+    } catch (e) {
+      console.error(`오류: ${(e as Error).message}`);
+      return 1;
+    }
+  }
+  if (cmd === 'memory') {
+    const home = loadConfig().home;
+    const file = personalInstructionsFile(home);
+    if (rest[0] === 'add' && rest[1]) {
+      console.log(`${addInstruction(home, rest.slice(1).join(' '))}에 더했습니다`);
+      return 0;
+    }
+    if (rest[0] === 'edit') {
+      if (!existsSync(file)) addInstruction(home, '(여기에 늘 지킬 것을 한 줄씩 적습니다)');
+      spawnSync(process.env.DOGENT_EDITOR ?? (process.platform === 'win32' ? 'notepad' : 'vi'), [file], { stdio: 'inherit' });
+      return 0;
+    }
+    console.log(existsSync(file) ? readFileSync(file, 'utf8') : `지침이 없습니다. dogent memory add "<늘 지킬 것>" 으로 더합니다 (${file})`);
+    return 0;
   }
   if (cmd === 'mcp') {
     try {
@@ -278,6 +405,30 @@ async function main(): Promise<number> {
       return 1;
     }
     execFileSync('git', ['-C', cfg.teamSkills, 'pull', '--ff-only'], { stdio: 'inherit' });
+    return 0;
+  }
+
+  if (cmd === 'serve') {
+    // 사람이 없는 곳에서 돌므로 실행 확인은 건너뛴다. 저장·상신 승인은 그대로 확장의 승인 창에서 사람이 한다
+    flags.yes = true;
+    flags.conversation ??= 'recent';
+    const collector = new Collector();
+    const session = new Session(collector, cfg, flags);
+    const mcp = new DogentMcp(sessionRunner(() => session, flags, collector));
+    const port = Number(takeOpt(rest, 'http') ?? 0);
+    try {
+      await session.listen();
+    } catch (e) {
+      console.error(`${(e as Error).message}\nDogent 앱이 켜져 있으면 dogent serve 대신 앱의 MCP 주소를 쓰세요: dogent config mcpServePort 39218 → 앱을 다시 켜고 http://127.0.0.1:39218/mcp`);
+      return 1;
+    }
+    await session.refreshTeam({ quiet: true }).catch(() => null);
+    if (port) {
+      await serveHttp(mcp, { port, token: loadToken(), log: (l) => console.error(l) });
+      await new Promise(() => {});
+    }
+    await serveStdio(mcp);
+    await session.close();
     return 0;
   }
 
