@@ -141,6 +141,22 @@ node tools/systems-mcp.mjs --root . --host 0.0.0.0 --port 8787 --pull 300 \
 
 ## 7. 각 도구에서 붙이기 (사용자)
 
+### 7-1. Dogent 앱·터미널: 받아서 자동으로 쓰기 (권장)
+
+```
+dogent config systemsUrl http://<서버>:8787     # 또는 …/mcp 주소 그대로
+dogent config systemsToken <토큰>               # 서버에 토큰을 걸었을 때
+dogent sync                                     # 지금 받기
+dogent systems                                  # [공용] 항목이 보이면 성공
+```
+
+- 서버의 `GET /systems.json`에서 사전 전체를 받아 `~/.dogent/systems-cache`에 두고, 요청에 시스템 이름이 나오면 그 설명을 모델에 함께 보여 줍니다. 앱은 켤 때와 한 시간마다, 터미널은 명령을 쓸 때 한 시간에 한 번 받습니다 (판 번호가 같으면 서버가 304로 답해 내려받지 않습니다).
+- 서버가 꺼져 있어도 마지막으로 받아 둔 사전으로 동작합니다.
+- 같은 id는 개인 > **공용** > 팀 > 기본 순서입니다. 공용 사전이 정본이므로, 팀 스킬 저장소의 `systems/`에는 같은 시스템을 따로 적지 않습니다.
+- 회사 빌드에 기본값으로 넣으려면 `.env.company.local`의 `WXT_SYSTEMS_URL`. 토큰은 각자 `config systemsToken`으로 넣습니다.
+
+### 7-2. 다른 도구(Claude Code, opencode)와 모델이 직접 부르기 (MCP)
+
 ```
 dogent mcp add systems http://<서버>:8787/mcp --transport http
 claude mcp add --transport http systems http://<서버>:8787/mcp

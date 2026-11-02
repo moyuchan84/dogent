@@ -318,7 +318,7 @@ else {
     await session.listen().catch((e: Error) => ui.print(`오류: ${e.message}`));
     await startMcpServe();
     // 팀 스킬 저장소를 받아 오면 창의 스킬 목록을 다시 읽게 한다 (한 시간마다)
-    const team = () => void session.refreshTeam({ quiet: true }).then((m) => m && ui.send({ kind: 'skills' }));
+    const team = () => void session.refreshAll({ quiet: true }).then((changed) => changed && ui.send({ kind: 'skills' }));
     team();
     setInterval(() => !busy && team(), 60 * 60_000);
     let last = '';

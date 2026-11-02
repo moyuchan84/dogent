@@ -18,7 +18,7 @@ export interface Problem {
 export interface Registry {
   root: string;
   /** 오류 없이 읽힌 시스템 */
-  systems: { file: string; system: System }[];
+  systems: { file: string; system: System; /** SYSTEM.md 원문 (클라이언트가 받아 가는 것) */ source: string }[];
   problems: Problem[];
   /** 내용으로 만든 판 번호. 파일이 바뀌면 바뀐다 */
   version: string;
@@ -61,7 +61,7 @@ export function loadRegistry(root: string): Registry {
     const r = lintSystem(source, { folder: f.folder });
     for (const m of r.errors) problems.push({ file: f.rel, level: 'error', message: m });
     for (const m of r.warnings) problems.push({ file: f.rel, level: 'warn', message: m });
-    if (r.system && r.errors.length === 0) systems.push({ file: f.rel, system: r.system });
+    if (r.system && r.errors.length === 0) systems.push({ file: f.rel, system: r.system, source });
   }
   // 두 시스템이 같은 이름을 쓰면 둘 다 오류지만, 뒤에 나온 쪽만 뺀다 (먼저 있던 항목은 계속 찾히게)
   const cross = lintSystemSet(systems);

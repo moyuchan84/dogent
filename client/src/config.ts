@@ -20,6 +20,10 @@ export interface UserConfig {
   teamSkillsUrl?: string;
   /** 그 주소가 로그인을 요구하면 보낼 토큰 (사내 GitHub의 개인 토큰 등) */
   teamSkillsToken?: string;
+  /** 공용 시스템 사전 서버의 주소 (http://서버:8787 또는 …/mcp). 주면 사전을 받아 와 로컬 사전으로 쓴다 (빌드의 WXT_SYSTEMS_URL이 기본) */
+  systemsUrl?: string;
+  /** 그 서버가 토큰을 요구하면 보낼 토큰 (서버의 SYSTEMS_MCP_TOKEN) */
+  systemsToken?: string;
   /** 엑셀 결과를 저장할 폴더. 기본은 내려받기 폴더 */
   outputDir?: string;
   /** 확장과 잇는 WebSocket 포트 */
@@ -43,6 +47,8 @@ export interface ClientConfig {
   teamSkills?: string;
   teamSkillsUrl?: string;
   teamSkillsToken?: string;
+  systemsUrl?: string;
+  systemsToken?: string;
   outputDir: string;
   bridgePort?: number;
   officeExe?: string;
@@ -92,6 +98,8 @@ export function loadConfig(): ClientConfig {
     teamSkills: user.teamSkills,
     teamSkillsUrl: user.teamSkillsUrl?.trim() || __DOGENT_BUILD__.skillsUrl,
     teamSkillsToken: user.teamSkillsToken,
+    systemsUrl: user.systemsUrl?.trim() || __DOGENT_BUILD__.systemsUrl,
+    systemsToken: user.systemsToken,
     outputDir: user.outputDir ?? join(homedir(), 'Downloads'),
     bridgePort: user.bridgePort,
     officeExe: user.officeExe,
@@ -135,6 +143,7 @@ export function describeConfig(c: ClientConfig): string {
     `담당 부서      ${c.owner ?? '(스킬을 처음 저장할 때 묻습니다)'}`,
     `팀 스킬        ${c.teamSkills ?? '(폴더 없음: dogent config teamSkills <폴더>)'}`,
     `팀 스킬 주소   ${c.teamSkillsUrl ?? '(없음: dogent config teamSkillsUrl <index.json 주소>)'}${c.teamSkillsToken ? ' (토큰 있음)' : ''}`,
+    `시스템 사전    ${c.systemsUrl ?? '(없음: dogent config systemsUrl http://서버:8787)'}${c.systemsToken ? ' (토큰 있음)' : ''}`,
     `결과 저장      ${c.outputDir}${c.saveThroughExcel ? ' (Excel로 저장)' : ''}`,
     `오피스 도구    ${findOfficeExe(c.officeExe) ?? '(없음: pnpm office:build)'}`,
     `MCP 주소(앱)   ${c.mcpServePort ? `http://127.0.0.1:${c.mcpServePort}/mcp` : '(꺼짐: dogent config mcpServePort 39218)'}`,

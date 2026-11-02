@@ -41,6 +41,7 @@ import { composeFlow, editSkill } from './compose-skill';
 import { setConfig, type ClientConfig } from './config';
 import { enabledAgents, loadAgents, mentionedAgents } from './agents';
 import { Conversation, addInstruction, contextNote, conversationFile, describeInstructions, loadInstructions, personalInstructionsFile } from './conversation';
+import { sharedCacheDir, sharedMeta, sharedStale, syncShared, type SharedMeta } from './shared-systems';
 import { loadSystems, type SystemEntry } from './systems';
 import { McpHub, enabledServers, loadMcpConfig, mentionedServers } from './mcp-hub';
 import { Office, OfficeDocs, findOfficeExe, looksLikePath } from './office';
@@ -215,7 +216,12 @@ export class Session {
     this.allSkills = skills;
     this.skills = skills.filter((e) => !this.prefs.off.includes(e.skill.id) && (samples || !isSampleSkill(docOfSkill(e.skill))));
     const sys = loadSystems(
-      { personal: this.cfg.personalSkills, team: this.cfg.teamSkills, teamCache: this.cfg.teamSkillsUrl ? teamCacheDir(this.cfg.home) : undefined },
+      {
+        personal: this.cfg.personalSkills,
+        team: this.cfg.teamSkills,
+        teamCache: this.cfg.teamSkillsUrl ? teamCacheDir(this.cfg.home) : undefined,
+        shared: this.cfg.systemsUrl ? sharedCacheDir(this.cfg.home) : undefined,
+      },
       __DOGENT_SKILLS__,
     );
     // 목업 사이트의 시스템 사전(주소가 localhost)도 예시와 같이 다룬다
@@ -274,6 +280,36 @@ export class Session {
       this.term.print(`팀 스킬 저장소에 닿지 못했습니다: ${(e as Error).message}${last ? `\n  ${last.at.slice(0, 16).replace('T', ' ')}에 받아 둔 ${last.count}개를 씁니다` : ''}`);
       return null;
     }
+  }
+
+  /**
+   * 공용 시스템 사전 서버에서 사전을 받아 온다. force가 아니면 마지막으로 받은 지 한 시간이 지났을 때만 (판 번호가 같으면 서버가 304로 답한다).
+   * 닿지 않으면 받아 둔 것을 그대로 쓴다. 서버에 닿았으면(바뀐 것이 없어도) meta를 돌려준다.
+   */
+  async refreshSystems(opts: { force?: boolean; quiet?: boolean } = {}): Promise<SharedMeta | null> {
+    const url = this.cfg.systemsUrl;
+    if (!url || (!opts.force && !sharedStale(this.cfg.home, url, TEAM_MAX_AGE_MS))) return null;
+    const before = sharedMeta(this.cfg.home);
+    try {
+      const meta = await syncShared(this.cfg.home, url, { token: this.cfg.systemsToken, timeoutMs: opts.force ? 20_000 : 6_000 });
+      const changed = !meta.unchanged || before?.url !== url;
+      if (changed) this.reloadSkills();
+      if (!opts.quiet || meta.errors.length) this.term.print(`공용 시스템 사전 ${meta.count}개 (판 ${meta.version})${meta.unchanged ? ' — 바뀐 것 없음' : '을 받았습니다'}`);
+      for (const e of meta.errors) this.term.print(`  받지 않음: ${e}`);
+      return meta;
+    } catch (e) {
+      const last = sharedMeta(this.cfg.home);
+      this.term.print(`공용 시스템 사전 서버에 닿지 못했습니다: ${(e as Error).message}${last ? `
+  ${last.at.slice(0, 16).replace('T', ' ')}에 받아 둔 ${last.count}개를 씁니다` : ''}`);
+      return null;
+    }
+  }
+
+  /** 팀 스킬 저장소와 공용 시스템 사전을 함께 받아 온다. 하나라도 바뀌었으면 참 */
+  async refreshAll(opts: { force?: boolean; quiet?: boolean } = {}): Promise<boolean> {
+    const team = await this.refreshTeam(opts);
+    const systems = await this.refreshSystems(opts);
+    return !!(team || systems);
   }
 
   /** 지금 브라우저 탭. 확장이 붙어 있지 않으면 기다리지 않고 null (앱의 "지금 화면" 스킬에 쓴다) */
@@ -837,7 +873,10 @@ export class Session {
   listSystems(): void {
     this.reloadSkills();
     if (!this.systems.length) {
-      this.term.print('시스템 사전이 비어 있습니다. 팀 저장소의 skills/systems/<id>/SYSTEM.md 또는 개인 폴더(' + this.cfg.personalSkills + '/systems)에 SYSTEM.md를 두세요 (docs/05-skill-spec.md)');
+      this.term.print(
+        '시스템 사전이 비어 있습니다. 공용 사전 서버가 있으면 dogent config systemsUrl http://서버:8787 (토큰이 있으면 config systemsToken), ' +
+          '아니면 개인 폴더(' + this.cfg.personalSkills + '/systems)나 팀 저장소의 skills/systems/<id>/SYSTEM.md에 SYSTEM.md를 두세요 (docs/05-skill-spec.md)',
+      );
       return;
     }
     for (const e of this.systems) {
@@ -1103,7 +1142,7 @@ export class Session {
     else if (/^skills\s+info\s+\S/.test(text)) this.skillInfo(text.replace(/^skills\s+info\s+/, '').trim());
     else if (text === 'systems') this.listSystems();
     else if (/^systems\s+info\s+\S/.test(text)) this.systemInfo(text.replace(/^systems\s+info\s+/, '').trim());
-    else if (text === 'sync') await this.refreshTeam({ force: true });
+    else if (text === 'sync') await this.refreshAll({ force: true });
     else if (text === 'tabs') await this.tabs();
     else if (text === 'browsers') await this.listBrowsers();
     else if (/^browser\s+/.test(text)) await this.useBrowser(text.replace(/^browser\s+/, ''));

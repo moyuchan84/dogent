@@ -93,12 +93,14 @@ export function buildDefines(mode) {
   const llm = llmFromEnv(mode);
   // 팀 스킬 저장소의 목록 주소. 확장의 공유 스킬 저장소와 같은 값을 쓴다 (사용자가 dogent config teamSkillsUrl로 바꿀 수 있다)
   const skillsUrl = loadEnv(mode).WXT_SKILLS_URL?.trim() || undefined;
+  // 공용 시스템 사전 서버의 주소 (사용자가 dogent config systemsUrl로 바꿀 수 있다)
+  const systemsUrl = loadEnv(mode).WXT_SYSTEMS_URL?.trim() || undefined;
   return {
     llm,
     skills: bundledSkills(samplesWanted(mode)),
     define: {
       // samples: 예시 스킬을 넣었는지. 앱은 개발용 빌드(모드 없음)에서만 예시를 처음부터 보이고, 집·회사 빌드는 숨겨 둔다
-      __DOGENT_BUILD__: JSON.stringify({ mode, version, llm, ...(skillsUrl ? { skillsUrl } : {}), ...(samplesWanted(mode) ? { samples: true } : {}) }),
+      __DOGENT_BUILD__: JSON.stringify({ mode, version, llm, ...(skillsUrl ? { skillsUrl } : {}), ...(systemsUrl ? { systemsUrl } : {}), ...(samplesWanted(mode) ? { samples: true } : {}) }),
       __DOGENT_SKILLS__: JSON.stringify(bundledSkills(samplesWanted(mode))),
       __DOGENT_HOST__: JSON.stringify(Object.fromEntries(['native-host.mjs', 'protocol.mjs'].map((f) => [f, readFileSync(join(ROOT, 'bridge', f), 'utf8')]))),
     },
