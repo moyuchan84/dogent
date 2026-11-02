@@ -1,6 +1,7 @@
 import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
 import { searchSkills, skillCoversUrl, type SkillDoc } from './catalog';
+import { hostAllowed } from './policy';
 
 /**
  * 시스템 사전. 사내 시스템이 무엇이고 어디에 있고 어떻게 쓰는지를 적은 문서(SYSTEM.md)다.
@@ -40,6 +41,19 @@ const SystemMeta = z.object({
     .default([]),
   /** 사내 용어와 뜻 (예: HOLD: 공정 진행을 멈춘 Lot) */
   terms: z.record(z.string(), z.string()).default({}),
+  /**
+   * 검증 상태. verified = 담당자가 확인함, draft = 검증 전 (go/link 등에서 자동으로 가져왔거나 쓰는 중).
+   * 공용 사전(시스템 MCP)에서 draft는 찾기 결과에 "검증 전"으로 표시된다.
+   */
+  status: z.enum(['verified', 'draft']).default('verified'),
+  /** 이 항목을 어디서 가져왔는지 (예: go/link, duo, 손으로) */
+  source: z.string().optional(),
+  /** 마지막으로 확인한 날 (YYYY-MM-DD) */
+  updated: z
+    .union([z.string(), z.date()])
+    .transform((v) => (v instanceof Date ? v.toISOString().slice(0, 10) : v))
+    .refine((v) => /^\d{4}-\d{2}-\d{2}$/.test(v), 'YYYY-MM-DD 형식이어야 합니다')
+    .optional(),
 });
 
 export interface System extends z.infer<typeof SystemMeta> {
@@ -113,17 +127,83 @@ export function describeSystem(s: System): string {
   return lines.join('\n');
 }
 
-/** 시스템 문서의 품질 점검. 오류가 있으면 쓰지 않는다. */
-export function lintSystem(source: string): { system?: System; errors: string[]; warnings: string[] } {
+/** 이름·별칭을 비교할 때 쓰는 모양 (대소문자·띄어쓰기·기호 무시) */
+export const systemNameKey = (t: string) => norm(t).replace(/ /g, '');
+
+/** 채우지 않은 틀 글자: "(메뉴 경로)", "(…)", "TODO" */
+const PLACEHOLDER = /^\(.*\)$|\(…\)|\bTODO\b|채워\s*주세요/i;
+
+/**
+ * 시스템 문서 하나의 품질 점검. 오류가 있으면 쓰지 않는다 (팀 저장소의 CI, 공용 시스템 MCP, dogent check가 같은 규칙을 쓴다).
+ * folder를 주면 폴더 이름과 id가 같은지도 본다.
+ */
+export function lintSystem(source: string, opts: { folder?: string } = {}): { system?: System; errors: string[]; warnings: string[] } {
   let system: System;
   try {
     system = parseSystem(source);
   } catch (e) {
     return { errors: [(e as Error).message], warnings: [] };
   }
+  const errors: string[] = [];
   const warnings: string[] = [];
+  if (opts.folder !== undefined && opts.folder !== system.id) errors.push(`폴더 이름(${opts.folder})과 id(${system.id})가 다릅니다. 같게 맞추세요`);
+  if (!hostAllowed(system.url, system.domains)) errors.push(`url(${system.url})이 domains(${system.domains.join(', ')}) 밖입니다`);
+  const screenNames = new Set<string>();
+  for (const x of system.screens) {
+    const key = systemNameKey(x.name);
+    if (screenNames.has(key)) errors.push(`화면 "${x.name}"이 두 번 있습니다`);
+    screenNames.add(key);
+    if (x.url && !PLACEHOLDER.test(x.url)) {
+      if (!/^https?:\/\//.test(x.url)) errors.push(`화면 "${x.name}"의 url(${x.url})이 http(s) 주소가 아닙니다`);
+      else if (!hostAllowed(x.url, system.domains)) errors.push(`화면 "${x.name}"의 url(${x.url})이 domains 밖입니다`);
+    }
+  }
+  const names = new Map<string, string>();
+  for (const a of [system.name, ...system.aliases]) {
+    const key = systemNameKey(a);
+    if (key.length < 2) warnings.push(`"${a}"는 너무 짧아 요청에서 찾는 데 쓰이지 않습니다 (2글자 이상)`);
+    else if (names.has(key) && a !== system.name) warnings.push(`별칭 "${a}"가 "${names.get(key)}"와 같습니다`);
+    names.set(key, a);
+  }
+  // 틀에서 채우지 않은 칸
+  const blanks = [
+    ...(PLACEHOLDER.test(system.owner) ? ['owner'] : []),
+    ...(system.login && PLACEHOLDER.test(system.login) ? ['login'] : []),
+    ...system.screens.flatMap((x) => [x.path, x.purpose, x.url].some((v) => v && PLACEHOLDER.test(v)) ? [`화면 "${x.name}"`] : []),
+  ];
+  if (blanks.length) warnings.push(`채우지 않은 칸이 있습니다: ${blanks.join(', ')}`);
+  if (system.description.length < 10) warnings.push('description이 너무 짧습니다. 무엇을 하는 시스템인지 한두 문장으로 적으세요');
   if (!system.aliases.length) warnings.push('aliases(부르는 말)가 없습니다. 사람들이 쓰는 이름을 적어야 요청에서 찾힙니다');
   if (!system.screens.length) warnings.push('screens(화면)가 없습니다. 메뉴 경로를 적으면 모델이 화면을 찾아갑니다');
   if (!Object.keys(system.terms).length) warnings.push('terms(용어)가 없습니다');
-  return { system, errors: [], warnings };
+  if (system.status === 'draft') warnings.push('검증 전(status: draft)입니다. 담당자가 확인한 뒤 verified로 바꾸세요');
+  return { system, errors, warnings };
+}
+
+/**
+ * 시스템 여러 개를 함께 점검한다 (공용 사전 전체). 같은 id, 두 시스템이 같은 이름·별칭을 쓰는 것은 오류다:
+ * 요청에서 어느 시스템인지 정할 수 없게 된다. 사이트가 겹치는 것은 경고다 (같은 사이트의 다른 메뉴일 수 있다).
+ */
+export function lintSystemSet(entries: { file: string; system: System }[]): { file: string; level: 'error' | 'warn'; message: string }[] {
+  const out: { file: string; level: 'error' | 'warn'; message: string }[] = [];
+  const ids = new Map<string, string>();
+  const names = new Map<string, { file: string; id: string; name: string }>();
+  const sites = new Map<string, string>();
+  for (const { file, system } of entries) {
+    const prev = ids.get(system.id);
+    if (prev) out.push({ file, level: 'error', message: `id "${system.id}"가 ${prev}에도 있습니다` });
+    ids.set(system.id, file);
+    for (const n of new Set([system.name, ...system.aliases].map(systemNameKey).filter((k) => k.length >= 2))) {
+      const other = names.get(n);
+      if (other && other.id !== system.id) {
+        out.push({ file, level: 'error', message: `이름·별칭 "${n}"을(를) ${other.id}(${other.file})도 씁니다. 요청에서 어느 시스템인지 정할 수 없습니다. 한쪽에서 빼거나 더 구체적인 말로 바꾸세요` });
+      } else names.set(n, { file, id: system.id, name: n });
+    }
+    for (const d of system.domains) {
+      const other = sites.get(d);
+      if (other && other !== system.id) out.push({ file, level: 'warn', message: `사이트 ${d}를 ${other}도 씁니다 (같은 사이트의 다른 메뉴라면 괜찮습니다)` });
+      else sites.set(d, system.id);
+    }
+  }
+  return out;
 }

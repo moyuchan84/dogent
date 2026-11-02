@@ -1,0 +1,21 @@
+# 시스템 사전 검사. PR과 main 반영 때 돈다.
+#
+# 사내 러너(self-hosted)에 Node 20 이상만 있으면 된다. npm 설치는 하지 않는다 (검사기는 tools/system-check.mjs 한 파일).
+# 러너 라벨이 다르면 runs-on을 사내 규칙에 맞게 바꾼다.
+name: systems
+
+on:
+  pull_request:
+    paths: ['systems/**', 'tools/**', '.github/workflows/systems.yml']
+  push:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: [self-hosted]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Node 버전
+        run: node --version
+      - name: 사전 검사 (오류가 있으면 실패)
+        run: node tools/system-check.mjs .

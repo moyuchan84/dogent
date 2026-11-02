@@ -260,6 +260,8 @@ pnpm skill:lint                       # 번들된 스킬 품질 검사 (전부 A
 
 팀 공유 저장소의 틀이 `templates/dogent-skills`에 있습니다. 폴더 구조, PR 체크리스트, CODEOWNERS, 사내 러너용 품질 검사 CI가 들어 있습니다. 사내 GitHub에 새 저장소를 만들어 그대로 올리면 됩니다 (그 폴더의 README 참고). 검사 규칙을 고치면 `pnpm skill:bundle`로 검사기를 다시 만들고, `pnpm skill:check`로 이 저장소의 스킬을 같은 검사기로 돌려 볼 수 있습니다.
 
+공용 시스템 사전 저장소의 틀은 `templates/dogent-systems`에 있습니다. 사전 검사기(`tools/system-check.mjs`)와 모든 도구가 같은 사전을 쓰게 하는 시스템 MCP 서버(`tools/systems-mcp.mjs`: find_system, get_system, list_systems, report_issue)가 들어 있습니다 (그 폴더의 README 참고). 규칙이나 서버를 고치면 `pnpm systems:bundle`로 다시 만들고, `pnpm systems:check`·`pnpm systems:mcp`로 틀에서 돌려 봅니다.
+
 스킬 폴더를 사내 파일 서버나 Git에 올려 두면 확장이 거기서 스킬을 받아 옵니다. 스킬을 더하거나 고칠 때 확장을 다시 배포하지 않아도 됩니다.
 
 1. 스킬 저장소(검토를 거친 `skills` 폴더)에서 `pnpm skill:index`를 실행해 `index.json`을 만듭니다. 스킬을 고칠 때마다 다시 만듭니다.

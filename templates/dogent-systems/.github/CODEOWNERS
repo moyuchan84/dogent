@@ -1,0 +1,5 @@
+# 시스템마다 담당 부서(또는 담당자)가 리뷰해야 반영된다. 사내 GitHub의 팀·계정 이름으로 바꾼다.
+# 브랜치 보호에서 "Require review from Code Owners"를 켜야 효과가 있다.
+*                    @사전-관리자-팀
+/systems/gsams/      @GSAMS-담당-팀
+/tools/              @사전-관리자-팀
