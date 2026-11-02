@@ -2,7 +2,7 @@
 
 스킬(업무 절차서)을 따라 사내 웹 시스템을 조작하는 브라우저 업무 에이전트. 기획·설계 문서는 [docs/](docs/)에 있습니다.
 
-구현 현황, 연결 상태, 보완할 부분, 사내 확인 목록은 [docs/19-project-status-and-checklist.html](docs/19-project-status-and-checklist.html)에 있습니다.
+구현 현황, 연결 상태, 보완할 부분, 사내 확인 목록은 [docs/19-project-status-and-checklist.html](docs/19-project-status-and-checklist.html)에 있습니다. 서버 쪽까지 포함한 목표 구성(Hub, DB, 이벤트, k8s 배치)은 [docs/20-target-architecture.html](docs/20-target-architecture.html).
 
 현재 단계: **Phase 2 진행 중** — 크롬 확장 단독. 조회 업무(재공 확인), 승인이 필요한 신청 업무(IP 방화벽 해제 신청), 엑셀 → 웹 일괄 입력(재공 수량 조정), 화면의 엑셀 내려받기 활용(재공 내려받기), 스킬 제작 체계(녹화 → 품질 검사 → 시험 실행).
 

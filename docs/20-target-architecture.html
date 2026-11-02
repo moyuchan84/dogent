@@ -1,0 +1,644 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dogent 목표 아키텍처</title>
+<style>
+:root{
+  --bg:#f6f7f9; --panel:#fff; --ink:#1b2430; --sub:#5a6676; --line:#dde2e9;
+  --brand:#2457d6; --brand-bg:#e8eefc;
+  --ok:#17803d; --ok-bg:#e3f5ea; --warn:#a15c00; --warn-bg:#fff1d6; --bad:#b42318; --bad-bg:#fde8e6; --todo:#5a6676; --todo-bg:#eceff3;
+  --code-bg:#eef1f5;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#12161c; --panel:#1a2029; --ink:#e6ebf2; --sub:#9aa7b8; --line:#2c3644;
+    --brand:#7ea3ff; --brand-bg:#1d2a4a;
+    --ok:#5ed38a; --ok-bg:#14301f; --warn:#f2b45a; --warn-bg:#3a2a0c; --bad:#ff8f84; --bad-bg:#3d1a17; --todo:#9aa7b8; --todo-bg:#242c38;
+    --code-bg:#232b37;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#12161c; --panel:#1a2029; --ink:#e6ebf2; --sub:#9aa7b8; --line:#2c3644;
+  --brand:#7ea3ff; --brand-bg:#1d2a4a;
+  --ok:#5ed38a; --ok-bg:#14301f; --warn:#f2b45a; --warn-bg:#3a2a0c; --bad:#ff8f84; --bad-bg:#3d1a17; --todo:#9aa7b8; --todo-bg:#242c38;
+  --code-bg:#232b37;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.65 -apple-system,"Segoe UI","Malgun Gothic","Apple SD Gothic Neo",sans-serif}
+a{color:var(--brand)}
+code{font-family:Consolas,"D2Coding",monospace;font-size:.92em;background:var(--code-bg);padding:1px 5px;border-radius:4px}
+.layout{display:grid;grid-template-columns:220px minmax(0,1fr);max-width:1280px;margin:0 auto}
+nav{position:sticky;top:0;align-self:start;height:100vh;overflow:auto;padding:22px 14px 22px 20px;border-right:1px solid var(--line);font-size:13.5px}
+nav b{display:block;margin:0 0 10px;font-size:15px}
+nav a{display:block;padding:4px 8px;border-radius:6px;color:var(--sub);text-decoration:none}
+nav a:hover{background:var(--brand-bg);color:var(--brand)}
+main{padding:28px 28px 80px;min-width:0}
+h1{font-size:26px;margin:0 0 6px}
+h2{font-size:21px;margin:46px 0 12px;padding-top:6px;border-top:2px solid var(--line)}
+h3{font-size:16.5px;margin:26px 0 8px}
+p{margin:8px 0}
+ul,ol{padding-left:22px;margin:8px 0}
+.meta,.small{color:var(--sub);font-size:13px}
+table{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--line);margin:10px 0;font-size:14px}
+th,td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+th{background:var(--code-bg);font-weight:600;white-space:nowrap}
+tr:last-child td{border-bottom:none}
+.tw{overflow-x:auto}
+.tag{display:inline-block;padding:1px 8px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}
+.ok{background:var(--ok-bg);color:var(--ok)}
+.warn{background:var(--warn-bg);color:var(--warn)}
+.bad{background:var(--bad-bg);color:var(--bad)}
+.todo{background:var(--todo-bg);color:var(--todo)}
+.brand{background:var(--brand-bg);color:var(--brand)}
+.callout{border-left:4px solid var(--brand);background:var(--brand-bg);padding:10px 14px;border-radius:6px;margin:12px 0}
+.callout.warn{border-color:var(--warn);background:var(--warn-bg)}
+.callout.bad{border-color:var(--bad);background:var(--bad-bg)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin:12px 0}
+.grid{display:grid;gap:12px}
+.g2{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+/* 다이어그램 */
+.diagram{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px;margin:14px 0;overflow-x:auto}
+.diagram svg{display:block;width:100%;min-width:760px;height:auto}
+svg text{fill:var(--ink);font-family:-apple-system,"Segoe UI","Malgun Gothic",sans-serif}
+svg .t{font-size:13px;font-weight:600}
+svg .s{font-size:11px;fill:var(--sub)}
+svg .h{font-size:13px;font-weight:700;fill:var(--sub)}
+svg .lb{font-size:11px;fill:var(--sub)}
+svg .z{fill:none;stroke:var(--line);stroke-width:1.5}
+svg .zs{fill:none;stroke:var(--warn);stroke-width:1.5;stroke-dasharray:6 4}
+svg .n-ex{fill:var(--ok-bg);stroke:var(--ok);stroke-width:1.5}
+svg .n-pt{fill:var(--brand-bg);stroke:var(--brand);stroke-width:1.5}
+svg .n-pr{fill:var(--warn-bg);stroke:var(--warn);stroke-width:1.5;stroke-dasharray:5 3}
+svg .n-xt{fill:var(--todo-bg);stroke:var(--todo);stroke-width:1.5}
+svg .ln{stroke:var(--sub);stroke-width:1.5;fill:none}
+svg .ld{stroke:var(--sub);stroke-width:1.5;fill:none;stroke-dasharray:4 3}
+svg .ar{fill:var(--sub)}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:13px;color:var(--sub);margin:6px 0}
+.legend i{display:inline-block;width:16px;height:12px;border-radius:3px;vertical-align:-1px;margin-right:6px;border:1.5px solid}
+.l-ex{background:var(--ok-bg);border-color:var(--ok)!important}
+.l-pt{background:var(--brand-bg);border-color:var(--brand)!important}
+.l-pr{background:var(--warn-bg);border-color:var(--warn)!important;border-style:dashed!important}
+.l-xt{background:var(--todo-bg);border-color:var(--todo)!important}
+/* 파이프라인 */
+.pipe{display:flex;flex-wrap:wrap;align-items:stretch;gap:6px;margin:10px 0}
+.pipe .st{flex:1 1 130px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:13px}
+.pipe .st b{display:block;font-size:13.5px}
+.pipe .st span{color:var(--sub)}
+.pipe .ar2{align-self:center;color:var(--sub)}
+.pipe .st.pr{border-style:dashed;border-color:var(--warn)}
+@media (max-width:860px){
+  .layout{grid-template-columns:1fr}
+  nav{position:static;height:auto;border-right:none;border-bottom:1px solid var(--line);display:flex;flex-wrap:wrap;gap:4px}
+  nav b{width:100%}
+  main{padding:20px 16px 60px}
+}
+</style>
+</head>
+<body>
+<div class="layout">
+<nav>
+  <b>목표 아키텍처</b>
+  <a href="#why">1. 먼저 결론</a>
+  <a href="#now">2. 지금 구조</a>
+  <a href="#target">3. 목표 구성도</a>
+  <a href="#catalog">4. 구성요소 목록</a>
+  <a href="#flows">5. 주요 흐름</a>
+  <a href="#deploy">6. k8s 배치</a>
+  <a href="#data">7. DB·이벤트</a>
+  <a href="#sec">8. 보안·운영</a>
+  <a href="#phase">9. 도입 순서</a>
+  <a href="#nongoal">10. 만들지 않을 것</a>
+  <a href="#ask">11. 사내에 물어볼 것</a>
+</nav>
+<main>
+<h1>Dogent 목표 아키텍처</h1>
+<div class="meta">2026-11-03 · 현재 구현(<code>docs/19</code>)과 "서버 쪽에 더 필요한 것"을 구분해 그린 제안 문서입니다. 점선 주황 상자는 아직 없는 제안입니다.</div>
+
+<!-- ================= 1 ================= -->
+<h2 id="why">1. 먼저 결론</h2>
+<div class="callout">
+<b>Dogent는 "각자 PC에서 도는 에이전트"가 본체이고, 서버는 그것을 보조하는 얇은 계층입니다.</b> 로그인 세션, 승인 창, 사내 화면 조작, NASCA 문서가 모두 사용자 PC에 묶여 있어서 실행을 서버로 옮기면 오히려 안전장치가 약해집니다. 그래서 서버에는 <b>"공유해야 하는 것"</b>(스킬, 시스템 사전, 정책)과 <b>"모아야 하는 것"</b>(실행 기록, 신고, 통계)만 둡니다.
+</div>
+
+<div class="grid g2">
+  <div class="card"><b>지금 파일럿 규모라면 필요한 것</b>
+    <ul>
+      <li>사내 GitHub (스킬·사전 저장소) — 있음</li>
+      <li>시스템 사전 MCP 서버 1대 (VM이면 충분)</li>
+      <li>배포 묶음을 올릴 파일 서버</li>
+      <li>사내 Gemma 게이트웨이 — 있음</li>
+    </ul>
+    <p class="small">k8s, DB, 메시지 큐는 <b>아직 필요 없습니다.</b></p></div>
+  <div class="card"><b>사용자가 늘고 운영이 필요해지면 더할 것</b>
+    <ul>
+      <li>Hub: 정책 배포, 중지 스위치, 실행 기록 수집, 통계 (→ PostgreSQL)</li>
+      <li>LLM 프록시: 키를 PC에서 빼고 사용자별 한도·감사</li>
+      <li>SSO 연동, 관측(로그·지표), 백업</li>
+      <li>이벤트 전달: 처음엔 폴링, 필요해지면 버스</li>
+    </ul>
+    <p class="small">서비스가 3개 이상이고 가용성 요구가 생길 때 k8s가 의미가 있습니다.</p></div>
+</div>
+
+<!-- ================= 2 ================= -->
+<h2 id="now">2. 지금 구조 (구현된 것)</h2>
+<p>서버라고 부를 만한 것은 <b>시스템 사전 MCP 서버</b>(만들어 두었으나 아직 설치 전) 하나뿐이고, 나머지는 모두 PC 안에서 돌거나 기존 사내 인프라(GitHub, Gemma)입니다.</p>
+
+<div class="diagram">
+<svg viewBox="0 0 1100 430" role="img" aria-label="현재 구조: 사용자 PC 안의 앱, 브리지, 확장, 오피스 도구와 외부 사내 인프라">
+  <defs><marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ar"/></marker></defs>
+
+  <rect class="z" x="20" y="20" width="700" height="290" rx="12"/>
+  <text class="h" x="36" y="42">사용자 PC (각자)</text>
+
+  <rect class="n-ex" x="40" y="70" width="200" height="70" rx="8"/>
+  <text class="t" x="140" y="98" text-anchor="middle">Dogent 앱 / 터미널</text>
+  <text class="s" x="140" y="118" text-anchor="middle">세션 엔진 · 스킬 · 모델 호출</text>
+
+  <rect class="n-ex" x="270" y="70" width="200" height="70" rx="8"/>
+  <text class="t" x="370" y="98" text-anchor="middle">브리지 · native host</text>
+  <text class="s" x="370" y="118" text-anchor="middle">MCP ↔ 확장 (포트 39217)</text>
+
+  <rect class="n-ex" x="500" y="70" width="200" height="70" rx="8"/>
+  <text class="t" x="600" y="98" text-anchor="middle">크롬·엣지 확장</text>
+  <text class="s" x="600" y="118" text-anchor="middle">화면 읽기·조작 · 안전장치</text>
+
+  <rect class="n-ex" x="40" y="180" width="200" height="70" rx="8"/>
+  <text class="t" x="140" y="208" text-anchor="middle">오피스 도구</text>
+  <text class="s" x="140" y="228" text-anchor="middle">Excel COM · NASCA · EDM</text>
+
+  <rect class="n-ex" x="270" y="180" width="200" height="70" rx="8"/>
+  <text class="t" x="370" y="208" text-anchor="middle">로컬 저장 ~/.dogent</text>
+  <text class="s" x="370" y="228" text-anchor="middle">스킬 · 설정 · 기록 · 캐시</text>
+
+  <rect class="n-ex" x="500" y="180" width="200" height="70" rx="8"/>
+  <text class="t" x="600" y="208" text-anchor="middle">승인 창 · 사이드 패널</text>
+  <text class="s" x="600" y="228" text-anchor="middle">저장·상신은 사람이 승인</text>
+
+  <text class="lb" x="40" y="285">Claude Code·opencode는 앱의 MCP 주소(39218)나 브리지로 붙음</text>
+
+  <line class="ln" x1="240" y1="105" x2="270" y2="105" marker-end="url(#a1)"/>
+  <line class="ln" x1="470" y1="105" x2="500" y2="105" marker-end="url(#a1)"/>
+  <line class="ln" x1="140" y1="140" x2="140" y2="180" marker-end="url(#a1)"/>
+
+  <rect class="n-xt" x="760" y="30" width="320" height="60" rx="8"/>
+  <text class="t" x="920" y="56" text-anchor="middle">Claude Code · opencode</text>
+  <text class="s" x="920" y="74" text-anchor="middle">MCP 클라이언트 (PC 또는 사내)</text>
+
+  <rect class="n-xt" x="760" y="115" width="320" height="60" rx="8"/>
+  <text class="t" x="920" y="141" text-anchor="middle">사내 업무 시스템</text>
+  <text class="s" x="920" y="159" text-anchor="middle">GSAMS · MES · EDM · NASCA 문서</text>
+
+  <rect class="n-xt" x="760" y="200" width="320" height="60" rx="8"/>
+  <text class="t" x="920" y="226" text-anchor="middle">사내 Gemma API 게이트웨이</text>
+  <text class="s" x="920" y="244" text-anchor="middle">OpenAI 호환 · 헤더 인증 (공용 키)</text>
+
+  <rect class="n-xt" x="760" y="285" width="320" height="60" rx="8"/>
+  <text class="t" x="920" y="311" text-anchor="middle">사내 GitHub</text>
+  <text class="s" x="920" y="329" text-anchor="middle">dogent-skills (index.json 주소로 받음)</text>
+
+  <rect class="n-pt" x="760" y="370" width="320" height="50" rx="8"/>
+  <text class="t" x="920" y="391" text-anchor="middle">시스템 사전 MCP 서버 1대</text>
+  <text class="s" x="920" y="408" text-anchor="middle">구현됨 · 설치 전 · 클라이언트와 자동 연결 없음</text>
+
+  <path class="ln" d="M760,60 H140 V70" marker-end="url(#a1)"/>
+  <line class="ln" x1="700" y1="105" x2="760" y2="145" marker-end="url(#a1)"/>
+  <line class="ln" x1="720" y1="230" x2="760" y2="230" marker-end="url(#a1)"/>
+  <line class="ln" x1="720" y1="300" x2="760" y2="310" marker-end="url(#a1)"/>
+  <path class="ld" d="M760,395 H400 V250" marker-end="url(#a1)"/>
+  <text class="lb" x="410" y="388">수동 등록(mcp add)만</text>
+</svg>
+</div>
+<div class="legend">
+  <span><i class="l-ex"></i>구현·시험됨</span>
+  <span><i class="l-pt"></i>구현됨, 연결 미흡</span>
+  <span><i class="l-xt"></i>기존 사내 인프라·외부</span>
+  <span><i class="l-pr"></i>제안 (없음)</span>
+</div>
+<p class="small">현재 비어 있는 것: 정책 배포, 중지 스위치, 실행 기록 수집, 사용자별 모델 키·한도, 중앙 통계, 설치 판 관리(canary). 모두 서버가 있어야 풀리는 문제입니다.</p>
+
+<!-- ================= 3 ================= -->
+<h2 id="target">3. 목표 구성도</h2>
+<p>PC 쪽은 그대로 두고, 가운데에 "Dogent 서비스 영역"을 더합니다. 실선은 호출, 점선은 약한 결합(캐시·폴링)입니다.</p>
+
+<div class="diagram">
+<svg viewBox="0 0 1120 830" role="img" aria-label="목표 아키텍처: 사용자 PC, 사내 시스템, Dogent 서비스 영역(Hub, 시스템 사전, LLM 프록시, 스킬 인덱스, 이벤트 버스, DB, 스토리지, 관측), 개발·배포·신원 영역">
+  <defs><marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ar"/></marker></defs>
+
+  <!-- 사용자 PC -->
+  <rect class="z" x="20" y="20" width="700" height="250" rx="12"/>
+  <text class="h" x="36" y="40">사용자 PC (각자 · 로컬 우선)</text>
+  <rect class="n-ex" x="40" y="70" width="200" height="70" rx="8"/>
+  <text class="t" x="140" y="98" text-anchor="middle">Dogent 앱 / 터미널</text>
+  <text class="s" x="140" y="118" text-anchor="middle">세션 · 스킬 · 모델 호출</text>
+  <rect class="n-ex" x="270" y="70" width="200" height="70" rx="8"/>
+  <text class="t" x="370" y="98" text-anchor="middle">브리지 · native host</text>
+  <text class="s" x="370" y="118" text-anchor="middle">MCP ↔ 확장</text>
+  <rect class="n-ex" x="500" y="70" width="200" height="70" rx="8"/>
+  <text class="t" x="600" y="98" text-anchor="middle">크롬·엣지 확장</text>
+  <text class="s" x="600" y="118" text-anchor="middle">조작 · 안전장치 · 승인 창</text>
+  <rect class="n-ex" x="40" y="165" width="200" height="70" rx="8"/>
+  <text class="t" x="140" y="193" text-anchor="middle">오피스 도구</text>
+  <text class="s" x="140" y="213" text-anchor="middle">Excel COM · NASCA · EDM</text>
+  <rect class="n-ex" x="270" y="165" width="200" height="70" rx="8"/>
+  <text class="t" x="370" y="193" text-anchor="middle">로컬 저장 ~/.dogent</text>
+  <text class="s" x="370" y="213" text-anchor="middle">스킬 캐시 · 사전 캐시 · 기록</text>
+  <rect class="n-pr" x="500" y="165" width="200" height="70" rx="8"/>
+  <text class="t" x="600" y="193" text-anchor="middle">Hub 클라이언트</text>
+  <text class="s" x="600" y="213" text-anchor="middle">정책 폴링 · 기록 전송</text>
+  <line class="ln" x1="240" y1="105" x2="270" y2="105" marker-end="url(#a2)"/>
+  <line class="ln" x1="470" y1="105" x2="500" y2="105" marker-end="url(#a2)"/>
+  <line class="ln" x1="140" y1="140" x2="140" y2="165" marker-end="url(#a2)"/>
+
+  <!-- 오른쪽 -->
+  <rect class="n-xt" x="745" y="30" width="165" height="55" rx="8"/>
+  <text class="t" x="827" y="54" text-anchor="middle">Claude Code</text>
+  <text class="s" x="827" y="72" text-anchor="middle">MCP 클라이언트</text>
+  <rect class="n-xt" x="925" y="30" width="170" height="55" rx="8"/>
+  <text class="t" x="1010" y="54" text-anchor="middle">opencode (GLM)</text>
+  <text class="s" x="1010" y="72" text-anchor="middle">MCP 클라이언트</text>
+  <path class="ln" d="M745,57 H140 V70" marker-end="url(#a2)"/>
+
+  <rect class="n-xt" x="745" y="110" width="350" height="55" rx="8"/>
+  <text class="t" x="920" y="134" text-anchor="middle">사내 업무 시스템</text>
+  <text class="s" x="920" y="152" text-anchor="middle">GSAMS · MES · EDM · NASCA 문서</text>
+  <line class="ln" x1="700" y1="105" x2="745" y2="135" marker-end="url(#a2)"/>
+
+  <rect class="n-xt" x="745" y="190" width="350" height="60" rx="8"/>
+  <text class="t" x="920" y="214" text-anchor="middle">사내 Gemma API 게이트웨이 (기존)</text>
+  <text class="s" x="920" y="232" text-anchor="middle">직접 호출 또는 LLM 프록시 경유</text>
+  <line class="ln" x1="720" y1="220" x2="745" y2="220" marker-end="url(#a2)"/>
+
+  <!-- PC → 서비스 -->
+  <line class="ln" x1="370" y1="235" x2="370" y2="345" marker-end="url(#a2)"/>
+  <text class="lb" x="382" y="290">HTTPS: 정책 · 기록 · 사전 · 스킬 인덱스</text>
+
+  <!-- 서비스 영역 -->
+  <rect class="zs" x="20" y="310" width="1080" height="320" rx="12"/>
+  <text class="h" x="36" y="332">Dogent 서비스 영역 (사내 k8s 또는 VM) — 제안</text>
+
+  <rect class="n-pr" x="40" y="345" width="1040" height="34" rx="6"/>
+  <text class="t" x="560" y="367" text-anchor="middle">인그레스 / API 게이트웨이 · 사내 TLS · 사내 SSO(OIDC) 인증 · 속도 제한</text>
+
+  <rect class="n-pr" x="40" y="400" width="200" height="75" rx="8"/>
+  <text class="t" x="140" y="428" text-anchor="middle">Hub API</text>
+  <text class="s" x="140" y="447" text-anchor="middle">정책 · 중지 스위치</text>
+  <text class="s" x="140" y="462" text-anchor="middle">기록 수집 · 통계 · 관리 화면</text>
+
+  <rect class="n-pt" x="260" y="400" width="200" height="75" rx="8"/>
+  <text class="t" x="360" y="428" text-anchor="middle">시스템 사전 MCP</text>
+  <text class="s" x="360" y="447" text-anchor="middle">구현됨 · find/get/list</text>
+  <text class="s" x="360" y="462" text-anchor="middle">report_issue</text>
+
+  <rect class="n-pr" x="480" y="400" width="200" height="75" rx="8"/>
+  <text class="t" x="580" y="428" text-anchor="middle">LLM 프록시 (선택)</text>
+  <text class="s" x="580" y="447" text-anchor="middle">키 보관 · 사용자별 한도</text>
+  <text class="s" x="580" y="462" text-anchor="middle">요청 감사 · 재시도</text>
+
+  <rect class="n-pt" x="700" y="400" width="180" height="75" rx="8"/>
+  <text class="t" x="790" y="428" text-anchor="middle">스킬 인덱스 배포</text>
+  <text class="s" x="790" y="447" text-anchor="middle">index.json + SKILL.md</text>
+  <text class="s" x="790" y="462" text-anchor="middle">정적 서빙 · 해시</text>
+
+  <rect class="n-pr" x="900" y="400" width="180" height="75" rx="8"/>
+  <text class="t" x="990" y="428" text-anchor="middle">워커</text>
+  <text class="s" x="990" y="447" text-anchor="middle">신고 알림 · 집계</text>
+  <text class="s" x="990" y="462" text-anchor="middle">기록 정리 · 백업</text>
+
+  <line class="ln" x1="140" y1="379" x2="140" y2="400"/>
+  <line class="ln" x1="360" y1="379" x2="360" y2="400"/>
+  <line class="ln" x1="580" y1="379" x2="580" y2="400"/>
+  <line class="ln" x1="790" y1="379" x2="790" y2="400"/>
+
+  <rect class="n-pr" x="40" y="495" width="1040" height="34" rx="6"/>
+  <text class="t" x="560" y="517" text-anchor="middle">이벤트 버스 — 처음엔 생략(폴링) → DB 알림 / Redis Streams → 필요하면 NATS·Kafka</text>
+  <line class="ln" x1="140" y1="475" x2="140" y2="495"/>
+  <line class="ln" x1="360" y1="475" x2="360" y2="495"/>
+  <line class="ln" x1="580" y1="475" x2="580" y2="495"/>
+  <line class="ln" x1="990" y1="475" x2="990" y2="495"/>
+
+  <rect class="n-pr" x="40" y="550" width="240" height="60" rx="8"/>
+  <text class="t" x="160" y="574" text-anchor="middle">PostgreSQL</text>
+  <text class="s" x="160" y="592" text-anchor="middle">사용자 · 실행 요약 · 정책 · 신고</text>
+  <rect class="n-pr" x="300" y="550" width="240" height="60" rx="8"/>
+  <text class="t" x="420" y="574" text-anchor="middle">오브젝트 스토리지 / NAS</text>
+  <text class="s" x="420" y="592" text-anchor="middle">진단 보고서 · 배포 묶음 · 내보내기</text>
+  <rect class="n-pr" x="560" y="550" width="200" height="60" rx="8"/>
+  <text class="t" x="660" y="574" text-anchor="middle">Redis (선택)</text>
+  <text class="s" x="660" y="592" text-anchor="middle">속도 제한 · 캐시 · 스트림</text>
+  <rect class="n-pr" x="780" y="550" width="300" height="60" rx="8"/>
+  <text class="t" x="930" y="574" text-anchor="middle">관측: 로그 · 지표 · 추적 · 알림</text>
+  <text class="s" x="930" y="592" text-anchor="middle">사내 표준 스택 사용</text>
+  <line class="ln" x1="160" y1="529" x2="160" y2="550"/>
+  <line class="ln" x1="420" y1="529" x2="420" y2="550"/>
+  <line class="ln" x1="660" y1="529" x2="660" y2="550"/>
+  <line class="ln" x1="930" y1="529" x2="930" y2="550"/>
+
+  <!-- 개발·배포·신원 -->
+  <rect class="z" x="20" y="660" width="1080" height="150" rx="12"/>
+  <text class="h" x="36" y="682">개발 · 배포 · 신원 (기존 사내 인프라 활용)</text>
+  <rect class="n-xt" x="40" y="700" width="260" height="85" rx="8"/>
+  <text class="t" x="170" y="728" text-anchor="middle">GitHub Enterprise</text>
+  <text class="s" x="170" y="747" text-anchor="middle">dogent 소스 · dogent-skills</text>
+  <text class="s" x="170" y="762" text-anchor="middle">dogent-systems · CODEOWNERS</text>
+  <rect class="n-xt" x="320" y="700" width="190" height="85" rx="8"/>
+  <text class="t" x="415" y="728" text-anchor="middle">CI 러너</text>
+  <text class="s" x="415" y="747" text-anchor="middle">스킬·사전 검사 · 빌드</text>
+  <text class="s" x="415" y="762" text-anchor="middle">이미지 빌드 · 서명</text>
+  <rect class="n-xt" x="530" y="700" width="210" height="85" rx="8"/>
+  <text class="t" x="635" y="728" text-anchor="middle">배포 저장소</text>
+  <text class="s" x="635" y="747" text-anchor="middle">Dogent-company-판.zip</text>
+  <text class="s" x="635" y="762" text-anchor="middle">canary → pilot → stable</text>
+  <rect class="n-xt" x="760" y="700" width="150" height="85" rx="8"/>
+  <text class="t" x="835" y="728" text-anchor="middle">사내 SSO</text>
+  <text class="s" x="835" y="747" text-anchor="middle">OIDC / SAML</text>
+  <text class="s" x="835" y="762" text-anchor="middle">사용자·그룹</text>
+  <rect class="n-xt" x="930" y="700" width="150" height="85" rx="8"/>
+  <text class="t" x="1005" y="728" text-anchor="middle">컨테이너 레지스트리</text>
+  <text class="s" x="1005" y="747" text-anchor="middle">서비스 이미지</text>
+  <path class="ln" d="M170,700 V632" marker-end="url(#a2)"/>
+  <text class="lb" x="182" y="652">pull · 게시</text>
+  <path class="ld" d="M835,700 V632" marker-end="url(#a2)"/>
+  <text class="lb" x="847" y="652">로그인 확인</text>
+</svg>
+</div>
+<div class="legend">
+  <span><i class="l-ex"></i>구현·시험됨</span>
+  <span><i class="l-pt"></i>구현됨, 연결 필요</span>
+  <span><i class="l-xt"></i>기존 사내 인프라·외부</span>
+  <span><i class="l-pr"></i>제안 (없음)</span>
+</div>
+<p class="small">배포 묶음(zip)은 사용자가 PC에 설치하는 경로이며, 서비스가 아니라 파일 서버 → PC 방향의 별도 경로입니다.</p>
+
+<!-- ================= 4 ================= -->
+<h2 id="catalog">4. 구성요소 목록</h2>
+<div class="tw"><table>
+<tr><th>구성요소</th><th>역할</th><th>상태</th><th>배포 형태</th><th>상태 저장</th><th>필요 시점</th></tr>
+<tr><td><b>Dogent 앱·클라이언트</b></td><td>세션, 스킬 실행, 모델 호출, 승인, 기록</td><td><span class="tag ok">구현</span></td><td>PC 설치 (Electron)</td><td>~/.dogent</td><td>지금</td></tr>
+<tr><td><b>브라우저 확장</b></td><td>화면 읽기·조작, 안전장치</td><td><span class="tag ok">구현</span></td><td>PC 설치</td><td>브라우저 저장소</td><td>지금</td></tr>
+<tr><td><b>브리지·native host</b></td><td>앱↔확장 MCP 연결</td><td><span class="tag ok">구현</span></td><td>앱에 포함</td><td>없음</td><td>지금</td></tr>
+<tr><td><b>오피스 도구</b></td><td>Excel COM (NASCA·EDM)</td><td><span class="tag ok">구현</span></td><td>앱에 포함</td><td>없음</td><td>지금</td></tr>
+<tr><td><b>스킬 저장소</b></td><td>스킬의 정본, 리뷰·이력</td><td><span class="tag ok">틀 있음</span></td><td>GitHub 저장소</td><td>Git</td><td>지금</td></tr>
+<tr><td><b>스킬 인덱스 배포</b></td><td><code>index.json</code>+파일 해시를 클라이언트에 제공</td><td><span class="tag ok">구현</span></td><td>raw 주소 또는 정적 서버</td><td>Git/파일</td><td>지금</td></tr>
+<tr><td><b>시스템 사전 저장소 + MCP</b></td><td>시스템 이름·주소·화면·용어 공유</td><td><span class="tag brand">구현, 연결 미흡</span></td><td>VM 또는 컨테이너 1개</td><td>Git(읽기), 신고 파일</td><td>지금(파일럿)</td></tr>
+<tr><td><b>배포 저장소</b></td><td>설치 묶음 보관, 판 관리</td><td><span class="tag todo">파일 서버</span></td><td>사내 파일 서버/아티팩트 저장소</td><td>파일</td><td>지금</td></tr>
+<tr><td><b>Hub API</b></td><td>정책 배포, 중지 스위치, 기록 수집, 통계, 관리 화면</td><td><span class="tag warn">제안</span></td><td>컨테이너 (2 복제)</td><td>PostgreSQL</td><td>파일럿 후반</td></tr>
+<tr><td><b>LLM 프록시</b></td><td>모델 키를 PC에서 제거, 사용자별 한도·감사</td><td><span class="tag warn">제안</span></td><td>컨테이너 (2 복제)</td><td>Redis(한도), DB(감사)</td><td>키 정책 결과에 따라</td></tr>
+<tr><td><b>워커</b></td><td>신고 알림, 기록 집계·정리, 백업</td><td><span class="tag warn">제안</span></td><td>컨테이너/크론잡</td><td>DB</td><td>Hub 이후</td></tr>
+<tr><td><b>인그레스·API 게이트웨이</b></td><td>TLS, SSO 인증, 속도 제한, 경로 분배</td><td><span class="tag warn">제안</span></td><td>사내 표준 인그레스</td><td>없음</td><td>Hub와 함께</td></tr>
+<tr><td><b>PostgreSQL</b></td><td>Hub 데이터</td><td><span class="tag warn">제안</span></td><td>사내 DB 서비스 권장</td><td>—</td><td>Hub와 함께</td></tr>
+<tr><td><b>오브젝트 스토리지/NAS</b></td><td>진단 보고서, 배포 묶음, 내보내기</td><td><span class="tag warn">제안</span></td><td>사내 스토리지</td><td>—</td><td>Hub 이후</td></tr>
+<tr><td><b>이벤트 버스</b></td><td>정책 변경·스킬 게시·신고 등 전달</td><td><span class="tag warn">제안(나중)</span></td><td>DB 알림→Redis→NATS/Kafka</td><td>—</td><td>7장 참고</td></tr>
+<tr><td><b>관측</b></td><td>로그, 지표, 추적, 알림</td><td><span class="tag warn">제안</span></td><td>사내 표준 스택</td><td>—</td><td>서비스 2개 이상일 때</td></tr>
+<tr><td><b>사내 SSO</b></td><td>Hub·관리 화면 인증, 사용자 식별</td><td><span class="tag todo">기존</span></td><td>사내</td><td>—</td><td>Hub와 함께</td></tr>
+</table></div>
+
+<!-- ================= 5 ================= -->
+<h2 id="flows">5. 주요 흐름</h2>
+
+<h3>5-1. 요청 실행 (런타임) — 서버를 거치지 않는 경로가 기본</h3>
+<div class="pipe">
+  <div class="st"><b>① 요청</b><span>사용자가 앱에 말로</span></div><div class="ar2">→</div>
+  <div class="st"><b>② 로컬 해석</b><span>캐시된 스킬·사전으로 시스템과 스킬 선택</span></div><div class="ar2">→</div>
+  <div class="st"><b>③ 모델 호출</b><span>Gemma 직접, 또는 LLM 프록시 경유</span></div><div class="ar2">→</div>
+  <div class="st"><b>④ 화면 조작</b><span>브리지 → 확장 → 사내 웹. 승인 창은 PC에서</span></div><div class="ar2">→</div>
+  <div class="st"><b>⑤ 결과</b><span>엑셀·보고서를 PC에 저장</span></div><div class="ar2">→</div>
+  <div class="st pr"><b>⑥ 요약 전송</b><span>실행 요약만 Hub로 (값·화면 글자는 제외)</span></div>
+</div>
+<p class="small">서버가 죽어도 ①~⑤는 캐시로 계속 돕니다. 서버 장애가 업무 중단이 되지 않게 하는 것이 핵심 원칙입니다 (Hub와 사전 서버는 <b>없어도 동작</b>, 있으면 더 좋음).</p>
+
+<h3>5-2. 스킬·사전 게시 (콘텐츠 흐름)</h3>
+<div class="pipe">
+  <div class="st"><b>담당자</b><span>PR 작성</span></div><div class="ar2">→</div>
+  <div class="st"><b>CI 검사</b><span>스킬 품질, 사전 형식·중복·도메인</span></div><div class="ar2">→</div>
+  <div class="st"><b>CODEOWNERS 승인</b><span>부서 담당 리뷰</span></div><div class="ar2">→</div>
+  <div class="st"><b>main 병합</b><span>정본 확정</span></div><div class="ar2">→</div>
+  <div class="st"><b>게시</b><span>스킬: index.json 생성 / 사전: MCP 서버 pull</span></div><div class="ar2">→</div>
+  <div class="st"><b>클라이언트 반영</b><span>스킬 1시간 폴링 / 사전 요청 시 조회·캐시</span></div>
+</div>
+<p class="small">콘텐츠의 정본은 <b>Git 하나</b>입니다. DB에 스킬을 따로 저장하지 않습니다 (이중 정본 방지).</p>
+
+<h3>5-3. 정책·중지·기록 (운영 흐름)</h3>
+<div class="pipe">
+  <div class="st pr"><b>관리자</b><span>정책 변경 / 스킬 중지</span></div><div class="ar2">→</div>
+  <div class="st pr"><b>Hub</b><span>DB 저장, 버전 올림</span></div><div class="ar2">→</div>
+  <div class="st pr"><b>클라이언트 폴링</b><span>ETag로 변경 확인 (예: 1~5분)</span></div><div class="ar2">→</div>
+  <div class="st pr"><b>즉시 적용</b><span>다음 실행 전에 정책 검사, 중지된 스킬은 거절</span></div><div class="ar2">→</div>
+  <div class="st pr"><b>기록 전송</b><span>실행 요약 → Hub → 통계·알림</span></div>
+</div>
+<div class="callout warn"><b>중지 스위치는 "닿지 못할 때"가 약점입니다.</b> PC가 Hub에 닿지 못하면 중지가 적용되지 않습니다. 정책 응답에 만료 시간(TTL)을 두고, <b>만료 뒤 Hub에 못 닿으면 쓰기(R3) 스킬은 막는</b> 방식을 권합니다. 조회(R1)는 계속 허용해 업무 중단을 줄입니다.</div>
+
+<h3>5-4. 모델 키 (선택안)</h3>
+<div class="tw"><table>
+<tr><th></th><th>A. 지금: 빌드에 공용 키</th><th>B. 개인 키</th><th>C. LLM 프록시</th></tr>
+<tr><td>키 위치</td><td>빌드 파일 안(꺼내 볼 수 있음)</td><td>각자 설정</td><td>서버 (PC에 없음)</td></tr>
+<tr><td>사용자별 한도·차단</td><td>불가 (user-id 헤더만)</td><td>가능(발급이 되면)</td><td>가능</td></tr>
+<tr><td>새로 필요한 것</td><td>없음</td><td>API 제공 측의 발급 절차</td><td>서비스 1개, 인증, 감사 저장소</td></tr>
+<tr><td>장애 영향</td><td>게이트웨이만</td><td>게이트웨이만</td><td>프록시도 의존(복제 2 이상)</td></tr>
+<tr><td>권장</td><td>파일럿까지</td><td>가능하면 우선</td><td>개인 키가 안 될 때</td></tr>
+</table></div>
+
+<!-- ================= 6 ================= -->
+<h2 id="deploy">6. k8s 배치 (서비스 영역을 클러스터에 올릴 때)</h2>
+<p>사내에 k8s 플랫폼이 이미 있고 운영 팀이 있을 때의 구성입니다. 없으면 "6-2 단순안"으로 시작해도 됩니다.</p>
+
+<div class="diagram">
+<svg viewBox="0 0 1100 520" role="img" aria-label="k8s 배치: 인그레스, dogent 네임스페이스의 디플로이먼트와 크론잡, 데이터 계층, 모니터링 네임스페이스">
+  <defs><marker id="a3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ar"/></marker></defs>
+  <text class="h" x="20" y="22">사용자 PC (앱·확장)</text>
+  <line class="ln" x1="150" y1="30" x2="150" y2="62" marker-end="url(#a3)"/>
+  <text class="lb" x="160" y="52">HTTPS (사내망)</text>
+
+  <rect class="z" x="20" y="64" width="1060" height="440" rx="12"/>
+  <text class="h" x="36" y="84">클러스터 (사내망 안, 외부 노출 없음)</text>
+
+  <rect class="n-xt" x="40" y="96" width="1020" height="34" rx="6"/>
+  <text class="t" x="550" y="118" text-anchor="middle">Ingress Controller — TLS(사내 CA) · 경로: /hub /mcp/systems /llm /skills</text>
+
+  <rect class="zs" x="40" y="146" width="720" height="342" rx="10"/>
+  <text class="h" x="54" y="166">namespace: dogent</text>
+
+  <rect class="n-pr" x="56" y="180" width="160" height="80" rx="8"/>
+  <text class="t" x="136" y="206" text-anchor="middle">hub-api</text>
+  <text class="s" x="136" y="224" text-anchor="middle">Deployment × 2</text>
+  <text class="s" x="136" y="240" text-anchor="middle">HPA 불필요(소규모)</text>
+
+  <rect class="n-pt" x="228" y="180" width="160" height="80" rx="8"/>
+  <text class="t" x="308" y="206" text-anchor="middle">systems-mcp</text>
+  <text class="s" x="308" y="224" text-anchor="middle">Deployment × 2</text>
+  <text class="s" x="308" y="240" text-anchor="middle">git-sync 사이드카</text>
+
+  <rect class="n-pr" x="400" y="180" width="160" height="80" rx="8"/>
+  <text class="t" x="480" y="206" text-anchor="middle">llm-proxy</text>
+  <text class="s" x="480" y="224" text-anchor="middle">Deployment × 2</text>
+  <text class="s" x="480" y="240" text-anchor="middle">키는 Secret 마운트</text>
+
+  <rect class="n-pt" x="572" y="180" width="170" height="80" rx="8"/>
+  <text class="t" x="657" y="206" text-anchor="middle">skill-index</text>
+  <text class="s" x="657" y="224" text-anchor="middle">정적 서버 × 2</text>
+  <text class="s" x="657" y="240" text-anchor="middle">git-sync 또는 CI 게시</text>
+
+  <rect class="n-pr" x="56" y="280" width="160" height="70" rx="8"/>
+  <text class="t" x="136" y="306" text-anchor="middle">worker</text>
+  <text class="s" x="136" y="324" text-anchor="middle">Deployment × 1</text>
+  <text class="s" x="136" y="338" text-anchor="middle">이벤트 소비</text>
+
+  <rect class="n-pr" x="228" y="280" width="160" height="70" rx="8"/>
+  <text class="t" x="308" y="306" text-anchor="middle">CronJob</text>
+  <text class="s" x="308" y="324" text-anchor="middle">기록 정리 · 백업 · 집계</text>
+
+  <rect class="n-pr" x="400" y="280" width="342" height="70" rx="8"/>
+  <text class="t" x="571" y="302" text-anchor="middle">ConfigMap · Secret · ServiceAccount</text>
+  <text class="s" x="571" y="319" text-anchor="middle">Secret은 외부 비밀 저장소 연동</text>
+  <text class="s" x="571" y="334" text-anchor="middle">NetworkPolicy: 서비스 → DB·Redis·Gemma·Git만 허용</text>
+
+  <rect class="n-pr" x="56" y="372" width="200" height="90" rx="8"/>
+  <text class="t" x="156" y="398" text-anchor="middle">PostgreSQL</text>
+  <text class="s" x="156" y="416" text-anchor="middle">사내 DB 서비스 권장</text>
+  <text class="s" x="156" y="432" text-anchor="middle">직접 운영이면 StatefulSet</text>
+  <text class="s" x="156" y="448" text-anchor="middle">+ 백업·복구 시험</text>
+
+  <rect class="n-pr" x="272" y="372" width="200" height="90" rx="8"/>
+  <text class="t" x="372" y="398" text-anchor="middle">Redis (선택)</text>
+  <text class="s" x="372" y="416" text-anchor="middle">속도 제한 · 캐시</text>
+  <text class="s" x="372" y="432" text-anchor="middle">잃어도 되는 데이터만</text>
+
+  <rect class="n-pr" x="488" y="372" width="254" height="90" rx="8"/>
+  <text class="t" x="615" y="398" text-anchor="middle">오브젝트 스토리지 / PVC(NAS)</text>
+  <text class="s" x="615" y="416" text-anchor="middle">진단 보고서 · 내보내기</text>
+  <text class="s" x="615" y="432" text-anchor="middle">보관 기간 정책 필요</text>
+
+  <rect class="zs" x="780" y="146" width="280" height="342" rx="10"/>
+  <text class="h" x="794" y="166">namespace: monitoring (사내 표준)</text>
+  <rect class="n-xt" x="796" y="180" width="248" height="60" rx="8"/>
+  <text class="t" x="920" y="206" text-anchor="middle">지표 수집 · 대시보드</text>
+  <text class="s" x="920" y="224" text-anchor="middle">요청 수 · 오류율 · 지연</text>
+  <rect class="n-xt" x="796" y="254" width="248" height="60" rx="8"/>
+  <text class="t" x="920" y="280" text-anchor="middle">로그 수집</text>
+  <text class="s" x="920" y="298" text-anchor="middle">값·화면 글자 남기지 않기</text>
+  <rect class="n-xt" x="796" y="328" width="248" height="60" rx="8"/>
+  <text class="t" x="920" y="354" text-anchor="middle">알림</text>
+  <text class="s" x="920" y="372" text-anchor="middle">5xx 증가 · 디스크 · DB 접속</text>
+  <rect class="n-xt" x="796" y="402" width="248" height="70" rx="8"/>
+  <text class="t" x="920" y="428" text-anchor="middle">외부 의존</text>
+  <text class="s" x="920" y="446" text-anchor="middle">GitHub · Gemma · SSO · 레지스트리</text>
+  <text class="s" x="920" y="460" text-anchor="middle">(여기서는 접속 상태만 감시)</text>
+</svg>
+</div>
+
+<h3>6-1. 서비스별 설정 요점</h3>
+<div class="tw"><table>
+<tr><th>서비스</th><th>복제</th><th>상태</th><th>헬스체크</th><th>외부 의존</th><th>메모</th></tr>
+<tr><td>systems-mcp</td><td>2</td><td>없음(읽기 전용, 신고만 파일/DB)</td><td><code>GET /health</code></td><td>Git(읽기)</td><td>이미 만든 서버. 컨테이너로 감싸고 신고 파일은 PVC 또는 Hub API 호출로 교체</td></tr>
+<tr><td>skill-index</td><td>2</td><td>없음</td><td>index.json 응답</td><td>Git 또는 CI 게시</td><td>지금처럼 GitHub raw를 쓰면 이 서비스는 생략 가능</td></tr>
+<tr><td>hub-api</td><td>2</td><td>DB</td><td>/health + DB 핑</td><td>PostgreSQL, SSO</td><td>정책 응답은 ETag·TTL, 기록 수신은 멱등(실행 id)</td></tr>
+<tr><td>llm-proxy</td><td>2</td><td>Redis(한도)</td><td>/health</td><td>Gemma, Redis, 비밀 저장소</td><td>스트리밍 응답 지원 여부 확인, 타임아웃은 클라이언트보다 길게</td></tr>
+<tr><td>worker</td><td>1</td><td>DB</td><td>작업 큐 깊이</td><td>DB, 메신저/메일</td><td>실패한 작업 재시도와 중복 방지</td></tr>
+</table></div>
+
+<h3>6-2. k8s가 없거나 작게 시작할 때 (단순안)</h3>
+<ul>
+  <li>VM 1~2대 + <code>docker compose</code>(또는 systemd): systems-mcp, hub-api, PostgreSQL 컨테이너, 앞단에 사내 리버스 프록시.</li>
+  <li>DB는 가능하면 <b>사내 DB 서비스</b>를 쓰고 VM에는 앱만 둡니다 (백업·복구를 직접 안 하려고).</li>
+  <li>서비스가 늘고 무중단 배포·자동 복구가 필요해질 때 k8s로 옮깁니다. 컨테이너 이미지를 처음부터 쓰면 옮기는 비용이 작습니다.</li>
+</ul>
+
+<!-- ================= 7 ================= -->
+<h2 id="data">7. 데이터 모델과 이벤트</h2>
+
+<h3>7-1. PostgreSQL 테이블 (Hub, 최소안)</h3>
+<div class="tw"><table>
+<tr><th>테이블</th><th>주요 칼럼</th><th>용도</th></tr>
+<tr><td><code>users</code></td><td>id(SSO), 부서, 마지막 접속, 판(버전), 상태</td><td>누가 어떤 판을 쓰는지</td></tr>
+<tr><td><code>runs</code></td><td>run_id, user_id, skill_id·판, 위험도(R1~R3), 결과, 시작·소요, 모델 호출 수, 오류 분류, 승인 여부</td><td>실행 요약 (<b>값·화면 글자·표 내용은 저장하지 않음</b>)</td></tr>
+<tr><td><code>skill_stats</code></td><td>skill_id, 일자, 실행 수, 성공 수, 평균 소요, 연속 실패</td><td>화면 변경으로 깨진 스킬 탐지 (집계 테이블)</td></tr>
+<tr><td><code>policies</code></td><td>version, 내용(JSON), 만료(TTL), 작성자, 시각</td><td>사이트 허용 상한, 쓰기 허용 스킬, 입력값 정책</td></tr>
+<tr><td><code>kill_switches</code></td><td>대상(스킬/시스템/전체), 사유, 작성자, 해제 시각</td><td>중지 스위치</td></tr>
+<tr><td><code>issue_reports</code></td><td>system_id, 내용, 신고자, 상태, 처리자</td><td>시스템 사전 신고 (지금은 파일)</td></tr>
+<tr><td><code>audit_log</code></td><td>누가, 언제, 무엇을(정책 변경·중지 등)</td><td>관리 행위 감사 (삭제 불가 권한)</td></tr>
+</table></div>
+<div class="callout bad"><b>개인정보·업무 데이터를 서버로 올리지 않는 것이 원칙입니다.</b> 실행 요약에는 표의 값, 입력한 신청 내용, 화면 글자를 넣지 않습니다. 승인 이력은 "승인했다/안 했다"와 스킬·시각만 남깁니다. 이 범위는 보안 부서와 합의한 뒤 확정하세요 (<code>docs/19</code> 확인 목록 C8, C26).</div>
+
+<h3>7-2. 이벤트와 전달 방식</h3>
+<div class="tw"><table>
+<tr><th>이벤트</th><th>발행자</th><th>구독자</th><th>처음 방식</th><th>나중 방식</th></tr>
+<tr><td><code>skill.published</code></td><td>CI</td><td>클라이언트</td><td>1시간 폴링(지금)</td><td>짧은 폴링 또는 SSE로 즉시 알림</td></tr>
+<tr><td><code>system.updated</code></td><td>사전 서버(pull)</td><td>클라이언트 캐시</td><td>요청 시 조회 + 캐시 TTL</td><td>동일</td></tr>
+<tr><td><code>policy.changed</code></td><td>Hub</td><td>클라이언트</td><td>ETag 폴링(1~5분)</td><td>SSE/WebSocket 푸시</td></tr>
+<tr><td><code>killswitch.set</code></td><td>Hub</td><td>클라이언트</td><td>정책에 포함해 폴링</td><td>푸시 (긴급)</td></tr>
+<tr><td><code>run.completed</code></td><td>클라이언트</td><td>Hub, 워커</td><td>HTTPS POST (재시도·멱등)</td><td>버스에 적재 후 비동기 처리</td></tr>
+<tr><td><code>issue.reported</code></td><td>사전 서버/클라이언트</td><td>워커</td><td>DB 행 + 워커 폴링</td><td>버스 구독 → 담당 부서 알림</td></tr>
+<tr><td><code>skill.degraded</code></td><td>워커(집계)</td><td>담당자</td><td>일 단위 집계 메일</td><td>실시간 알림</td></tr>
+</table></div>
+
+<h3>7-3. 이벤트 버스를 언제 도입하나</h3>
+<table>
+<tr><th>상황</th><th>선택</th></tr>
+<tr><td>사용자 수십~수백 명, 이벤트가 분당 수십 건 이하</td><td><b>버스 없이</b> HTTPS + DB + 폴링. 워커는 DB를 주기적으로 조회</td></tr>
+<tr><td>비동기 처리(알림·집계)가 늘고 Redis가 이미 있음</td><td>Redis Streams 또는 DB의 작업 큐 테이블</td></tr>
+<tr><td>사내에 Kafka/NATS 표준과 운영 팀이 있고 여러 시스템이 같은 이벤트를 써야 함</td><td>그 표준 버스에 합류 (Dogent가 새로 운영하지 않음)</td></tr>
+</table>
+<p class="small">클라이언트는 PC에서 시작하는 연결만 쓰는 편이 방화벽에 안전합니다. 서버가 PC로 먼저 연결하는 구조(푸시용 포트 열기)는 피하고, PC가 서버로 폴링하거나 장기 연결을 맺습니다.</p>
+
+<!-- ================= 8 ================= -->
+<h2 id="sec">8. 보안·운영</h2>
+<div class="tw"><table>
+<tr><th>영역</th><th>원칙</th><th>구체</th></tr>
+<tr><td>신원</td><td>사내 SSO 하나</td><td>Hub·관리 화면은 OIDC. 클라이언트 → Hub는 사용자 토큰(만료 짧게). 지금의 user-id 헤더는 신뢰하지 않고 서버에서 확정</td></tr>
+<tr><td>권한</td><td>역할 분리</td><td>일반 사용자(기록 전송), 스킬 담당자(자기 스킬 통계), 사전 관리자(정책·중지), 감사자(읽기 전용)</td></tr>
+<tr><td>비밀</td><td>PC에 키를 두지 않기</td><td>LLM 키는 프록시/비밀 저장소. 그 전까지는 빌드에 든 키가 노출될 수 있음을 인정하고 배포 범위를 제한</td></tr>
+<tr><td>네트워크</td><td>사내망 한정, 최소 허용</td><td>NetworkPolicy, 서비스 → DB/Git/Gemma만. PC → Hub는 HTTPS 단일 진입점</td></tr>
+<tr><td>데이터</td><td>최소 수집</td><td>7-1의 원칙. 로그에 값·화면 글자 금지. 보관 기간(예: 90일)과 삭제 작업을 정해 둠</td></tr>
+<tr><td>변조 방지</td><td>콘텐츠는 서명·해시</td><td>스킬 인덱스의 해시 검증(지금 있음), 배포 묶음 서명, 정책 응답 서명</td></tr>
+<tr><td>가용성</td><td>서버 없이도 돈다</td><td>클라이언트는 캐시로 동작, 정책 TTL 만료 시 R3만 차단 (5-3)</td></tr>
+<tr><td>백업·복구</td><td>복구를 시험</td><td>DB 일일 백업 + 복구 훈련, Git이 정본이라 콘텐츠는 재생성 가능</td></tr>
+<tr><td>변경 관리</td><td>배포 채널</td><td>canary → pilot → stable 판. 서비스는 롤링 배포와 롤백 절차</td></tr>
+<tr><td>관측</td><td>핵심 지표만</td><td>Hub 오류율·지연, 기록 수신 실패율, 정책 폴링 실패 PC 수, 스킬별 성공률, 429 비율</td></tr>
+</table></div>
+
+<!-- ================= 9 ================= -->
+<h2 id="phase">9. 도입 순서</h2>
+<div class="tw"><table>
+<tr><th>단계</th><th>더하는 것</th><th>이유 / 기준</th></tr>
+<tr><td><b>지금 ~ 파일럿 시작</b></td><td>없음 (GitHub 저장소 2개, 사전 MCP 서버 VM 1대, 배포 파일 서버)</td><td>사내 확인 목록(docs/19 11장) P0를 먼저 닫음. 인프라를 더하기 전에 화면·모델이 되는지가 먼저</td></tr>
+<tr><td><b>파일럿 중</b></td><td>사전 서버 컨테이너화, 클라이언트의 사전 자동 연결(G1), 배포 판 채널(canary/pilot)</td><td>사전 이원화 해소. 사용자가 수십 명이 되면 판 관리가 필요</td></tr>
+<tr><td><b>파일럿 후반</b></td><td>Hub 최소안: PostgreSQL, 정책·중지 스위치(폴링), 실행 요약 수신, 간단한 통계 화면, SSO</td><td>"지금 어떤 스킬이 쓰이고 실패하나"와 "긴급 중지"가 필요해지는 시점. 파일럿 확산 기준(docs/04 5절)의 측정 근거</td></tr>
+<tr><td><b>키 정책 결과에 따라</b></td><td>LLM 프록시</td><td>개인 키 발급이 안 되거나 사용자별 한도·감사가 요구될 때</td></tr>
+<tr><td><b>확산</b></td><td>k8s 배치, 관측 스택, 워커·집계, 알림, (필요 시) 이벤트 버스</td><td>서비스 3개 이상, 가용성·무중단 배포 요구, 사내 표준 운영 체계에 편입</td></tr>
+</table></div>
+<div class="callout"><b>판단 기준 하나.</b> 어떤 서버 구성요소를 더하자는 제안이 나오면 "<b>이게 없으면 지금 누가 무엇을 못 하는가</b>"에 답하게 하세요. 답이 "나중에 필요할 것 같다"뿐이면 미루는 편이 낫습니다.</div>
+
+<!-- ================= 10 ================= -->
+<h2 id="nongoal">10. 만들지 않는 것을 권하는 것</h2>
+<div class="tw"><table>
+<tr><th>안 만들 것</th><th>이유</th><th>대신</th></tr>
+<tr><td>서버에서 브라우저를 대신 돌리는 실행 서버 (헤드리스 워커 풀)</td><td>사내 SSO 세션·OTP, 사람 승인 창, NASCA 문서가 모두 사용자 PC에 묶여 있음. 서버 실행은 안전장치(승인)를 약하게 하고 계정 공유 문제를 만듦</td><td>예약 실행은 지금처럼 사용자 PC의 작업 스케줄러. API가 있는 시스템은 MCP 커넥터로 전환 (docs/04 6절)</td></tr>
+<tr><td>스킬을 DB에 저장·편집하는 스킬 관리 서비스</td><td>정본이 Git과 DB 두 곳이 됨. 리뷰·이력·CODEOWNERS를 다시 만들어야 함</td><td>Git + CI + index.json. 필요하면 읽기 전용 카탈로그 화면만 Hub에 추가</td></tr>
+<tr><td>처음부터 Kafka·서비스 메시</td><td>운영 부담이 사용자 수·이벤트 양에 비해 큼</td><td>폴링 + DB. 사내 표준 버스가 있으면 그때 합류</td></tr>
+<tr><td>실행 기록에 화면 내용·표 값 원문 수집</td><td>업무 데이터가 서버에 쌓여 보안 범위가 커짐</td><td>요약만 수집. 문제 분석은 사용자가 내보낸 진단 보고서(값 가림)로</td></tr>
+<tr><td>서버가 PC로 명령을 밀어 넣는 구조(PC 인바운드 포트)</td><td>PC 방화벽·보안 프로그램과 충돌, 공격 면 확대</td><td>PC가 서버로 폴링/장기 연결</td></tr>
+</table></div>
+
+<!-- ================= 11 ================= -->
+<h2 id="ask">11. 사내에 확인할 것 (아키텍처 결정에 필요)</h2>
+<div class="tw"><table>
+<tr><th>#</th><th>질문</th><th>답에 따라 달라지는 것</th></tr>
+<tr><td>A1</td><td>사내에 앱을 올릴 k8s 플랫폼(또는 컨테이너 호스팅)이 있고 우리가 쓸 수 있는가? 운영 주체는?</td><td>6장 배치 vs 6-2 단순안. 운영 인력</td></tr>
+<tr><td>A2</td><td>표준 DB가 무엇인가(PostgreSQL / MariaDB / Oracle)? DB를 서비스로 받을 수 있는가?</td><td>데이터 모델의 SQL 방언, 백업 책임</td></tr>
+<tr><td>A3</td><td>표준 메시지 버스·이벤트 플랫폼(Kafka 등)이 있는가?</td><td>7-3의 버스 도입 방식</td></tr>
+<tr><td>A4</td><td>사내 SSO 방식(OIDC / SAML)과 앱 등록 절차?</td><td>Hub·관리 화면 인증</td></tr>
+<tr><td>A5</td><td>PC → 사내 서비스 호출 경로: 프록시, 방화벽, 사내 CA 인증서 배포 상태?</td><td>HTTPS 진입점, 인증서 신뢰</td></tr>
+<tr><td>A6</td><td>컨테이너 레지스트리·아티팩트 저장소·오브젝트 스토리지의 사내 표준은?</td><td>이미지·배포 묶음 보관 위치</td></tr>
+<tr><td>A7</td><td>로그·지표·알림 사내 표준 스택은? 로그에 남길 수 있는 정보의 기준은?</td><td>관측 구성, 마스킹 규칙</td></tr>
+<tr><td>A8</td><td>서비스 가용성 요구(업무 시간, 허용 중단)와 실행 기록 보관 기간·수집 근거(감사 요건)?</td><td>복제 수, 백업 주기, Hub 도입 시점</td></tr>
+<tr><td>A9</td><td>모델 키: 개인 발급 가능 여부, 프록시 허용 여부, 사용량 한도</td><td>5-4의 A/B/C 선택</td></tr>
+<tr><td>A10</td><td>새 서비스를 사내에 올릴 때의 보안 심사·망 분리 절차와 소요 기간</td><td>도입 순서의 실제 일정</td></tr>
+</table></div>
+<p class="small">이 질문의 답을 <code>docs/19</code>의 확인 목록과 함께 모으면 서버 쪽 도입 시점과 범위를 확정할 수 있습니다.</p>
+
+</main>
+</div>
+</body>
+</html>
