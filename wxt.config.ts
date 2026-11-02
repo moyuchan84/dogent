@@ -1,6 +1,6 @@
 import { defineConfig } from 'wxt';
 import { EXTENSION_KEY } from './bridge/extension-key.mjs';
-import { dogentConfig } from './dogent.config';
+import { allSitesFor, dogentConfig } from './dogent.config';
 
 // 빌드마다 다른 표시. 코드와 폴더의 build.json에 함께 넣어, 설치 프로그램이 폴더를 새 판으로 덮어쓰면
 // 확장이 둘이 다른 것을 보고 스스로 다시 읽는다 (src/ext/self-update.ts)
@@ -26,8 +26,8 @@ export default defineConfig({
     checkHeaders(import.meta.env.WXT_LLM_HEADERS as string | undefined);
     // dogent.config.ts는 환경 파일을 읽기 전에 불러와지므로, 빌드 환경의 사이트 주소는 여기서 다시 읽는다.
     const sites = [
-      ...dogentConfig.sitePermissions,
-      ...(/^(0|false|no|off)$/i.test(((import.meta.env.WXT_ALL_SITES as string | undefined) ?? '').trim()) ? [] : ['http://*/*', 'https://*/*']),
+      ...dogentConfig.baseSitePermissions,
+      ...(allSitesFor(mode, import.meta.env.WXT_ALL_SITES as string | undefined) ? ['http://*/*', 'https://*/*'] : []),
       ...((import.meta.env.WXT_SITE_PERMISSIONS as string | undefined) ?? '').split(',').map((x) => x.trim()).filter(Boolean),
     ];
     // 사용자가 설정에서 더할 수 있는 사이트의 범위. 이 안의 사이트는 다시 빌드하지 않고 크롬 권한 요청으로 더한다.
@@ -93,7 +93,7 @@ function printProfile(mode: string, sites: string[], scope: string[]): void {
     `  API 키     ${env.WXT_LLM_API_KEY ? '있음 (빌드에 포함)' : '없음'}`,
     `  요청 헤더  ${headers.length ? headers.join(', ') : 'Authorization: Bearer (OpenAI 방식)'}`,
     `  시스템 이름 Send-System-Name: ${systemName}`,
-    `  사이트     ${sites.join(', ')}`,
+    `  사이트     ${sites.join(', ')}${sites.includes('https://*/*') ? '  (모든 http·https 사이트. 회사 빌드에서 목록 방식으로 하려면 WXT_ALL_SITES=false)' : mode === 'company' ? '  (목록 방식: 나머지는 패널의 "이 사이트 허용"으로 더함)' : ''}`,
     `  추가 가능  ${scope.join(', ')} (설정 → 조작할 사이트에서 더함)`,
     `  확장 폴더  ${out}  ← chrome://extensions 에서 이 폴더를 로드`,
   ];
