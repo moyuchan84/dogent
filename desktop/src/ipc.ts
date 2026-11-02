@@ -72,7 +72,7 @@ export interface SystemSummary {
   description: string;
   aliases: string[];
   url: string;
-  source: '개인' | '팀' | '기본';
+  source: '개인' | '공용' | '팀' | '기본';
   /** 이 시스템의 사이트를 다루는 스킬 수 */
   skills: number;
 }

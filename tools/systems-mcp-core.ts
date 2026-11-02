@@ -114,6 +114,15 @@ export class SystemsMcp {
     return this.reg;
   }
 
+  /**
+   * 사전 전체의 원문. Dogent 클라이언트가 GET /systems.json 으로 받아 로컬 사전(systems-cache)으로 쓴다.
+   * MCP 도구로는 내놓지 않는다 (모델이 부르면 토큰만 쓰므로). 오류로 뺀 시스템은 들어 있지 않다.
+   */
+  exportAll(): { version: string; count: number; systems: { id: string; source: string }[] } {
+    const reg = this.registry();
+    return { version: reg.version, count: reg.systems.length, systems: reg.systems.map((s) => ({ id: s.system.id, source: s.source })) };
+  }
+
   /** JSON-RPC 메시지 하나를 처리한다. 알림(id 없음)이면 null */
   handle(msg: RpcMessage): Json | null {
     const reply = (body: Json) => ({ jsonrpc: '2.0', id: msg.id ?? null, ...body });

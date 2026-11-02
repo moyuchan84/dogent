@@ -416,7 +416,7 @@ svg .ar{fill:var(--sub)}
   <div class="st"><b>CODEOWNERS 승인</b><span>부서 담당 리뷰</span></div><div class="ar2">→</div>
   <div class="st"><b>main 병합</b><span>정본 확정</span></div><div class="ar2">→</div>
   <div class="st"><b>게시</b><span>스킬: index.json 생성 / 사전: MCP 서버 pull</span></div><div class="ar2">→</div>
-  <div class="st"><b>클라이언트 반영</b><span>스킬 1시간 폴링 / 사전 요청 시 조회·캐시</span></div>
+  <div class="st"><b>클라이언트 반영</b><span>스킬·사전 모두 1시간 폴링(ETag) + 로컬 캐시</span></div>
 </div>
 <p class="small">콘텐츠의 정본은 <b>Git 하나</b>입니다. DB에 스킬을 따로 저장하지 않습니다 (이중 정본 방지).</p>
 
@@ -565,7 +565,7 @@ svg .ar{fill:var(--sub)}
 <div class="tw"><table>
 <tr><th>이벤트</th><th>발행자</th><th>구독자</th><th>처음 방식</th><th>나중 방식</th></tr>
 <tr><td><code>skill.published</code></td><td>CI</td><td>클라이언트</td><td>1시간 폴링(지금)</td><td>짧은 폴링 또는 SSE로 즉시 알림</td></tr>
-<tr><td><code>system.updated</code></td><td>사전 서버(pull)</td><td>클라이언트 캐시</td><td>요청 시 조회 + 캐시 TTL</td><td>동일</td></tr>
+<tr><td><code>system.updated</code></td><td>사전 서버(pull)</td><td>클라이언트 캐시</td><td>1시간 간격 ETag 조회 + 로컬 캐시 (구현됨)</td><td>짧은 폴링 또는 푸시</td></tr>
 <tr><td><code>policy.changed</code></td><td>Hub</td><td>클라이언트</td><td>ETag 폴링(1~5분)</td><td>SSE/WebSocket 푸시</td></tr>
 <tr><td><code>killswitch.set</code></td><td>Hub</td><td>클라이언트</td><td>정책에 포함해 폴링</td><td>푸시 (긴급)</td></tr>
 <tr><td><code>run.completed</code></td><td>클라이언트</td><td>Hub, 워커</td><td>HTTPS POST (재시도·멱등)</td><td>버스에 적재 후 비동기 처리</td></tr>
@@ -603,7 +603,7 @@ svg .ar{fill:var(--sub)}
 <div class="tw"><table>
 <tr><th>단계</th><th>더하는 것</th><th>이유 / 기준</th></tr>
 <tr><td><b>지금 ~ 파일럿 시작</b></td><td>없음 (GitHub 저장소 2개, 사전 MCP 서버 VM 1대, 배포 파일 서버)</td><td>사내 확인 목록(docs/19 11장) P0를 먼저 닫음. 인프라를 더하기 전에 화면·모델이 되는지가 먼저</td></tr>
-<tr><td><b>파일럿 중</b></td><td>사전 서버 컨테이너화, 클라이언트의 사전 자동 연결(G1), 배포 판 채널(canary/pilot)</td><td>사전 이원화 해소. 사용자가 수십 명이 되면 판 관리가 필요</td></tr>
+<tr><td><b>파일럿 중</b></td><td>사전 서버 컨테이너화, 배포 판 채널(canary/pilot) (클라이언트의 사전 자동 연결 G1은 완료)</td><td>사전 연결(G1)은 구현됨(클라이언트가 서버 사전을 받아 씀). 사용자가 수십 명이 되면 판 관리가 필요</td></tr>
 <tr><td><b>파일럿 후반</b></td><td>Hub 최소안: PostgreSQL, 정책·중지 스위치(폴링), 실행 요약 수신, 간단한 통계 화면, SSO</td><td>"지금 어떤 스킬이 쓰이고 실패하나"와 "긴급 중지"가 필요해지는 시점. 파일럿 확산 기준(docs/04 5절)의 측정 근거</td></tr>
 <tr><td><b>키 정책 결과에 따라</b></td><td>LLM 프록시</td><td>개인 키 발급이 안 되거나 사용자별 한도·감사가 요구될 때</td></tr>
 <tr><td><b>확산</b></td><td>k8s 배치, 관측 스택, 워커·집계, 알림, (필요 시) 이벤트 버스</td><td>서비스 3개 이상, 가용성·무중단 배포 요구, 사내 표준 운영 체계에 편입</td></tr>

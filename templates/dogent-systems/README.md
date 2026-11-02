@@ -65,6 +65,7 @@ node tools/systems-mcp.mjs --root . --host 0.0.0.0 --port 8787 --pull 300 --repo
 | `--stdio` | 한 PC에서 시험할 때 (stdin/stdout) |
 
 - 주소: `http://<서버>:8787/mcp` (Streamable HTTP, 답은 JSON)
+- 사전 전체: `GET http://<서버>:8787/systems.json` — SYSTEM.md 원문과 판 번호. Dogent 앱·터미널이 이 주소로 받아 로컬 사전으로 씁니다 (토큰이 있으면 같은 인증, 판 번호가 ETag라 바뀌지 않았으면 304)
 - 상태: `GET /health` → 판 번호, 시스템 수, 오류로 뺀 파일 수
 - 파일이 바뀌면 다음 요청 때 다시 읽습니다. 오류가 있는 파일은 빼고 나머지로 계속 돕니다
 
@@ -85,3 +86,19 @@ claude mcp add --transport http systems http://<서버>:8787/mcp
 ```
 
 토큰을 쓰면 `--header "Authorization: Bearer <토큰>"`을 더합니다.
+
+### Dogent 앱·터미널에서 자동으로 쓰기
+
+위의 MCP 등록은 모델이 필요할 때 부르는 방식입니다. Dogent 앱·터미널은 사전을 **받아 와서 요청마다 자동으로** 씁니다 (요청에 시스템 이름이 나오면 설명을 모델에 함께 보여 주고, 화면이 안 열려 있으면 주소를 열지 묻습니다).
+
+```
+dogent config systemsUrl http://<서버>:8787          # 또는 …/mcp 주소 그대로
+dogent config systemsToken <토큰>                    # 서버에 SYSTEMS_MCP_TOKEN을 썼을 때
+dogent sync                                          # 지금 받기 (평소에는 한 시간에 한 번 스스로, 앱은 켤 때 받음)
+dogent systems                                       # [공용] 표시로 보임
+```
+
+- 받은 사전은 `~/.dogent/systems-cache`에 둡니다. 서버에 닿지 않으면 마지막으로 받아 둔 것을 씁니다.
+- 같은 id는 **개인 > 공용 > 팀 > 기본** 순서입니다. 공용이 정본이고, 개인 폴더의 사전으로 내 PC에서만 덮어쓸 수 있습니다.
+- 서버에서 형식 오류로 뺀 항목은 클라이언트에도 내려가지 않습니다. 클라이언트도 받을 때 형식을 다시 검사하고, 맞지 않으면 그 항목만 받지 않습니다.
+- 회사 빌드에 처음부터 넣으려면 `.env.company.local`에 `WXT_SYSTEMS_URL=http://<서버>:8787`을 적고 클라이언트·앱을 다시 빌드합니다. 토큰은 빌드에 넣지 않습니다.

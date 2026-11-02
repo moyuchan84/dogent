@@ -59,7 +59,8 @@ pnpm client skills search 홀드 해제            # 말로 스킬 찾기 (조�
 pnpm client skills info hold-release          # 입력, 위험도, 담당, 이 PC에서의 성공률
 pnpm client doctor                            # 확장이 안 붙을 때 원인 점검: 토큰, 포트, Native Messaging 등록, 회사 정책(크롬·엣지), 호스트 실행, 실시간 시험
 pnpm client doctor --fix                      # Native Messaging 호스트를 등록 (터미널 dogent는 등록하지 않으므로 앱 없이 쓸 때 필요). 확장을 못 찾으면 --id <확장 ID>
-pnpm client systems                           # 사내 시스템 사전 (이름·별칭). 요청에 시스템 이름이 나오면 그 시스템 설명을 모델에 함께 보여 준다
+pnpm client config systemsUrl http://서버:8787   # 공용 시스템 사전 서버를 받아 쓴다 (서버가 토큰을 쓰면 config systemsToken). 지금 받기: pnpm client sync
+pnpm client systems                           # 사내 시스템 사전 ([개인] [공용] [팀] [기본]) (이름·별칭). 요청에 시스템 이름이 나오면 그 시스템 설명을 모델에 함께 보여 준다
 pnpm client systems info mes                  # 화면(메뉴 경로), 용어, 이 시스템의 스킬 (docs/05-skill-spec.md 6-1)
 pnpm client skill new "라인 골라 HOLD Lot을 사유별로 정리해 줘. 라인은 매번 다름"   # 말로 스킬 만들기: 지금 화면을 보고 초안 → 말로 고치기 → 시험 → 저장
 pnpm client skill edit wip-check              # 편집기로 열고, 닫으면 품질 검사 (DOGENT_EDITOR, 기본 notepad)

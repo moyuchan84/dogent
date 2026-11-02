@@ -3,10 +3,11 @@ import { join } from 'node:path';
 import { parseSystem, type System } from '../../src/core';
 
 /**
- * 시스템 사전을 스킬과 같은 세 군데서 읽는다. 같은 id면 개인 > 팀 > 기본.
+ * 시스템 사전을 읽는다. 같은 id면 개인 > 공용 > 팀 > 기본.
+ * 공용은 사내 시스템 사전 서버에서 받아 둔 것(shared-systems.ts)이고, 정본은 그 서버의 저장소다.
  * 각 스킬 폴더 아래의 systems/<id>/SYSTEM.md가 한 시스템이다 (docs/05-skill-spec.md).
  */
-export type SystemSource = '개인' | '팀' | '기본';
+export type SystemSource = '개인' | '공용' | '팀' | '기본';
 
 export interface SystemEntry {
   system: System;
@@ -14,7 +15,7 @@ export interface SystemEntry {
   path?: string;
 }
 
-const ORDER: SystemSource[] = ['개인', '팀', '기본'];
+const ORDER: SystemSource[] = ['개인', '공용', '팀', '기본'];
 
 /** 스킬 폴더(또는 팀 저장소 폴더)에서 systems/<id>/SYSTEM.md를 모두 읽는다 */
 function readFolder(dir: string): { path: string; source: string }[] {
@@ -26,7 +27,7 @@ function readFolder(dir: string): { path: string; source: string }[] {
 }
 
 export function loadSystems(
-  dirs: { personal: string; team?: string; teamCache?: string },
+  dirs: { personal: string; team?: string; teamCache?: string; shared?: string },
   bundled: Record<string, string> = {},
 ): { systems: SystemEntry[]; errors: string[] } {
   const errors: string[] = [];
@@ -41,6 +42,7 @@ export function loadSystems(
     }
   };
   add('개인', readFolder(dirs.personal));
+  if (dirs.shared) add('공용', readFolder(dirs.shared));
   if (dirs.team) add('팀', readFolder(dirs.team));
   if (dirs.teamCache) add('팀', readFolder(dirs.teamCache));
   add(

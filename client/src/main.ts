@@ -30,7 +30,7 @@ const HELP = `Dogent 클라이언트 ${__DOGENT_BUILD__.version} (${__DOGENT_BUI
   dogent skill new ["<업무 설명>"]   말로 스킬 만들기: 지금 브라우저 화면을 보고 초안 → 말로 고치기 → 시험 → 저장
   dogent skill edit <스킬ID>       스킬 파일을 편집기로 열고, 닫으면 품질 검사 (편집기: DOGENT_EDITOR, 기본 notepad)
   dogent check <SKILL.md|SYSTEM.md>  스킬 또는 시스템 문서 품질 검사
-  dogent sync                     팀 스킬 저장소를 받는다 (teamSkillsUrl이면 주소로, teamSkills 폴더면 git pull)
+  dogent sync                     팀 스킬 저장소(teamSkillsUrl 주소, teamSkills 폴더는 git pull)와 공용 시스템 사전(systemsUrl)을 받는다
   dogent tabs                     브라우저 탭 목록
   dogent browsers                 Dogent 확장이 연결된 브라우저 (크롬, 엣지 …). 대화 중에는 browser edge 로 바꿈
   dogent excel <파일|열린 문서 이름>   Excel로 열어 시트와 앞부분을 보여 준다 (문서 보안 문서 확인)
@@ -399,7 +399,7 @@ async function main(): Promise<number> {
     for (const f of report.findings) console.log(`  [${f.level}] ${f.rule}${f.step ? ` ${f.step}단계` : ''}: ${f.message}`);
     return report.grade === 'F' ? 1 : 0;
   }
-  if (cmd === 'sync' && !cfg.teamSkillsUrl) {
+  if (cmd === 'sync' && !cfg.teamSkillsUrl && !cfg.systemsUrl) {
     if (!cfg.teamSkills) {
       console.log('팀 스킬 저장소가 없습니다. dogent config teamSkillsUrl <index.json 주소> (git 없이), 또는 git clone한 폴더를 dogent config teamSkills <폴더> 로 알려 주세요');
       return 1;
@@ -422,7 +422,7 @@ async function main(): Promise<number> {
       console.error(`${(e as Error).message}\nDogent 앱이 켜져 있으면 dogent serve 대신 앱의 MCP 주소를 쓰세요: dogent config mcpServePort 39218 → 앱을 다시 켜고 http://127.0.0.1:39218/mcp`);
       return 1;
     }
-    await session.refreshTeam({ quiet: true }).catch(() => null);
+    await session.refreshAll({ quiet: true }).catch(() => false);
     if (port) {
       await serveHttp(mcp, { port, token: loadToken(), log: (l) => console.error(l) });
       await new Promise(() => {});
@@ -444,10 +444,10 @@ async function main(): Promise<number> {
   try {
     if (cmd === 'sync') {
       if (cfg.teamSkills) execFileSync('git', ['-C', cfg.teamSkills, 'pull', '--ff-only'], { stdio: 'inherit' });
-      return (await client.refreshTeam({ force: true })) ? 0 : 1;
+      return (await client.refreshAll({ force: true })) ? 0 : 1;
     }
     // 스킬을 쓰는 명령이면 팀 스킬 저장소를 받아 온다 (한 시간에 한 번, 닿지 않으면 받아 둔 것)
-    if (!['excel', 'browsers', 'tabs'].includes(cmd ?? '')) await client.refreshTeam({ quiet: true });
+    if (!['excel', 'browsers', 'tabs'].includes(cmd ?? '')) await client.refreshAll({ quiet: true });
     if (cmd === 'systems') {
       if (rest[0] === 'info' && rest[1]) return client.systemInfo(rest[1]) ? 0 : 1;
       client.listSystems();

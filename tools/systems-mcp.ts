@@ -9,6 +9,7 @@
 //   SYSTEMS_MCP_TOKEN 환경 변수를 주면 Authorization: Bearer <토큰> 이 있어야 받는다
 //
 // 전송: Streamable HTTP (POST /mcp, 답은 JSON). GET /health 로 판 번호와 개수를 본다.
+// GET /systems.json 은 Dogent 클라이언트가 사전 전체(SYSTEM.md 원문)를 받아 가는 길이다 (ETag = 판 번호, 토큰이 있으면 같은 인증).
 // pnpm systems:bundle 로 한 파일(templates/dogent-systems/tools/systems-mcp.mjs)로 묶여 Node만 있으면 돈다.
 import { execFile } from 'node:child_process';
 import { createServer } from 'node:http';
@@ -55,7 +56,15 @@ if (stdio) {
       const reg = mcp.registry();
       return send(200, { ok: true, version: reg.version, count: reg.systems.length, loaded_at: reg.loadedAt, errors: reg.problems.filter((p) => p.level === 'error').length });
     }
-    if (path !== '/mcp' && path !== '/') return send(404, { error: '주소는 /mcp 입니다' });
+    if (req.method === 'GET' && path === '/systems.json') {
+      // Dogent 클라이언트가 사전 전체를 받아 가는 길. 판 번호가 ETag라 바뀌지 않았으면 304
+      if (token && req.headers.authorization !== `Bearer ${token}`) return send(401, { error: '인증이 필요합니다 (Authorization: Bearer <토큰>)' });
+      const data = mcp.exportAll();
+      const etag = `"${data.version}"`;
+      if (req.headers['if-none-match'] === etag) return send(304, undefined, { etag });
+      return send(200, data, { etag, 'cache-control': 'no-cache' });
+    }
+    if (path !== '/mcp' && path !== '/') return send(404, { error: '주소는 /mcp 또는 /systems.json 입니다' });
     if (token && req.headers.authorization !== `Bearer ${token}`) return send(401, { error: '인증이 필요합니다 (Authorization: Bearer <토큰>)' });
     // 서버가 먼저 보내는 흐름(GET SSE)과 세션은 쓰지 않는다
     if (req.method === 'DELETE') return send(204);
