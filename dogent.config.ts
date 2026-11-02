@@ -12,14 +12,28 @@ const extraSites = ((import.meta.env?.WXT_SITE_PERMISSIONS as string | undefined
   .filter(Boolean);
 
 /**
- * 모든 http·https 사이트를 조작할 수 있게 한다 (기본). 접근하면 안 되는 사이트는 회사 프록시가 막으므로 확장이 따로 막지 않는다.
- * 사이트를 목록으로만 허용하려면 빌드 환경 파일에 WXT_ALL_SITES=false 를 적는다. 그때는 WXT_SITE_PERMISSIONS의 사이트만 된다.
+ * 모든 http·https 사이트에 접근 권한을 선언할지.
+ *   - 회사(company) 빌드: 기본은 목록 방식. WXT_SITE_PERMISSIONS의 사이트만 처음부터 허용하고, 나머지는 사용자가 패널의
+ *     "이 사이트 허용"(크롬 권한 요청)으로 하나씩 더한다. 보안 검토에서 "모든 사이트 읽기·변경"으로 보이지 않게 하려는 것이다.
+ *   - 개발·집 빌드: 기본은 모든 사이트.
+ *   - 빌드 환경 파일에 WXT_ALL_SITES=true|false 를 적으면 모드와 상관없이 그 값을 따른다.
  */
-export const allSites = !/^(0|false|no|off)$/i.test(((import.meta.env?.WXT_ALL_SITES as string | undefined) ?? '').trim());
+export function allSitesFor(mode: string | undefined, raw: string | undefined): boolean {
+  const v = (raw ?? '').trim();
+  if (v) return !/^(0|false|no|off)$/i.test(v);
+  return mode !== 'company';
+}
+export const allSites = allSitesFor(import.meta.env?.MODE as string | undefined, import.meta.env?.WXT_ALL_SITES as string | undefined);
 
 export const dogentConfig = {
   /** 에이전트가 읽고 조작할 수 있는 사이트. 모의 사이트는 어느 빌드에서나 연습용으로 남긴다. */
+  /** 확장 코드 안에서 쓰는 기본 허용 사이트 (빌드할 때 모드·환경 값이 들어가 결정된다) */
   sitePermissions: [...new Set(['http://localhost:4173/*', ...extraSites, ...(allSites ? ['http://*/*', 'https://*/*'] : [])])],
+  /**
+   * manifest에 넣을 기본 사이트 (모든 사이트는 뺀 것). 이 파일은 환경 파일을 읽기 전에 불러와져 allSites를 믿을 수 없으므로,
+   * wxt.config.ts가 모드와 환경 값으로 모든 사이트를 따로 더한다.
+   */
+  baseSitePermissions: [...new Set(['http://localhost:4173/*', ...extraSites])],
   /** 모델 API 호스트. */
   llmPermissions: ['http://localhost:4174/*'],
   /** 설정 화면의 초기값. 사용자가 바꾼 값은 브라우저에 저장된다. */
