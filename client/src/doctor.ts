@@ -2,7 +2,7 @@ import { execFileSync, spawn } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { createServer, connect } from 'node:net';
 import { homedir, tmpdir, userInfo } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { WebSocket } from 'ws';
 import { EXTENSION_ID } from '../../bridge/extension-key.mjs';
 import { REGISTRY_KEYS, findInstalledExtensions, launcherPath, registerNativeHost } from '../../bridge/register.mjs';
@@ -385,6 +385,13 @@ export async function runDoctor(opts: DoctorOptions): Promise<boolean> {
         add({ level: 'error', text: 'native-host.cmd의 내용을 읽을 수 없습니다', hint: 'dogent doctor --fix 로 다시 등록하세요' });
       } else {
         if (!existsSync(parsed.runtime)) add({ level: 'error', text: `호스트를 돌릴 프로그램이 없습니다: ${parsed.runtime}`, hint: '앱이나 Node를 옮기거나 지웠습니다. dogent doctor --fix 로 다시 등록하세요.' });
+        else if (/dogent[^\\/]*\.exe$/i.test(parsed.runtime) && !existsSync(join(dirname(parsed.runtime), 'resources'))) {
+          add({
+            level: 'error',
+            text: `호스트가 한 파일 실행본(portable exe)을 가리킵니다: ${parsed.runtime}`,
+            hint: '이 실행본은 브라우저와 stdin/stdout을 잇지 못해 연결되지 않습니다. 최신 묶음으로 다시 설치한 뒤 app\\Dogent.exe 를 띄우세요 (앱이 다시 등록합니다).',
+          });
+        }
         if (!existsSync(parsed.script)) add({ level: 'error', text: `호스트 스크립트가 없습니다: ${parsed.script}`, hint: 'dogent doctor --fix 로 다시 등록하세요' });
         else add({ level: 'info', text: `호스트: ${parsed.runtime} ${parsed.script}` });
       }

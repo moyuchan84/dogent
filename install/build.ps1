@@ -123,7 +123,8 @@ if ($Test) {
 
 # ── 빌드 ─────────────────────────────────────────────
 $extDir = if ($Mode -eq 'dev') { '.output\chrome-mv3' } else { ".output\chrome-mv3-$Mode" }
-$deskExe = "desktop\release\Dogent-$version.exe"
+# 압축을 푼 앱 폴더를 묶는다 (한 파일 portable exe는 Native Messaging 호스트로 쓸 수 없다. desktop/electron-builder.yml)
+$deskDir = 'desktop\release\win-unpacked'
 
 if ('extension' -in $Parts) {
   Step '브라우저 확장'
@@ -142,10 +143,10 @@ if ('office' -in $Parts) {
   Ok 'office\dist\dogent-office.exe'
 }
 if ('desktop' -in $Parts) {
-  Step '데스크탑 앱 (한 파일 실행본)'
+  Step '데스크탑 앱'
   Run '데스크탑 빌드' (@('node', 'desktop/build.mjs') + $modeArg)
   Run '실행본 만들기' @($builder, '--projectDir', 'desktop/dist', '--config', '../electron-builder.yml')
-  Ok $deskExe
+  Ok "$deskDir\Dogent.exe"
 }
 
 if ($NoPackage) { Write-Host ''; Write-Host '빌드를 마쳤습니다 (묶음은 만들지 않음).' -ForegroundColor Green; exit 0 }
@@ -166,7 +167,7 @@ function Add($part, $from, $to, $label) {
   else { $script:included += "$label — 이번에 빌드하지 않음, $((Get-Item $from).LastWriteTime.ToString('yyyy-MM-dd HH:mm')) 결과물"; Warn "$label 은(는) 이전 결과물입니다. 모드가 맞는지 확인하세요 (-Parts 에 $part 를 넣으면 다시 빌드)" }
 }
 Add 'extension' $extDir (Join-Path $pkg 'extension') 'extension\ (브라우저 확장)'
-Add 'desktop' $deskExe (Join-Path $pkg 'Dogent.exe') 'Dogent.exe (데스크탑 앱)'
+Add 'desktop' $deskDir (Join-Path $pkg 'app') 'app\Dogent.exe (데스크탑 앱)'
 Add 'office' 'office\dist\dogent-office.exe' $pkg 'dogent-office.exe (오피스 도구)'
 Add 'client' 'client\dist\dogent.mjs' $pkg 'dogent.mjs (터미널 클라이언트, Node 필요)'
 foreach ($f in @('install.cmd', 'install.ps1', 'uninstall.cmd', 'uninstall.ps1')) { Copy-Item (Join-Path $PSScriptRoot $f) $pkg }

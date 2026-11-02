@@ -26,7 +26,8 @@ if (app.isPackaged && !process.env.DOGENT_OFFICE_EXE) {
 /**
  * 브라우저가 이 앱과 말하는 길(Native Messaging 호스트)을 이 PC에 깔고, 설치된 Dogent 확장을 허용한다.
  * 호스트는 앱 자신을 Node처럼 돌려(ELECTRON_RUN_AS_NODE) 쓰므로 PC에 Node가 없어도 된다.
- * 휴대용 실행본은 실행할 때마다 임시 폴더로 풀리므로 원래 파일 경로(PORTABLE_EXECUTABLE_FILE)를 적는다.
+ * 앱은 압축을 푼 폴더(설치 폴더\app\Dogent.exe)로 돈다. 한 파일 portable exe는 호스트로 띄우면 stdin/stdout이
+ * 안의 앱까지 이어지지 않아 연결되지 않으므로, 그것으로 실행했다면(PORTABLE_EXECUTABLE_FILE) 등록하지 않고 알린다.
  */
 function setupExtensionLink(extraId?: string): ExtensionStatus {
   try {
@@ -34,7 +35,10 @@ function setupExtensionLink(extraId?: string): ExtensionStatus {
     const ids = [...found.map((f) => f.id), ...(extraId ? [extraId] : [])];
     // Dogent 확장의 ID는 정해져 있어 확장을 아직 로드하지 않았어도 등록해 둔다 (나중에 로드하면 바로 붙는다).
     // 앱 위치가 바뀌었을 수 있으므로 매번 새로 쓴다 (레지스트리 한 줄이라 가볍다).
-    registerNativeHost({ ids, runtime: process.env.PORTABLE_EXECUTABLE_FILE || process.execPath, hostDir: join(here, 'host') });
+    if (process.env.PORTABLE_EXECUTABLE_FILE) {
+      throw new Error('한 파일 실행본(portable exe)으로는 브라우저와 연결할 수 없습니다. 설치 폴더의 app\\Dogent.exe 로 실행하세요');
+    }
+    registerNativeHost({ ids, runtime: process.execPath, hostDir: join(here, 'host') });
     const now = new Set(registeredIds());
     return { ids: [...now], missing: found.filter((f) => !now.has(f.id)).map((f) => ({ id: f.id, browser: f.browser })) };
   } catch (e) {

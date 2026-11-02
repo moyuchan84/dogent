@@ -31,7 +31,7 @@ Dogent 앱 ─ 브리지(앱 안) ─ WebSocket / Native Messaging ─ 브라우
 pnpm install                  # 처음 한 번 (Electron을 내려받음)
 pnpm desktop:build            # 모의 모델 / --mode home / --mode company
 pnpm desktop                  # 빌드한 앱 띄우기
-pnpm desktop:pack             # 한 파일 실행본 desktop/release/Dogent-<판>.exe (회사 설정은 desktop:pack:company)
+pnpm desktop:pack             # 실행본 폴더 desktop/release/win-unpacked/Dogent.exe (회사 설정은 desktop:pack:company)
 ```
 
 - 회사 설정(`.env.company.local`)으로 빌드하면 앱에 API 키가 들어갑니다. 실행본은 사내에서만 나눕니다 (`desktop/dist`, `desktop/release`는 저장소에 올라가지 않음).

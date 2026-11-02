@@ -79,7 +79,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "release\Dogent-company-$ver
 ### 2-5. 앱 실행 (브라우저 연결 등록)
 
 ```powershell
-Start-Process "D:\Multimedia\Dogent\Dogent.exe"
+Start-Process "D:\Multimedia\Dogent\app\Dogent.exe"
 Start-Sleep -Seconds 5
 Get-Process Dogent -ErrorAction SilentlyContinue | Select-Object Id, StartTime
 ```
@@ -90,7 +90,7 @@ Get-Process Dogent -ErrorAction SilentlyContinue | Select-Object Id, StartTime
 
 ```powershell
 $d = "D:\Multimedia\Dogent"
-'extension\manifest.json', 'Dogent.exe', 'dogent-office.exe', 'dogent.mjs', 'bin\dogent.cmd', 'build-info.txt', 'native\native-host.cmd', 'native\com.dogent.bridge.json' |
+'extension\manifest.json', 'app\Dogent.exe', 'dogent-office.exe', 'dogent.mjs', 'bin\dogent.cmd', 'build-info.txt', 'native\native-host.cmd', 'native\com.dogent.bridge.json' |
   ForEach-Object { '{0,-24} {1}' -f $_, (Test-Path (Join-Path $d $_)) }
 Get-Content -Encoding UTF8 "$d\build-info.txt" -TotalCount 5      # "모드: company" 여야 한다
 reg query "HKCU\Software\Google\Chrome\NativeMessagingHosts\com.dogent.bridge" 2>$null
@@ -99,7 +99,7 @@ reg query "HKCU\Software\Microsoft\Edge\NativeMessagingHosts\com.dogent.bridge" 
 
 | 확인할 것 | 기대 값 |
 |---|---|
-| `extension\manifest.json`, `Dogent.exe`, `dogent.mjs` | True |
+| `extension\manifest.json`, `app\Dogent.exe`, `dogent.mjs` | True |
 | `dogent-office.exe` | True (csc.exe가 없어 뺐으면 False가 맞음) |
 | `build-info.txt`의 모드 | `company` |
 | `native\native-host.cmd`, `native\com.dogent.bridge.json` | True (앱이 뜬 뒤) |
@@ -143,7 +143,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File install\update.ps1 -Mode com
 | `오피스 도구 빌드 실패` / csc.exe 없음 | `-Parts extension,client,desktop`으로 다시 빌드 (Excel 기능만 빠짐) |
 | `typecheck 실패` / `단위 시험 실패` | 코드를 고치지 말고 멈춘다. 실패한 파일·시험 이름과 메시지를 보고 |
 | `확장 폴더를 복사하지 못했습니다 (robocopy ...)` | 확장 폴더를 연 탐색기 창을 닫아 달라고 요청한 뒤 2-4 다시 |
-| `Dogent.exe` 덮어쓰기 실패 (사용 중) | `Get-Process Dogent, dogent-office -ErrorAction SilentlyContinue \| Stop-Process -Force` 후 2-4 다시 |
+| `데스크탑 앱 폴더를 복사하지 못했습니다` (사용 중) | `Get-Process Dogent, dogent-office -ErrorAction SilentlyContinue \| Stop-Process -Force` 후 2-4 다시 |
+| 확장과 앱이 연결되지 않음 (`dogent doctor`에 `한 파일 실행본(portable exe)`) | 예전 묶음으로 설치한 것. 2-3부터 다시 빌드·설치하고 `app\Dogent.exe`를 띄운다 |
 | 실행 정책 오류 | 명령에 `-ExecutionPolicy Bypass`가 빠졌는지 확인. 정책 자체를 바꾸지는 않는다 |
 
 표에 없는 오류는 조치하지 말고 멈춘 뒤 마지막 30줄을 그대로 보여 줍니다.

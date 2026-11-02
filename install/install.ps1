@@ -76,11 +76,23 @@ $extTarget = Join-Path $Target 'extension'
 if ($LASTEXITCODE -ge 8) { Fail "확장 폴더를 복사하지 못했습니다 (robocopy $LASTEXITCODE)" }
 Ok '브라우저 확장 → extension\'
 $copied = @{}
-foreach ($f in @('Dogent.exe', 'dogent-office.exe', 'dogent.mjs', '설치안내.html', 'build-info.txt', 'uninstall.cmd', 'uninstall.ps1')) {
+# 데스크탑 앱은 압축을 푼 폴더(app\)로 둔다. 크롬이 이 app\Dogent.exe를 Native Messaging 호스트로 띄운다.
+# (예전 묶음의 한 파일 Dogent.exe는 호스트로 띄우면 응답하지 않아 확장과 연결되지 않았다)
+$appExe = Join-Path $Target 'app\Dogent.exe'
+if (Test-Path (Join-Path $Src 'app\Dogent.exe')) {
+  # 크롬이 호스트를 다시 띄워 파일을 잠깐 잡을 수 있어 몇 번 다시 해 본다 (기본값은 30초씩 백만 번)
+  & (Join-Path $env:SystemRoot 'System32\robocopy.exe') (Join-Path $Src 'app') (Join-Path $Target 'app') /MIR /R:5 /W:2 /NFL /NDL /NJH /NJS /NP | Out-Null
+  if ($LASTEXITCODE -ge 8) { Fail "데스크탑 앱 폴더를 복사하지 못했습니다 (robocopy $LASTEXITCODE). 브라우저를 닫고 다시 실행하세요" }
+  $copied['Dogent.exe'] = $true
+  Ok '데스크탑 앱 → app\Dogent.exe'
+  $oldExe = Join-Path $Target 'Dogent.exe'
+  if (Test-Path $oldExe) { Remove-Item -Force $oldExe -ErrorAction SilentlyContinue; Ok '예전 한 파일 실행본(Dogent.exe)을 지웠습니다' }
+}
+foreach ($f in @('dogent-office.exe', 'dogent.mjs', '설치안내.html', 'build-info.txt', 'uninstall.cmd', 'uninstall.ps1')) {
   $from = Join-Path $Src $f
   if (Test-Path $from) { Copy-Item -Force $from $Target; $copied[$f] = $true; Ok $f }
 }
-if (-not $copied['Dogent.exe']) { Warn '묶음에 데스크탑 앱(Dogent.exe)이 없습니다. 확장만 설치합니다.' }
+if (-not $copied['Dogent.exe']) { Warn '묶음에 데스크탑 앱(app\Dogent.exe)이 없습니다. 확장만 설치합니다.' }
 
 # 터미널 클라이언트: dogent 명령 (Node가 있어야 돈다)
 if ($copied['dogent.mjs']) {
@@ -126,7 +138,7 @@ if (-not $NoShortcut) {
     $s.Save()
   }
   if ($copied['Dogent.exe']) {
-    $exe = Join-Path $Target 'Dogent.exe'
+    $exe = $appExe
     Link (Join-Path ([Environment]::GetFolderPath('Desktop')) 'Dogent.lnk') $exe 'Dogent 업무 에이전트'
     Link (Join-Path $menu 'Dogent.lnk') $exe 'Dogent 업무 에이전트'
     Ok '바탕화면 · 시작 메뉴 → Dogent'
@@ -225,7 +237,7 @@ Step '마무리'
 if ($copied['Dogent.exe'] -and $Update) {
   # 업데이트: 켜져 있던 앱을 새 판으로 다시 띄운다. 연결 설정은 이미 되어 있다
   if ($wasRunning -or -not $Quiet) {
-    Start-Process (Join-Path $Target 'Dogent.exe')
+    Start-Process $appExe
     Ok 'Dogent 앱을 새 판으로 띄웠습니다'
   }
   Write-Host ''
@@ -233,7 +245,7 @@ if ($copied['Dogent.exe'] -and $Update) {
   exit 0
 }
 if ($copied['Dogent.exe'] -and -not $Quiet) {
-  Start-Process (Join-Path $Target 'Dogent.exe')
+  Start-Process $appExe
   Ok 'Dogent 앱을 띄웠습니다. 앱이 처음 뜰 때 브라우저 연결을 스스로 등록합니다'
 }
 Write-Host ''

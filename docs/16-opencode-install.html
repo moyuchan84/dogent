@@ -179,21 +179,21 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "release\Dogent-company-$ver
 <p><code>-Quiet</code>라서 묻지 않고 브라우저와 앱도 띄우지 않습니다. 켜져 있던 Dogent 앱은 닫고 덮어씁니다. 출력에 <code>브라우저에 확장 로드</code> 안내가 나오는 것은 정상입니다. 그 단계는 사람이 합니다.</p>
 
 <h3>2-5. 앱 실행 (브라우저 연결 등록)</h3>
-<pre><code>Start-Process "D:\Multimedia\Dogent\Dogent.exe"
+<pre><code>Start-Process "D:\Multimedia\Dogent\app\Dogent.exe"
 Start-Sleep -Seconds 5
 Get-Process Dogent -ErrorAction SilentlyContinue | Select-Object Id, StartTime</code></pre>
 <p>앱은 뜰 때마다 Native Messaging 호스트(<code>com.dogent.bridge</code>)를 스스로 등록합니다. 크롬이 띄우는 호스트 파일은 <code>D:\Multimedia\Dogent\native\</code>에 두고, 예전 위치(<code>%USERPROFILE%\.dogent</code>)에 남은 호스트 파일은 지웁니다. 토큰과 내 스킬·기록은 <code>%USERPROFILE%\.dogent</code>에 그대로 있습니다.</p>
 
 <h2 id="verify">설치 확인 (2-6)</h2>
 <pre><code>$d = "D:\Multimedia\Dogent"
-'extension\manifest.json', 'Dogent.exe', 'dogent-office.exe', 'dogent.mjs', 'bin\dogent.cmd', 'build-info.txt', 'native\native-host.cmd', 'native\com.dogent.bridge.json' |
+'extension\manifest.json', 'app\Dogent.exe', 'dogent-office.exe', 'dogent.mjs', 'bin\dogent.cmd', 'build-info.txt', 'native\native-host.cmd', 'native\com.dogent.bridge.json' |
   ForEach-Object { '{0,-24} {1}' -f $_, (Test-Path (Join-Path $d $_)) }
 Get-Content -Encoding UTF8 "$d\build-info.txt" -TotalCount 5      <span class="c"># "모드: company" 여야 한다</span>
 reg query "HKCU\Software\Google\Chrome\NativeMessagingHosts\com.dogent.bridge" 2&gt;$null
 reg query "HKCU\Software\Microsoft\Edge\NativeMessagingHosts\com.dogent.bridge" 2&gt;$null</code></pre>
 <div class="wrap"><table>
   <tr><th>확인할 것</th><th>기대 값</th></tr>
-  <tr><td><code>extension\manifest.json</code>, <code>Dogent.exe</code>, <code>dogent.mjs</code></td><td>True</td></tr>
+  <tr><td><code>extension\manifest.json</code>, <code>app\Dogent.exe</code>, <code>dogent.mjs</code></td><td>True</td></tr>
   <tr><td><code>dogent-office.exe</code></td><td>True (csc.exe가 없어 뺐으면 False가 맞음)</td></tr>
   <tr><td><code>build-info.txt</code>의 모드</td><td><code>company</code></td></tr>
   <tr><td><code>native\native-host.cmd</code>, <code>native\com.dogent.bridge.json</code></td><td>True (앱이 뜬 뒤)</td></tr>
@@ -235,7 +235,8 @@ reg query "HKCU\Software\Microsoft\Edge\NativeMessagingHosts\com.dogent.bridge" 
   <tr><td><code>오피스 도구 빌드 실패</code> / csc.exe 없음</td><td><code>-Parts extension,client,desktop</code>으로 다시 (Excel 기능만 빠짐)</td></tr>
   <tr><td><code>typecheck 실패</code> / <code>단위 시험 실패</code></td><td>코드를 고치지 말고 멈춤. 실패한 파일·시험 이름과 메시지를 보고</td></tr>
   <tr><td><code>확장 폴더를 복사하지 못했습니다 (robocopy …)</code></td><td>확장 폴더를 연 탐색기 창을 닫아 달라고 요청한 뒤 2-4 다시</td></tr>
-  <tr><td><code>Dogent.exe</code> 덮어쓰기 실패 (사용 중)</td><td><code>Get-Process Dogent, dogent-office -ErrorAction SilentlyContinue | Stop-Process -Force</code> 후 2-4 다시</td></tr>
+  <tr><td><code>데스크탑 앱 폴더를 복사하지 못했습니다</code> (사용 중)</td><td><code>Get-Process Dogent, dogent-office -ErrorAction SilentlyContinue | Stop-Process -Force</code> 후 2-4 다시</td></tr>
+  <tr><td>확장과 앱이 연결되지 않음 (<code>dogent doctor</code>에 <code>한 파일 실행본(portable exe)</code>)</td><td>예전 묶음으로 설치한 것. 2-3부터 다시 빌드·설치하고 <code>app\Dogent.exe</code>를 띄움</td></tr>
   <tr><td>실행 정책 오류</td><td>명령에 <code>-ExecutionPolicy Bypass</code>가 빠졌는지 확인. 정책 자체는 바꾸지 않음</td></tr>
 </table></div>
 
