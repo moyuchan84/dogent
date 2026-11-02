@@ -121,7 +121,7 @@ footer { margin-top: 56px; color: var(--muted); font-size: 13px; }
 <tr><td>도구 묶음, <code>skill_ref</code>/<code>refs/</code>, <code>delegate</code>, lint의 id 존재·순환 검사</td><td><span class="tag t-warn">미구현</span></td><td><code>docs/13</code> §3~4가 "아직"으로 표기</td></tr>
 <tr><td>데스크탑 "커넥터 추가" 중 <b>스킬 주소</b> 붙여넣기 (<code>npx skills add …</code>)</td><td><span class="tag t-warn">준비 중</span></td><td><code>Connectors.tsx</code>가 "아직 준비 중입니다"라고 안내</td></tr>
 <tr><td>e2e "MCP 서버" 시나리오</td><td><span class="tag t-risk">실패</span></td><td>§10-1 참조 (시스템 사전과 MCP 라우팅 충돌)</td></tr>
-<tr><td>사내 PC·사내 Gemma 검증</td><td><span class="tag t-risk">미확인</span></td><td><code>docs/11-status.html</code> §5</td></tr>
+<tr><td>사내 PC·사내 Gemma 검증</td><td><span class="tag t-risk">미확인</span></td><td><code>docs/19-project-status-and-checklist.html</code> 11장</td></tr>
 </table>
 <div class="note warn"><b>권장 순서:</b> ① e2e 실패 1건 수정 → ② 변경을 의미 단위로 쪼개 커밋(<code>docs/13</code> §4의 0단계) → ③ 사내 PC에서 "화면 점검" 보고서와 조회 1건 실행. 이 문서는 ①~③을 하지 않은 현재 상태 기준입니다.</div>
 
@@ -434,7 +434,7 @@ dogent mcp keyword 서버 재공 Lot              # 요청 라우팅 키워드</
 <li>lint: <code>run_skill</code> id 존재·입력 이름·순환 검사 (현재는 깊이 1 제한이 순환을 막음).</li>
 <li>자유 요청은 <b>지금 탭과 다른 사이트</b>의 스킬을 <code>run_skill</code> 목록에 못 보여 줌.</li>
 <li>지연 로딩의 효과는 <b>추정</b>: 실모델(Gemma/Ollama)에서 전후 비교(<code>llm_usage</code>) 미실시. 본문은 30~55% 줄었지만 시스템 프롬프트(도구 설명 ≈3,800자)가 더 큼.</li>
-<li>예약은 CLI만 있음, EDM 스킬·xls·Hub·스크린샷 입력은 사내 확인 후 (<code>docs/11-status.html</code> §4).</li>
+<li>예약은 CLI만 있음, EDM 스킬·xls·Hub·스크린샷 입력은 사내 확인 후 (<code>docs/19-project-status-and-checklist.html</code> 10장).</li>
 </ul>
 <h3>10-3. 사내에서 확인되지 않은 것</h3>
 <div class="wrap"><table>
@@ -485,7 +485,7 @@ dogent mcp keyword 서버 재공 Lot              # 요청 라우팅 키워드</
 <li><b>라우팅 규칙을 한 곳에</b>: 지금 <code>session.ts</code>에서 엑셀/시스템/주소/MCP 단서를 순차 if로 판단합니다. 단서 → 실행 방식(엑셀만/MCP만/브라우저+α)을 표 하나로 정의하고 단위 테스트(조합 표)로 고정하면 이번 같은 충돌을 막습니다. 판단 결과를 사용자에게 "이렇게 이해했습니다: 브라우저 없이 MCP 사용"으로 한 줄 보여 주는 것도 좋습니다.</li>
 <li><b>커넥터 도구가 많을 때</b>: 서버가 도구를 수십 개 내놓으면 시스템 프롬프트가 급증합니다. 키워드/이름 매칭으로 서버당 상위 N개만 노출하고, 나머지는 <code>search_tools</code> 도구로 찾게 하는 지연 로딩을 적용하세요 (docs/13의 L0~L3와 같은 사상).</li>
 <li><b>오류 메시지·진단</b>: <code>dogent doctor</code>를 MCP 서버(기동 실패 이유, 인증 실패, 도구 0개)까지 넓히고, 데스크탑 커넥터 탭에 같은 진단을 보여 주세요.</li>
-<li><b>문서 체계</b>: 이 문서·<code>docs/11-status.html</code>·<code>docs/13</code>·<code>README</code>에 상태가 흩어져 있습니다. 기능이 바뀌면 11번(현황) 하나만 고치도록 하고, 이 문서의 §3~§8은 사용자용 매뉴얼로 <code>DOGENT-GUIDE.html</code>(<code>pnpm guide:bundle</code>)과 합치는 것을 검토하세요.</li>
+<li><b>문서 체계</b>: 이 문서·<code>docs/11-status.html</code>·<code>docs/13</code>·<code>README</code>에 상태가 흩어져 있습니다. 기능이 바뀌면 19번(현황·확인 목록) 하나만 고치도록 하고, 이 문서의 §3~§8은 사용자용 매뉴얼로 <code>DOGENT-GUIDE.html</code>(<code>pnpm guide:bundle</code>)과 합치는 것을 검토하세요.</li>
 <li><b>데스크탑 UI 변경량</b>: <code>style.css</code> ±1,000줄은 화면 전체 재디자인 수준입니다. 별도 PR로 분리하고 <code>pnpm e2e:desktop</code>을 통과시킨 뒤 병합하세요.</li>
 <li><b>성공 기준 수치화</b>: 로드맵의 "20회 반복 성공률 90%"를 사내 모델로 재는 자동 스크립트(<code>e2e:ollama</code>의 사내판)를 두면 모델 교체·프롬프트 변경의 회귀를 바로 압니다.</li>
 </ul>
