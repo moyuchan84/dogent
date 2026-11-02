@@ -109,7 +109,7 @@ footer { margin-top: 48px; color: var(--muted); font-size: 13px; }
   <div><b>1 · 정리</b>다른 폴더에서 로드한 Dogent 확장 삭제</div>
   <div><b>2 · 설치</b><code>build.cmd -Mode company -Install</code></div>
   <div><b>3 · 로드</b><code>D:\Multimedia\Dogent\extension</code></div>
-  <div><b>4 · 연결</b>Native Messaging · 사용자 ID</div>
+  <div><b>4 · 연결</b>자동 (Native Messaging) · 사용자 ID</div>
   <div><b>이후</b><code>update.cmd</code>만 누름</div>
 </div>
 
@@ -190,8 +190,9 @@ WXT_LLM_HEADERS='{"x-dep-ticket":"{key}", …}'</code></pre>
 
 <h2 id="connect">연결과 설정</h2>
 <ol class="steps">
-  <li><b>확장을 앱에 연결합니다</b>
-    <p>브라우저의 Dogent 아이콘 → 사이드 패널 → <b>설정</b> → <b>클라이언트 연결</b> → 방식 <b>Native Messaging</b> → <b>연결 설정 저장</b>. 토큰은 자동으로 전달됩니다.</p></li>
+  <li><b>확장과 앱은 저절로 연결됩니다</b>
+    <p>회사 빌드의 확장은 연결 방식이 처음부터 <b>Native Messaging</b>이고 토큰도 자동으로 전달됩니다. 확장을 로드하고 Dogent 앱을 띄우면 30초 안에 앱 위쪽에 브라우저 이름이 보입니다. 앱이 꺼져 있으면 확장이 기다렸다가 앱이 뜨면 붙습니다.</p>
+    <p>안 보이면 사이드 패널 → <b>설정</b> → <b>클라이언트 연결</b>이 Native Messaging인지 보고 <b>연결 설정 저장</b>을 누릅니다. 예전에 다른 방식으로 저장해 둔 값이 있으면 그 값이 먼저입니다.</p></li>
   <li><b>사용자 ID를 넣고 모델 연결을 시험합니다</b>
     <p>설정의 <b>사용자 ID</b>에 사내 SSO ID를 넣고 <b>연결 시험</b> → "연결됨". 데스크탑 앱은 Windows 로그인 계정을 사용자 ID로 씁니다. 다르면 앱의 <b>설정</b>에서 고칩니다.</p></li>
   <li><b>업무 화면을 점검합니다</b>

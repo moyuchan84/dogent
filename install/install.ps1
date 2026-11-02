@@ -237,9 +237,9 @@ if ($copied['Dogent.exe'] -and -not $Quiet) {
   Ok 'Dogent 앱을 띄웠습니다. 앱이 처음 뜰 때 브라우저 연결을 스스로 등록합니다'
 }
 Write-Host ''
-Write-Host '남은 한 가지: 브라우저의 Dogent 사이드 패널 → 설정 → 클라이언트 연결' -ForegroundColor White
-Write-Host '  방식을 [Native Messaging] 으로 고르고 저장 (토큰은 자동으로 전달됩니다)'
-Write-Host '  앱 위쪽에 브라우저 이름이 보이면 연결된 것입니다'
+Write-Host '확장과 앱은 저절로 연결됩니다 (회사·집 빌드는 Native Messaging이 기본, 토큰도 자동)' -ForegroundColor White
+Write-Host '  확장을 로드하고 앱을 띄우면 30초 안에 앱 위쪽에 브라우저 이름이 보입니다'
+Write-Host '  안 보이면: 사이드 패널 → 설정 → 클라이언트 연결이 [Native Messaging] 인지 보고 저장'
 Write-Host ''
 Write-Host "설치를 마쳤습니다. 안내서: $(Join-Path $Target '설치안내.html')" -ForegroundColor Green
 if (-not $Quiet) { Read-Host '닫으려면 Enter' | Out-Null }

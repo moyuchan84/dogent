@@ -113,7 +113,7 @@ footer { margin-top: 48px; color: var(--muted); font-size: 13px; }
   <div><b>배포 담당자</b><code>build.cmd</code> 로 빌드 → 배포 묶음(zip)</div>
   <div><b>사용자 1</b>zip을 풀고 <code>install.cmd</code></div>
   <div><b>사용자 2</b>브라우저에 확장 폴더 로드</div>
-  <div><b>사용자 3</b>앱 실행 → 연결 방식 Native Messaging</div>
+  <div><b>사용자 3</b>앱 실행 → 확장과 저절로 연결</div>
 </div>
 
 <h2 id="parts">무엇이 설치되나</h2>
@@ -153,7 +153,7 @@ footer { margin-top: 48px; color: var(--muted); font-size: 13px; }
 <h2 id="first">처음 한 번 설정</h2>
 <ol class="steps">
   <li><b>확장을 앱에 연결합니다</b>
-    <p>브라우저에서 Dogent 아이콘 → 사이드 패널 → <b>설정</b> → <b>클라이언트 연결</b> → 방식 <b>Native Messaging</b> → <b>연결 설정 저장</b>. 토큰은 자동으로 전달되므로 비워 둬도 됩니다.</p>
+    <p>회사·집 빌드의 확장은 연결 방식이 처음부터 <b>Native Messaging</b>이라 따로 고를 필요가 없습니다. 토큰도 자동으로 전달됩니다. 기본 빌드(모의 모델)나 예전에 다른 방식으로 저장해 둔 경우에만 사이드 패널 → <b>설정</b> → <b>클라이언트 연결</b> → 방식 <b>Native Messaging</b> → <b>연결 설정 저장</b>을 합니다. 빌드 설정의 <code>WXT_BRIDGE_MODE</code>로 기본값을 바꿀 수 있습니다.</p>
     <p>앱 위쪽에 브라우저 이름(크롬, 엣지)이 보이면 연결된 것입니다. 크롬과 엣지를 모두 연결했으면 둘 다 보이고 골라 씁니다.</p>
     <p class="sub">패널에 "pnpm bridge:install을 실행하라"는 안내가 보여도 무시해도 됩니다. 앱이 같은 일을 대신 했습니다.</p></li>
   <li><b>모델 연결을 시험합니다</b>

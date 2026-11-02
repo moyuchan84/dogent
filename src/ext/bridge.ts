@@ -27,7 +27,21 @@ export interface BridgeStatus {
 
 export const BRIDGE_SETTINGS_KEY = 'bridgeSettings';
 export const BRIDGE_STATUS_KEY = 'bridgeStatus';
-export const DEFAULT_BRIDGE: BridgeSettings = { mode: 'off', port: DEFAULT_PORT, token: '' };
+/**
+ * 연결 방식의 기본값. 회사·집 빌드는 데스크탑 앱과 Native Messaging으로 저절로 붙는다 (설정에서 고를 필요 없음).
+ * 앱이 꺼져 있으면 호스트가 기다렸다가 앱이 뜨면 붙는다. 기본 빌드(모의 모델, 시험용)는 꺼 둔다.
+ * 빌드 설정의 WXT_BRIDGE_MODE(off | native | ws)로 바꿀 수 있다. 사이드 패널에서 저장한 값이 있으면 그것이 먼저다.
+ */
+export function defaultBridgeMode(buildMode: string, override?: string): BridgeMode {
+  const o = (override ?? '').trim().toLowerCase();
+  if (o === 'off' || o === 'native' || o === 'ws') return o;
+  return buildMode === 'company' || buildMode === 'home' ? 'native' : 'off';
+}
+export const DEFAULT_BRIDGE: BridgeSettings = {
+  mode: defaultBridgeMode(import.meta.env.MODE, import.meta.env.WXT_BRIDGE_MODE as string | undefined),
+  port: DEFAULT_PORT,
+  token: '',
+};
 
 export async function loadBridgeSettings(): Promise<BridgeSettings> {
   const stored = (await browser.storage.local.get(BRIDGE_SETTINGS_KEY))[BRIDGE_SETTINGS_KEY] as Partial<BridgeSettings> | undefined;
@@ -236,7 +250,7 @@ async function onMessage(msg: BridgeMessage, settings: BridgeSettings, t: Transp
   }
   switch (msg.type) {
     case 'status':
-      if (msg.state === 'waiting-hub') await setStatus('connecting', 'Dogent 클라이언트(브리지)가 실행 중이 아닙니다. MCP 클라이언트에서 브리지를 띄우세요');
+      if (msg.state === 'waiting-hub') await setStatus('connecting', 'Dogent 앱(또는 터미널 dogent)이 실행 중이 아닙니다. 앱을 띄우면 저절로 붙습니다');
       else if (msg.state === 'auth-failed') {
         refused = '토큰이 브리지와 다릅니다. 저장소 폴더에서 pnpm bridge:token 으로 확인해 넣으세요';
         await setStatus('error', refused);
