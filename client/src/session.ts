@@ -17,6 +17,8 @@ import {
   resolveInputs,
   runSkill,
   startUrlForSkill,
+  chooseWorkTab,
+  hostAllowed,
   urlInText,
   searchSkills,
   searchSystems,
@@ -119,6 +121,8 @@ const LOGIN_WAIT_MS = 5 * 60_000;
 
 export class Session {
   private bridge: Bridge | null = null;
+  /** Dogent가 마지막으로 연 일할 탭. 다음 요청은 새 탭 대신 이 탭을 다시 쓴다 */
+  private workTab: number | null = null;
   private office: Office | null = null;
   /** 이번 실행에서 쓸 브라우저를 정했는지 */
   private chosen = false;
@@ -676,45 +680,72 @@ export class Session {
   }
 
   /**
-   * 일할 탭을 새로 열고 그 탭을 대상으로 정한다. 사용자가 보던 탭은 건드리지 않고, 확장이 연 탭을 Dogent 탭 그룹에 넣는다 (Claude in Chrome처럼).
-   * url이 없으면 지금 보고 있는 화면의 주소를 새 탭에서 연다. 조작할 사이트 목록 밖이면 확장이 거절한다. 못 열면 false.
+   * 일할 탭을 마련하고 그 탭을 대상으로 정한다. 요청마다 새 탭을 열지 않는다 (chooseWorkTab):
+   * 그 주소·사이트의 탭이 이미 있으면 그 탭을, Dogent가 앞서 연 탭이 남아 있으면 그 탭을 쓰고, 없을 때만 새 탭을 연다.
+   * 새 탭은 확장이 Dogent 탭 그룹에 넣는다. url이 없으면 지금 보고 있는 탭에서 한다.
+   * covers는 "이 사이트의 탭이면 된다"의 기준, exact는 요청에 주소를 써서 그 주소로 가야 할 때. 못 마련하면 false.
    */
-  private async openWorkTab(url: string | null, label: string): Promise<boolean> {
+  private async openWorkTab(url: string | null, label: string, opts: { covers?: (url: string) => boolean; exact?: boolean } = {}): Promise<boolean> {
     const bridge = await this.connect();
-    if (!url) {
-      const now = await this.until(bridge.browser.target().catch(() => null));
-      if (!now?.allowed || !/^https?:/.test(now.url)) {
+    const tabs = await this.until(bridge.browser.tabs().catch(() => []));
+    const plan = chooseWorkTab(tabs, { url, ...opts }, this.workTab);
+    const title = (id: number) => {
+      const t = tabs.find((x) => x.id === id);
+      return t?.title || t?.url || `탭 ${id}`;
+    };
+    const where = { current: '지금 보고 있는 탭', work: 'Dogent가 앞서 연 탭', open: '열려 있는 탭' } as const;
+    switch (plan.kind) {
+      case 'none': {
+        const now = tabs.find((t) => t.current);
         this.term.print(`지금 브라우저 탭(${now?.url || '없음'})은 조작할 사이트 목록에 없습니다. 업무 화면 탭을 앞에 두거나, 요청에 주소나 시스템 이름을 쓰거나, 확장 설정 → 조작할 사이트에서 더하세요`);
         return false;
       }
-      url = now.url;
-      label = `지금 화면(${now.title || now.url})`;
+      case 'use':
+      case 'navigate': {
+        if (plan.why !== 'current') {
+          const r = await this.until(bridge.browser.selectTab(plan.id));
+          if (!r.ok) {
+            this.term.print(`${label}에 쓸 탭을 고르지 못했습니다: ${r.message}`);
+            return false;
+          }
+        }
+        if (plan.kind === 'navigate') {
+          const r = await this.until(bridge.browser.navigate(plan.url));
+          if (!r.ok) {
+            this.term.print(`${label}을(를) 열지 못했습니다: ${r.message}`);
+            return false;
+          }
+          this.term.print(`${where[plan.why]}에서 엽니다: ${plan.url}`);
+        } else {
+          this.term.print(`${where[plan.why]}에서 합니다: ${title(plan.id)}`);
+        }
+        return true;
+      }
+      case 'open': {
+        const r = await this.until(bridge.call('tab_open', { url: plan.url }));
+        if (r.isError) {
+          this.term.print(`${label}을(를) 열지 못했습니다: ${r.text}`);
+          return false;
+        }
+        this.workTab = (await this.until(bridge.browser.target().catch(() => null)))?.id ?? null;
+        this.term.print(`열린 탭이 없어 Dogent 탭 그룹의 새 탭에서 열었습니다: ${plan.url}`);
+        return true;
+      }
     }
-    const r = await this.until(bridge.call('tab_open', { url }));
-    if (r.isError) {
-      this.term.print(`${label}을(를) 열지 못했습니다: ${r.text}`);
-      return false;
-    }
-    this.term.print(`Dogent 탭 그룹의 새 탭에서 열었습니다: ${url}`);
-    return true;
   }
 
   /**
-   * 스킬을 돌릴 탭을 새로 연다. 시작 주소는 요청에 쓴 주소 > 지금 보고 있는 그 사이트의 화면 > 시스템 사전·스킬 본문의 주소 순이다.
-   * 시작 주소를 알 수 없으면 지금 화면을 새 탭에서 연다 (맞지 않으면 실행이 안내한다).
+   * 스킬을 돌릴 탭을 마련한다. 시작 주소는 요청에 쓴 주소 > 시스템 사전·스킬 본문의 주소 순이고,
+   * 스킬의 사이트를 이미 보여 주는 탭이 있으면 그 탭을 그대로 쓴다 (지금 탭이 먼저).
    */
   private async ensureStartTab(skill: Skill, request?: string): Promise<boolean> {
-    const bridge = await this.connect();
-    const now = await this.until(bridge.browser.target().catch(() => null));
     const doc = docOfSkill(skill);
     const asked = request ? urlInText(request) : null;
     // 어느 사이트에서나 쓰는 기본 스킬(domains: "*")은 요청에 쓴 주소나 지금 화면에서 한다
-    if (skill.domains.includes('*')) return this.openWorkTab(asked, skill.name);
-    const url =
-      (asked && skillCoversUrl(doc, asked) ? asked : null) ??
-      (now?.allowed && skillCoversUrl(doc, now.url) ? now.url : null) ??
-      startUrlForSkill(skill, this.systems.map((e) => e.system));
-    return this.openWorkTab(url, skill.name);
+    if (skill.domains.includes('*')) return this.openWorkTab(asked, skill.name, { exact: true });
+    const url = (asked && skillCoversUrl(doc, asked) ? asked : null) ?? startUrlForSkill(skill, this.systems.map((e) => e.system));
+    if (!url) return this.openWorkTab(null, skill.name);
+    return this.openWorkTab(url, skill.name, { covers: (u) => skillCoversUrl(doc, u), exact: url === asked });
   }
 
   /** systems — 시스템 사전 목록 */
@@ -831,10 +862,14 @@ export class Session {
           : '맞는 스킬이 없어 지금 브라우저 화면에서 자유 요청으로 합니다.',
     );
     if (!this.flags.yes && !(await this.term.confirm('진행할까요?', true))) return false;
-    // 늘 새 탭(Dogent 탭 그룹)에서 시작한다. 요청에 주소나 시스템 이름이 있으면 그곳을, 없으면 지금 보고 있는 화면을 연다
+    // 요청에 주소나 시스템 이름이 있으면 그 사이트의 탭을(없으면 새 탭), 없으면 지금 보고 있는 탭에서 한다
     if (!noWeb) {
-      const start = asked ?? named[0]?.url ?? null;
-      if (!(await this.openWorkTab(start, asked ?? named[0]?.name ?? ''))) return false;
+      const ok = asked
+        ? await this.openWorkTab(asked, asked, { exact: true })
+        : named[0]
+          ? await this.openWorkTab(named[0].url, named[0].name, { covers: (u) => hostAllowed(u, named[0].domains) })
+          : await this.openWorkTab(null, '지금 화면');
+      if (!ok) return false;
     }
     const free = buildFreeSkill(noWeb ? null : 'http://localhost/', this.flags.allowWrite);
     // 요청이 말한 사이트(주소, 시스템 이름)는 새 탭으로 오가며 쓸 수 있게 허용 도메인에 더한다 (확장의 조작할 사이트 목록은 그대로 지킨다)

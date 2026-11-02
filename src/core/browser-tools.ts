@@ -3,6 +3,7 @@ import { renderInspection, type SiteInspection } from './inspect';
 import { extractPages } from './pages';
 import { SUBMIT_PATTERN, findElement } from './policy';
 import { siteAllowed } from './sites';
+import { sameUrl } from './start';
 import { PRESS_KEYS } from './actions';
 import { findInSnapshot, renderSnapshot } from './snapshot';
 import type { ActResult, ApprovalRequest, BrowserPort, ConfirmPolicy, PageSnapshot, TableData } from './types';
@@ -112,6 +113,14 @@ export class BrowserTools {
     if (method === 'openTab') {
       const url = String(args[0] ?? '');
       await this.allowed(url);
+      // 같은 화면을 이미 보여 주는 탭이 있으면 새로 열지 않고 그 탭으로 옮겨 간다 (같은 화면의 탭이 쌓이지 않게)
+      const same = (await this.host.tabs()).find((t) => sameUrl(t.url, url));
+      if (same) {
+        this.current = same.id;
+        this.snaps.delete(same.id);
+        await this.host.focus(same.id);
+        return { ok: true, message: `이미 열려 있는 탭 [${same.id}]으로 옮겼습니다: ${url}` };
+      }
       this.current = await this.host.open(url);
       return { ok: true, message: `새 탭 [${this.current}]에서 열었습니다: ${url}` };
     }

@@ -92,3 +92,43 @@ export function sameUrl(a: string | undefined, b: string): boolean {
     return false;
   }
 }
+
+/** 일할 탭을 어떻게 마련할지 (chooseWorkTab의 답) */
+export type WorkTabPlan =
+  | { kind: 'use'; id: number; why: 'current' | 'open' | 'work' }
+  | { kind: 'navigate'; id: number; url: string; why: 'current' | 'open' | 'work' }
+  | { kind: 'open'; url: string }
+  | { kind: 'none' };
+
+/**
+ * 요청마다 새 탭을 열지 않고, 이미 열린 탭을 먼저 쓴다. 새 탭은 쓸 탭이 없을 때만 연다.
+ *  1. 그 주소를 이미 보여 주는 탭 → 그대로 쓴다 (지금 탭 > Dogent가 연 탭 > 다른 탭)
+ *  2. 그 사이트(covers)의 탭 → 그대로 쓴다. 단 exact(요청에 주소를 썼으면)는 이 단계를 건너뛴다
+ *     (그 주소로 가야 하는데 사용자가 보던 화면을 바꿔 버리지 않게)
+ *  3. Dogent가 앞서 연 탭이 남아 있으면 → 그 탭을 그 주소로 옮긴다 (사용자가 보던 탭은 다른 화면으로 옮기지 않는다)
+ *  4. 그래도 없으면 → 새 탭
+ * url이 없으면(주소를 모르면) 지금 탭에서 한다. 조작할 사이트 목록 밖의 탭(allowed: false)은 고르지 않는다.
+ */
+export function chooseWorkTab(
+  tabs: { id: number; url: string; current: boolean; allowed: boolean }[],
+  want: { url: string | null; covers?: (url: string) => boolean; exact?: boolean },
+  workTab: number | null = null,
+): WorkTabPlan {
+  const usable = tabs.filter((t) => t.allowed && /^https?:/.test(t.url));
+  const why = (t: { id: number; current: boolean }) => (t.current ? 'current' : t.id === workTab ? 'work' : 'open') as 'current' | 'open' | 'work';
+  // 지금 탭, Dogent가 연 탭, 나머지 순으로 본다
+  const ordered = [...usable].sort((a, b) => Number(b.current) - Number(a.current) || Number(b.id === workTab) - Number(a.id === workTab));
+  if (!want.url) {
+    const now = usable.find((t) => t.current);
+    return now ? { kind: 'use', id: now.id, why: 'current' } : { kind: 'none' };
+  }
+  const url = want.url;
+  const same = ordered.find((t) => sameUrl(t.url, url));
+  if (same) return { kind: 'use', id: same.id, why: why(same) };
+  const covers = want.covers ?? ((u: string) => sameSite(u, url));
+  const site = want.exact ? undefined : ordered.find((t) => covers(t.url));
+  if (site) return { kind: 'use', id: site.id, why: why(site) };
+  const work = workTab !== null ? tabs.find((t) => t.id === workTab) : undefined;
+  if (work) return { kind: 'navigate', id: work.id, url, why: 'work' };
+  return { kind: 'open', url };
+}

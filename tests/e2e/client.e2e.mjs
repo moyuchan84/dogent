@@ -261,7 +261,7 @@ try {
     return '목록·자세히·요청에서 찾기·팀 저장소';
   });
 
-  await scenario('새 탭: 요청에 주소가 있으면 열려 있는 탭을 두고 새 탭에서 진행', async () => {
+  await scenario('탭: 있는 탭을 먼저 쓰고, 쓸 탭이 없을 때만 새 탭', async () => {
     const known = new Set(context.pages());
     // 열린 새 탭은 남겨 두는 것이 동작이지만, 뒤 시나리오가 헷갈리지 않게 시나리오가 끝나면 닫는다
     const closeNew = () => Promise.all(context.pages().filter((p) => !known.has(p)).map((p) => p.close()));
@@ -289,6 +289,14 @@ try {
     assert.equal(same.code, 0, same.text);
     assert.doesNotMatch(same.text, /새 탭에서 열었습니다/);
 
+    // 스킬도 그 사이트를 보여 주는 탭이 있으면 새 탭 없이 그 탭에서 한다
+    const pagesBefore = context.pages().length;
+    const inPlace = await client(['run', 'wip-check', 'line=7라인']);
+    assert.equal(inPlace.code, 0, inPlace.text);
+    assert.doesNotMatch(inPlace.text, /새 탭에서 열었습니다/);
+    assert.match(inPlace.text, /지금 보고 있는 탭에서 합니다/);
+    assert.equal(context.pages().length, pagesBefore, '새 탭을 열지 않아야 한다');
+
     // 스킬도 지금 탭이 스킬의 사이트가 아니면(빈 탭) 시작 주소를 새 탭에서 연다
     await closeNew(); // 앞에서 연 새 탭이 남아 있으면 확장이 그 탭을 지금 탭으로 잡는다
     await target.goto('about:blank');
@@ -297,7 +305,7 @@ try {
     assert.equal(skill.code, 0, skill.text);
     assert.match(skill.text, /새 탭에서 열었습니다: http:\/\/localhost:4173\//);
     assert.equal(target.url(), 'about:blank');
-    return '주소 요청·같은 화면 재사용·스킬';
+    return '주소 요청·같은 화면 재사용·스킬 제자리·스킬 새 탭';
   }
 
   await scenario('dogent doctor: 점검하고 실시간 시험에서 확장이 붙는 것을 확인', async () => {
