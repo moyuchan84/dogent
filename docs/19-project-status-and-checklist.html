@@ -176,7 +176,7 @@ tr:last-child td{border-bottom:none}
   <div class="arrow">↓ MCP (stdio) &nbsp;·&nbsp; ↓ 브리지(같은 프로세스)</div>
   <div class="row">
     <div class="box c2"><h4>브리지 + native host</h4><small><code>bridge/</code> · WebSocket 127.0.0.1:39217 또는 Native Messaging · 토큰 상호 인증</small></div>
-    <div class="box c2"><h4>오피스 도구 <code>dogent-office.exe</code></h4><small>Excel COM: 문서 보안(NASCA) 문서, EDM에서 연 문서 읽기·쓰기·저장</small></div>
+    <div class="box c2"><h4>오피스 도구 <code>dogent-office.exe</code></h4><small>Excel·Word·PowerPoint COM: 문서 보안(NASCA) 문서, EDM에서 연 문서 읽기·쓰기·저장</small></div>
     <div class="box c2"><h4>외부 MCP 서버 (선택)</h4><small>시스템 사전 서버 등. <code>dogent mcp add</code></small></div>
   </div>
   <div class="arrow">↓ Native Messaging / WebSocket</div>
@@ -241,6 +241,7 @@ tr:last-child td{border-bottom:none}
 <h3>3-4. 오피스 도구 (<code>dogent-office.exe</code>)</h3>
 <ul>
   <li>사용자의 Excel을 COM으로 부려 열기·읽기·쓰기·저장·닫기. 도구: <code>excel_open / new / read / write / save / close / user_workbooks / attach</code>. Visual Studio·SDK 없이 윈도우 기본 C# 컴파일러로 빌드.</li>
+  <li><b>Word·PowerPoint</b>: <code>word_open / new / read / write / save / close / user_docs / attach</code>, <code>ppt_…</code> 도 같은 모양. 문단·표·슬라이드 글·발표자 메모 읽기, 찾아 바꾸기, 문단·표·슬라이드 덧붙이기. 에이전트는 <code>word_read·word_write·word_save</code>, <code>ppt_read·ppt_write·ppt_save</code>로 씀(쓰기는 R3 + 사용자 허락). 상세는 office/README.md. <span class="tag warn">사내 확인 필요</span>: 실제 Word·PowerPoint 버전, 문서 보안이 Word·PowerPoint 저장도 가로채는지, EDM의 편집 버튼이 이 둘을 여는 방식.</li>
   <li><b>EDM</b>: 링크의 "읽기·편집"으로 Excel이 연 문서를 <code>excel_attach</code>로 잡아 읽고 열린 곳에 저장. 사용자 문서는 닫지 않고 놓기만 하고, 다른 이름 저장은 사본만 만듦.</li>
   <li>스킬의 엑셀 입력은 먼저 직접 읽고, 안 되면(보안 파일, xls) Excel로 엶.</li>
   <li>상태: 실제 Excel로 <span class="tag ok">구현·시험됨</span> / <b>NASCA 재암호화</b>·<b>EDM 버튼 동작</b>은 <span class="tag warn">사내 미검증</span></li>

@@ -105,6 +105,48 @@ export const TOOL_ARGS = {
     doc: z.string().min(1),
     path: z.string().optional(),
   }),
+  /** 워드 문서(열린 문서의 이름 또는 파일 경로)의 문단은 결과에 글로, 표 하나는 dataset에 담는다. */
+  word_read: z.object({
+    doc: z.string().min(1),
+    dataset: z.string().min(1).optional(),
+    /** dataset에 담을 표의 번호 (1부터, 기본 1) */
+    table: z.number().int().min(1).default(1),
+  }),
+  /** 워드 문서를 고친다: 찾아 바꾸기, 끝에 문단 덧붙이기, 데이터셋을 표로 덧붙이기. 저장은 word_save로 따로 한다. */
+  word_write: z.object({
+    doc: z.string().min(1),
+    replace: z.array(z.object({ find: z.string().min(1), with: z.string() })).max(50).optional(),
+    append: z.array(z.union([z.string(), z.object({ text: z.string(), style: z.string().optional() })])).max(200).optional(),
+    dataset: z.string().min(1).optional(),
+  }),
+  /** 워드 문서를 Word로 저장한다. path가 없으면 연 곳에, 있으면 다른 이름으로. */
+  word_save: z.object({ doc: z.string().min(1), path: z.string().optional() }),
+  /** 파워포인트 자료를 슬라이드별로(제목, 글, 표, 발표자 메모) 읽는다. 표 하나는 dataset에 담는다. */
+  ppt_read: z.object({
+    doc: z.string().min(1),
+    dataset: z.string().min(1).optional(),
+    /** dataset에 담을 표가 있는 슬라이드 번호 */
+    slide: z.number().int().min(1).optional(),
+  }),
+  /** 파워포인트 자료를 고친다: 찾아 바꾸기, 슬라이드 덧붙이기(제목·글머리·데이터셋 표·메모), 기존 슬라이드의 발표자 메모. 저장은 ppt_save로 따로 한다. */
+  ppt_write: z.object({
+    doc: z.string().min(1),
+    replace: z.array(z.object({ find: z.string().min(1), with: z.string() })).max(50).optional(),
+    slides: z
+      .array(
+        z.object({
+          title: z.string().optional(),
+          bullets: z.array(z.string()).max(12).optional(),
+          dataset: z.string().min(1).optional(),
+          notes: z.string().optional(),
+        }),
+      )
+      .max(50)
+      .optional(),
+    notes: z.array(z.object({ slide: z.number().int().min(1), text: z.string() })).max(100).optional(),
+  }),
+  /** 파워포인트 자료를 PowerPoint로 저장한다. path가 없으면 연 곳에, 있으면 다른 이름으로. */
+  ppt_save: z.object({ doc: z.string().min(1), path: z.string().optional() }),
   /**
    * 외부 도구(MCP 서버)를 부른다. name은 "서버.도구", args는 그 도구의 인자.
    * dataset을 주면 결과가 JSON 표(객체 배열)일 때 데이터셋에 담는다.
@@ -170,7 +212,7 @@ export type ToolName = keyof typeof TOOL_ARGS;
 
 /** 모델 없이 실행할 수 있는 단계의 첫머리. 예: "select로 ...", "click으로 ..." */
 const DIRECT_STEP =
-  /^(navigate|open_tab|click|close_tab|press_key|scroll|go_back|upload_file|type|select|extract_table|download_table|fill_table|transform|write_excel|write_html|excel_docs|excel_read|excel_write|excel_save|call_tool|run_skill|run_script|read_text|summarize|finish)(?:으로|로)\s/;
+  /^(navigate|open_tab|click|close_tab|press_key|scroll|go_back|upload_file|type|select|extract_table|download_table|fill_table|transform|write_excel|write_html|excel_docs|excel_read|excel_write|excel_save|word_read|word_write|word_save|ppt_read|ppt_write|ppt_save|call_tool|run_skill|run_script|read_text|summarize|finish)(?:으로|로)\s/;
 
 /**
  * 단계가 "도구로 ..."로 시작하고 `{...}` 인자가 적혀 있으면 그 도구 이름과 인자 원문을 돌려준다.

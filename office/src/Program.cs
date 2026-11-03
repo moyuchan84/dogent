@@ -39,21 +39,24 @@ namespace Dogent.Office
             // Excel이 바빠 호출을 거절하면 잠시 뒤 다시 부른다.
             MessageFilter.Register();
             var excel = new ExcelTools(Log);
-            AppDomain.CurrentDomain.ProcessExit += delegate { excel.Dispose(); };
-            Log("대기 중 (stdio). Excel은 처음 도구를 부를 때 띄웁니다");
+            var word = new WordTools(Log);
+            var ppt = new PptTools(Log);
+            var tools = new Tools { Excel = excel, Word = word, Ppt = ppt };
+            AppDomain.CurrentDomain.ProcessExit += delegate { tools.Dispose(); };
+            Log("대기 중 (stdio). Excel·Word·PowerPoint는 처음 도구를 부를 때 띄웁니다");
             try
             {
                 string line;
                 while ((line = stdin.ReadLine()) != null)
                 {
                     if (line.Trim().Length == 0) continue;
-                    string reply = Handle(excel, line);
+                    string reply = Handle(tools, line);
                     if (reply != null) stdout.WriteLine(reply);
                 }
             }
             finally
             {
-                excel.Dispose();
+                tools.Dispose();
             }
             return 0;
         }
@@ -64,7 +67,29 @@ namespace Dogent.Office
         }
 
         /// <summary>JSON-RPC 요청 하나를 처리한다. 알림(id 없음)이면 null.</summary>
-        private static string Handle(ExcelTools excel, string line)
+        /// <summary>도구 이름의 앞부분(excel_, word_, ppt_)으로 알맞은 프로그램에 넘긴다.</summary>
+        private sealed class Tools : IDisposable
+        {
+            public ExcelTools Excel;
+            public WordTools Word;
+            public PptTools Ppt;
+
+            public object Call(string name, Dictionary<string, object> args)
+            {
+                if (name != null && name.StartsWith("word_")) return Word.Call(name, args);
+                if (name != null && name.StartsWith("ppt_")) return Ppt.Call(name, args);
+                return Excel.Call(name, args);
+            }
+
+            public void Dispose()
+            {
+                Excel.Dispose();
+                Word.Dispose();
+                Ppt.Dispose();
+            }
+        }
+
+        private static string Handle(Tools excel, string line)
         {
             Dictionary<string, object> req;
             try
@@ -88,7 +113,7 @@ namespace Dogent.Office
                         { "protocolVersion", Str(prms, "protocolVersion") ?? "2025-06-18" },
                         { "capabilities", new Dictionary<string, object> { { "tools", new Dictionary<string, object>() } } },
                         { "serverInfo", new Dictionary<string, object> { { "name", "dogent-office" }, { "version", Version } } },
-                        { "instructions", "사용자의 Excel로 엑셀 문서를 열고 읽고 쓰고 저장한다. 문서 보안(NASCA)이 걸린 문서도 사용자의 Excel이 열 수 있으면 다룰 수 있다. excel_open으로 연 뒤 받은 workbook 번호로 다른 도구를 부른다." },
+                        { "instructions", "사용자의 Excel·Word·PowerPoint로 문서를 열고 읽고 쓰고 저장한다. 문서 보안(NASCA)이 걸린 문서도 사용자의 프로그램이 열 수 있으면 다룰 수 있다. excel_open(workbook 번호), word_open·ppt_open(doc 번호)으로 연 뒤 받은 번호로 다른 도구를 부른다." },
                     });
                 case "ping":
                     return Result(id, new Dictionary<string, object>());

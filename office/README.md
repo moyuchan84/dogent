@@ -1,6 +1,6 @@
 # dogent-office (오피스 도구)
 
-문서 보안(NASCA)이 걸린 엑셀은 라이브러리로 직접 열 수 없고, 권한 있는 사용자의 Excel이 열어야 합니다 (docs/09 D5). 이 도구는 사용자의 Excel을 COM으로 다뤄 엑셀을 열고, 읽고, 쓰고, Excel로 저장합니다. Dogent 클라이언트와 Claude Code가 같은 방식(MCP, stdio)으로 씁니다.
+문서 보안(NASCA)이 걸린 문서는 라이브러리로 직접 열 수 없고, 권한 있는 사용자의 Office가 열어야 합니다 (docs/09 D5). 이 도구는 사용자의 **Excel, Word, PowerPoint**를 COM으로 다뤄 문서를 열고, 읽고, 쓰고, 그 프로그램으로 저장합니다. Dogent 클라이언트와 Claude Code가 같은 방식(MCP, stdio)으로 씁니다.
 
 ## 빌드
 
@@ -29,6 +29,29 @@ pnpm office:build        # office/dist/dogent-office.exe
 - 사용자가 띄운 Excel과 섞이지 않도록 전용 Excel을 숨겨서 띄우고, 끝날 때 연 문서는 저장하지 않고 닫은 뒤 Excel을 끝냅니다.
 - Excel이 바빠 호출을 거절하면(문서를 여는 중, 칸 편집 중) 최대 60초 동안 다시 부릅니다.
 - 문서 보안 프로그램이 Excel 창을 요구하면 `DOGENT_OFFICE_VISIBLE=1`로 띄웁니다.
+
+## Word·PowerPoint 도구
+
+Excel과 같은 모양(열기, 새로 만들기, 목록, 저장, 닫기, 사용자가 연 문서 잡기)에 문서 종류별 읽기·쓰기가 붙습니다. 문서 번호는 `doc`(Word `wd1`, PowerPoint `pp1`)입니다.
+
+| 도구 | 하는 일 |
+|---|---|
+| `word_open` / `word_new` / `word_list` | 문서를 열기(기본 읽기 전용), 새 문서, 이 도구가 연 문서 목록 |
+| `word_read` | 문단(글, 스타일 이름)과 표(첫 줄은 열 이름)를 읽기. 표 안의 글은 문단에서 빠지고 표로만 나옴 |
+| `word_write` | `replace`로 문서 전체에서 찾아 바꾸기(바꿀 글 250자까지), `append`로 끝에 문단 덧붙이기(글 또는 `{text, style}`, style: normal/title/heading1~3/bullet/number), `table`로 끝에 표 붙이기 |
+| `word_save` | 저장 (`.docx .docm .doc .pdf .rtf .txt`). 읽기 전용 문서는 그 자리에 저장하지 않음 |
+| `word_user_docs` / `word_attach` | 사용자의 Word에 열린 문서 보기, 이름으로 잡기 |
+| `ppt_open` / `ppt_new` / `ppt_list` | 위와 같음 (창 없이 열림) |
+| `ppt_read` | 슬라이드별 제목, 글 상자, 표, 발표자 메모 |
+| `ppt_write` | `replace`로 모든 슬라이드 글에서 찾아 바꾸기, `slides`로 끝에 슬라이드 덧붙이기(`{title, bullets, table, notes}`), `notes`로 기존 슬라이드의 발표자 메모 정하기 |
+| `ppt_save` | 저장 (`.pptx .pptm .ppt .pdf`) |
+| `ppt_user_docs` / `ppt_attach` | 사용자의 PowerPoint에 열린 문서 보기, 잡기 |
+
+- **사용자 창의 문서를 다른 이름으로 저장할 때**: PowerPoint는 사본(`SaveCopyAs`)만 만들어 창의 문서 이름이 바뀌지 않습니다. Word에는 사본 저장이 없어 **PDF 내보내기만** 허용하고, 같은 문서를 고쳐 저장하려면 `path` 없이 저장합니다.
+- PowerPoint는 이미 실행 중이면 그 프로그램에 붙습니다(단일 인스턴스). 그래서 끝날 때 사용자의 문서가 열려 있으면 프로그램을 끝내지 않습니다.
+- PowerPoint는 창을 숨길 수 없어 문서를 창 없이 엽니다. 보안 프로그램이 창을 요구하면 `DOGENT_OFFICE_VISIBLE=1`.
+- `word_write`의 표 덧붙이기와 `ppt_write`의 슬라이드는 서식을 단순하게 둡니다(표 테두리, 머리글 굵게). 회사 양식에 맞추려면 양식 문서를 열어 `replace`로 채우는 방식이 낫습니다.
+- 에이전트(자유 요청, 스킬)는 `word_read/word_write/word_save`, `ppt_read/ppt_write/ppt_save`로 씁니다. 쓰기와 열린 곳에 저장은 `--allow-write`(R3)와 사용자 허락이 있을 때만이고, 다른 이름 저장은 허락만 받으면 됩니다. 아직 없는 `.docx`/`.pptx` 경로를 쓰기에 주면 새 문서를 만들고 저장하면 그 경로에 생깁니다.
 
 ## 사내 문서 공유망(EDM) 문서
 
@@ -67,6 +90,9 @@ claude mcp add dogent-office -- D:\code\dogent\office\dist\dogent-office.exe
 ## 시험
 
 ```bash
-pnpm office:build && pnpm e2e:office            # 숨긴 Excel로 열기·읽기·쓰기·저장
-pnpm e2e:office --attach                        # EDM처럼 사용자 Excel에 열린 문서 잡기 (Excel 창이 잠깐 뜸)
+pnpm office:build && pnpm e2e:office            # 숨긴 Excel·Word·PowerPoint로 열기·읽기·쓰기·저장
+pnpm e2e:office --attach                        # EDM처럼 사용자 프로그램에 열린 문서 잡기 (Excel·Word·PowerPoint 창이 잠깐 뜸)
 ```
+
+시험은 Excel에 더해 Word·PowerPoint가 설치된 PC에서 돕니다. 저장한 .docx/.pptx는 압축을 풀어 글자까지 확인합니다. 시험이 띄운 Word·PowerPoint가 남을 수 있으니, 끝난 뒤 작업 관리자에서 확인하세요.
+

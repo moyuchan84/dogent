@@ -162,7 +162,10 @@ export function lintSkill(source: string, policySource?: string, files?: Record<
         for (const d of [...(args.datasets ?? []), ...(args.charts ?? []).map((c: { dataset: string }) => c.dataset)]) needDataset(d, n);
       }
       if (tool === 'excel_write') needDataset(args.dataset, n);
+      if (tool === 'word_write' && args.dataset) needDataset(args.dataset, n);
+      if (tool === 'ppt_write') for (const s of args.slides ?? []) if (s.dataset) needDataset(s.dataset, n);
       if (tool === 'extract_table' || tool === 'download_table' || tool === 'excel_read') datasets.add(args.dataset);
+      if ((tool === 'word_read' || tool === 'ppt_read') && args.dataset) datasets.add(args.dataset);
       if (tool === 'call_tool' && args.dataset) datasets.add(args.dataset);
       if (tool === 'transform') datasets.add(args.target);
       if (tool === 'summarize') {

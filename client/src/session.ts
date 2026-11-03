@@ -556,9 +556,11 @@ export class Session {
     const [sub, ...rest] = args;
     if (sub === 'docs') {
       // 문서 공유망(EDM)의 읽기·편집으로 연 문서처럼 사용자의 Excel에 열린 문서
-      const r = await office.userWorkbooks();
-      if (r.length === 0) this.term.print('사용자의 Excel에 열린 문서가 없습니다');
-      for (const b of r) this.term.print(`  ${b.name}${b.read_only ? ' (읽기 전용)' : ''}\n    ${b.full_name}`);
+      // 엑셀뿐 아니라 사용자의 Word·PowerPoint에 열린 문서도 보여 준다
+      const r = await new OfficeDocs(async () => office).docs();
+      if (r.length === 0) this.term.print('사용자의 Excel·Word·PowerPoint에 열린 문서가 없습니다');
+      const label: Record<string, string> = { excel: '엑셀', word: '워드', ppt: '파워포인트' };
+      for (const b of r) this.term.print(`  [${label[b.kind ?? 'excel']}] ${b.name}${b.readOnly ? ' (읽기 전용)' : ''}\n    ${b.fullName}`);
       return true;
     }
     if (sub === 'resave') {
@@ -1026,7 +1028,7 @@ export class Session {
     const viaServer = this.mentioned(text).length > 0;
     const intent = officeIntent(text, { openDocs: docs.map((d) => d.name), hasUrl: !!asked, hasSystem: named.length > 0 && !viaServer });
     if (intent.excel && !office) {
-      this.term.print('엑셀 문서가 필요한 요청 같지만 오피스 도구(dogent-office.exe)가 없습니다. pnpm office:build로 만들거나 dogent config officeExe <경로>로 알려 주세요');
+      this.term.print('엑셀·워드·파워포인트 문서가 필요한 요청 같지만 오피스 도구(dogent-office.exe)가 없습니다. pnpm office:build로 만들거나 dogent config officeExe <경로>로 알려 주세요');
       if (!intent.web) return false;
     }
     const excelOnly = intent.excel && !intent.web && !!office;
@@ -1035,15 +1037,15 @@ export class Session {
     const toolsOnly = !excelOnly && !intent.excel && !intent.web && this.mentioned(text).length > 0;
     const noWeb = excelOnly || toolsOnly;
     if (withExcel) {
-      this.term.print(docs.length ? `열려 있는 엑셀 문서 ${docs.length}개: ${docs.map((d) => d.name).join(', ')}` : '사용자의 Excel에 열려 있는 문서가 없습니다 (파일 경로를 요청에 쓰면 그 파일을 엽니다)');
+      this.term.print(docs.length ? `열려 있는 오피스 문서 ${docs.length}개: ${docs.map((d) => d.name).join(', ')}` : '사용자의 Excel·Word·PowerPoint에 열려 있는 문서가 없습니다 (파일 경로를 요청에 쓰면 그 파일을 엽니다)');
     }
     this.term.print(
       excelOnly
-        ? '맞는 스킬이 없어 엑셀 도구로 자유 요청을 합니다 (브라우저는 쓰지 않습니다).'
+        ? '맞는 스킬이 없어 오피스 도구(엑셀·워드·파워포인트)로 자유 요청을 합니다 (브라우저는 쓰지 않습니다).'
         : toolsOnly
           ? '맞는 스킬이 없어 연결된 MCP 도구로 자유 요청을 합니다 (브라우저는 쓰지 않습니다).'
           : withExcel
-          ? '맞는 스킬이 없어 지금 브라우저 화면과 엑셀 도구로 자유 요청을 합니다.'
+          ? '맞는 스킬이 없어 지금 브라우저 화면과 오피스 도구로 자유 요청을 합니다.'
           : '맞는 스킬이 없어 지금 브라우저 화면에서 자유 요청으로 합니다.',
     );
     if (!this.flags.yes && !(await this.term.confirm('진행할까요?', true))) return false;
