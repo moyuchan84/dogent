@@ -13,15 +13,15 @@ const extraSites = ((import.meta.env?.WXT_SITE_PERMISSIONS as string | undefined
 
 /**
  * 모든 http·https 사이트에 접근 권한을 선언할지.
- *   - 회사(company) 빌드: 기본은 목록 방식. WXT_SITE_PERMISSIONS의 사이트만 처음부터 허용하고, 나머지는 사용자가 패널의
- *     "이 사이트 허용"(크롬 권한 요청)으로 하나씩 더한다. 보안 검토에서 "모든 사이트 읽기·변경"으로 보이지 않게 하려는 것이다.
- *   - 개발·집 빌드: 기본은 모든 사이트.
- *   - 빌드 환경 파일에 WXT_ALL_SITES=true|false 를 적으면 모드와 상관없이 그 값을 따른다.
+ *   - 기본은 모든 빌드(회사 포함)가 모든 사이트. 접근하면 안 되는 URL은 사내 방화벽센터가 이미 막고 있어서
+ *     확장에서 따로 사이트를 관리하지 않는다.
+ *   - 보안 검토 등으로 목록 방식(WXT_SITE_PERMISSIONS의 사이트 + 패널의 "이 사이트 허용")이 필요하면
+ *     빌드 환경 파일에 WXT_ALL_SITES=false 를 적는다.
  */
-export function allSitesFor(mode: string | undefined, raw: string | undefined): boolean {
+export function allSitesFor(_mode: string | undefined, raw: string | undefined): boolean {
   const v = (raw ?? '').trim();
   if (v) return !/^(0|false|no|off)$/i.test(v);
-  return mode !== 'company';
+  return true;
 }
 export const allSites = allSitesFor(import.meta.env?.MODE as string | undefined, import.meta.env?.WXT_ALL_SITES as string | undefined);
 
