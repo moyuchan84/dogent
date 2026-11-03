@@ -108,7 +108,7 @@ MCP 클라이언트 ─stdio─ 브리지(bridge/hub.mjs) ─┬─ WebSocket(12
    ```
 5. 클라이언트에 말로 시킵니다. 예: "dogent로 http://localhost:4173/wip.html 에서 7라인 재공을 조회해서 정체 Lot이 몇 건인지 알려줘". 연결 상태는 설정의 **클라이언트 연결**에 표시됩니다.
 
-도구: `tabs_list`, `tab_open`, `tab_select`, `snapshot`, `navigate`, `click`, `type`, `select`, `wait_for`, `extract_table`, `download_table`, `fill_table`, `read_text`, `inspect`, `wait_for_login` (설명은 `bridge/tools.mjs`).
+도구: `tabs_list`, `tab_open`, `tab_select`, `snapshot`, `navigate`, `click`, `type`, `select`, `wait_for`, `extract_table`, `download_table`, `fill_table`, `read_text`, `inspect`, `wait_for_login`, `screenshot` (설명은 `bridge/tools.mjs`). `screenshot`은 이미지로 오고, 조작할 사이트 안의 탭만 찍고, 로그인 화면은 거절합니다. `<all_urls>` 권한이 필요해 회사(목록 방식) 빌드는 패널 → 설정의 "화면 그림 권한 허용"을 한 번 눌러야 합니다. 파일 올리기(`upload_file`)는 외부 MCP 도구가 아니라 Dogent 클라이언트의 동작입니다 (올릴 폴더 `uploadDirs`, 크기 `uploadMaxMb`, 승인 창).
 
 - 저장·상신 계열 버튼을 누르려 하면 확장이 **승인 창**을 띄웁니다. 승인해야 누르고, 창을 닫으면 누르지 않습니다.
 - 로그인 화면이면 `snapshot`이 `[login_required]`를 알립니다. 비밀번호 칸은 화면 읽기에 나오지 않아 입력할 수 없습니다. 사람이 로그인하면 `wait_for_login`이 끝납니다.
@@ -271,7 +271,7 @@ pnpm skill:lint                       # 번들된 스킬 품질 검사 (전부 A
 
 팀 공유 저장소의 틀이 `templates/dogent-skills`에 있습니다. 폴더 구조, PR 체크리스트, CODEOWNERS, 사내 러너용 품질 검사 CI가 들어 있습니다. 사내 GitHub에 새 저장소를 만들어 그대로 올리면 됩니다 (그 폴더의 README 참고). 검사 규칙을 고치면 `pnpm skill:bundle`로 검사기를 다시 만들고, `pnpm skill:check`로 이 저장소의 스킬을 같은 검사기로 돌려 볼 수 있습니다.
 
-공용 시스템 사전 저장소의 틀은 `templates/dogent-systems`에 있습니다. 사전 검사기(`tools/system-check.mjs`)와 모든 도구가 같은 사전을 쓰게 하는 시스템 MCP 서버(`tools/systems-mcp.mjs`: find_system, get_system, list_systems, report_issue)가 들어 있습니다 (그 폴더의 README 참고). 서버를 띄운 뒤 `dogent config systemsUrl http://<서버>:8787`(빌드 기본값은 `WXT_SYSTEMS_URL`)을 주면 앱·터미널이 서버의 사전을 받아 로컬 사전('공용', 개인 > 공용 > 팀 > 기본)으로 자동 사용합니다. 규칙이나 서버를 고치면 `pnpm systems:bundle`로 다시 만들고, `pnpm systems:check`·`pnpm systems:mcp`로 틀에서 돌려 봅니다.
+공용 시스템 사전 저장소의 틀은 `templates/dogent-systems`에 있습니다. 사전 검사기(`tools/system-check.mjs`)와 모든 도구가 같은 사전을 쓰게 하는 시스템 MCP 서버(`tools/systems-mcp.mjs`: find_system, get_system, list_systems, report_issue)가 들어 있습니다 (그 폴더의 README 참고). 서버를 띄운 뒤 `dogent config systemsUrl http://<서버>:8787`(빌드 기본값은 `WXT_SYSTEMS_URL`)을 주면 앱·터미널이 서버의 사전을 받아 로컬 사전('공용', 개인 > 공용 > 팀 > 기본)으로 자동 사용합니다. 사용자가 늘면 서버 쪽 최소 구성을 `templates/dogent-hub`에 두었습니다: Hub(정책·중지 스위치·실행 요약 수집, `pnpm hub`, 클라이언트는 `dogent config hubUrl|hubToken` 또는 빌드의 `WXT_HUB_URL`)와 LLM 프록시(게이트웨이 키를 PC에서 빼고 사용자별 한도·감사). 서버를 고치면 `pnpm hub:bundle`로 다시 묶습니다 ([docs/21-hub-and-llm-proxy.md](docs/21-hub-and-llm-proxy.md)). 첫 업무 스킬을 만드는 순서는 [docs/22-first-skills-playbook.md](docs/22-first-skills-playbook.md). 규칙이나 서버를 고치면 `pnpm systems:bundle`로 다시 만들고, `pnpm systems:check`·`pnpm systems:mcp`로 틀에서 돌려 봅니다.
 
 스킬 폴더를 사내 파일 서버나 Git에 올려 두면 확장이 거기서 스킬을 받아 옵니다. 스킬을 더하거나 고칠 때 확장을 다시 배포하지 않아도 됩니다.
 
