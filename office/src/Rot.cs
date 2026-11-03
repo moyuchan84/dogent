@@ -21,6 +21,12 @@ namespace Dogent.Office
         /// <summary>열린 통합 문서들 (경로나 주소, 문서 개체). 엑셀 문서가 아닌 항목은 뺀다.</summary>
         public static List<KeyValuePair<string, object>> Workbooks()
         {
+            return Items(LooksLikeWorkbook);
+        }
+
+        /// <summary>열린 항목들 중 이름(소문자 경로나 주소)이 조건에 맞는 것. Word·PowerPoint 문서도 같은 방식으로 찾는다.</summary>
+        public static List<KeyValuePair<string, object>> Items(Func<string, bool> accept)
+        {
             var found = new List<KeyValuePair<string, object>>();
             IRunningObjectTable rot;
             IBindCtx ctx;
@@ -39,7 +45,7 @@ namespace Dogent.Office
                 {
                     continue;
                 }
-                if (name == null || !LooksLikeWorkbook(name)) continue;
+                if (name == null || !accept(name)) continue;
                 object obj;
                 if (rot.GetObject(one[0], out obj) != 0 || obj == null) continue;
                 found.Add(new KeyValuePair<string, object>(name, obj));

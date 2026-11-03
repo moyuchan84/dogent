@@ -4,7 +4,7 @@
 //   pnpm e2e:office --attach                        사용자 Excel에 열린 문서 잡기 (EDM 링크로 연 문서 흉내, Excel 창이 잠깐 뜸)
 import assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
-import { existsSync, mkdtempSync } from 'node:fs';
+import { existsSync, mkdtempSync, promises as fs } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
@@ -175,6 +175,142 @@ try {
     assert.match((await office.call('excel_open', { path: '재공.xlsx' })).text, /전체 경로/);
     assert.match((await office.call('excel_read', { workbook: 'wb99' })).text, /excel_open으로 먼저/);
   });
+
+  // ---- Word·PowerPoint ----
+  /** docx·pptx 안의 파일 하나를 태그를 뗀 글로 꺼낸다 (zip이라 윈도우 tar로 읽는다. Word는 글자를 여러 조각으로 나눠 저장한다). */
+  const unzip = (file, inner) => execFileSync(join(process.env.SystemRoot ?? 'C:\Windows', 'System32/tar.exe'), ['-xOf', file, inner], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }).replace(/<[^>]+>/g, '');
+
+  await scenario('Word·PowerPoint 도구가 목록에 있음', async () => {
+    const names = (await office.request('tools/list')).result.tools.map((t) => t.name);
+    for (const n of ['word_open', 'word_read', 'word_write', 'word_save', 'word_attach', 'ppt_open', 'ppt_read', 'ppt_write', 'ppt_save', 'ppt_attach']) assert.ok(names.includes(n), n);
+  });
+
+  const docx = join(dir, '보고서.docx');
+  await scenario('Word: 새 문서에 문단·표를 쓰고 저장 → 파일 내용 확인', async () => {
+    const { doc } = await office.ok('word_new');
+    const w = await office.ok('word_write', {
+      doc,
+      append: [{ text: '재공 현황', style: 'heading1' }, '이번 주 HOLD Lot은 1건입니다.', { text: '확인 필요', style: 'bullet' }],
+      table: { columns: ['Lot ID', '수량'], rows: [['L001', 1200], ['L002', 850]] },
+    });
+    assert.equal(w.appended_paragraphs, 3);
+    assert.equal(w.appended_table_rows, 2);
+    await office.ok('word_save', { doc, path: docx });
+    await office.ok('word_close', { doc });
+    const xml = unzip(docx, 'word/document.xml');
+    for (const s of ['재공 현황', 'HOLD Lot은 1건', 'L002', '850']) assert.ok(xml.includes(s), `docx에 ${s}`);
+  });
+
+  await scenario('Word: 열어서 읽기(문단·스타일·표) → 찾아 바꾸기 → 읽기 전용은 쓰지 않음', async () => {
+    const ro = await office.ok('word_open', { path: docx });
+    const w = await office.call('word_write', { doc: ro.doc, replace: [{ find: 'HOLD', with: '정상' }] });
+    assert.equal(w.error, true);
+    assert.match(w.text, /읽기 전용/);
+    await office.ok('word_close', { doc: ro.doc });
+
+    const { doc, tables } = await office.ok('word_open', { path: docx, read_only: false });
+    assert.equal(tables, 1);
+    const r = await office.ok('word_read', { doc });
+    assert.ok(r.paragraphs.some((p) => p.text === '재공 현황'), '제목 문단');
+    assert.ok(!r.paragraphs.some((p) => p.text === 'L001'), '표 안의 글은 문단에 안 나옴');
+    assert.deepEqual(r.tables[0].columns, ['Lot ID', '수량']);
+    assert.deepEqual(r.tables[0].rows, [['L001', '1200'], ['L002', '850']]);
+    const e = await office.ok('word_write', { doc, replace: [{ find: 'HOLD', with: '정상' }, { find: '없는글', with: 'x' }] });
+    assert.equal(e.replaced, 1);
+    const out = join(dir, '보고서_수정.docx');
+    await office.ok('word_save', { doc, path: out });
+    await office.ok('word_close', { doc });
+    const xml = unzip(out, 'word/document.xml');
+    assert.ok(xml.includes('정상 Lot은 1건'), '바뀐 글');
+    assert.ok(!xml.includes('HOLD Lot'), '이전 글 없음');
+    const again = await office.call('word_save', { doc: 'wd99' });
+    assert.match(again.text, /word_open으로 먼저/);
+  });
+
+  const pptx = join(dir, '발표.pptx');
+  await scenario('PowerPoint: 새 자료에 슬라이드를 쓰고 저장 → 파일 내용 확인', async () => {
+    const { doc } = await office.ok('ppt_new');
+    const w = await office.ok('ppt_write', {
+      doc,
+      slides: [
+        { title: '재공 현황', bullets: ['HOLD 1건', '정상 2건'], notes: '발표 때 HOLD부터 설명' },
+        { title: 'Lot 표', table: { columns: ['Lot ID', '수량'], rows: [['L001', 1200], ['L002', 850]] } },
+      ],
+    });
+    assert.equal(w.added_slides, 2);
+    await office.ok('ppt_save', { doc, path: pptx });
+    await office.ok('ppt_close', { doc });
+    assert.ok(unzip(pptx, 'ppt/slides/slide1.xml').includes('HOLD 1건'));
+    assert.ok(unzip(pptx, 'ppt/slides/slide2.xml').includes('L002'));
+  });
+
+  await scenario('PowerPoint: 읽기(제목·글·표·메모) → 찾아 바꾸기 → 저장', async () => {
+    const { doc, slides } = await office.ok('ppt_open', { path: pptx, read_only: false });
+    assert.ok(slides >= 2, `슬라이드 ${slides}`);
+    const r = await office.ok('ppt_read', { doc });
+    const s1 = r.slides.find((s) => s.title === '재공 현황');
+    assert.ok(s1, '첫 슬라이드 제목');
+    assert.ok(s1.texts.join('\n').includes('HOLD 1건'), '본문');
+    assert.equal(s1.notes, '발표 때 HOLD부터 설명');
+    const s2 = r.slides.find((s) => s.title === 'Lot 표');
+    assert.deepEqual(s2.tables[0].columns, ['Lot ID', '수량']);
+    assert.deepEqual(s2.tables[0].rows[1], ['L002', '850']);
+    const e = await office.ok('ppt_write', { doc, replace: [{ find: 'HOLD', with: '점검' }], notes: [{ slide: 2, text: '표는 읽어만 준다' }] });
+    assert.ok(e.replaced >= 1);
+    assert.equal(e.notes_set, 1);
+    const out = join(dir, '발표_수정.pptx');
+    await office.ok('ppt_save', { doc, path: out });
+    await office.ok('ppt_close', { doc });
+    assert.ok(unzip(out, 'ppt/slides/slide1.xml').includes('점검 1건'));
+    const ow = await office.call('ppt_save', { doc: 'pp99' });
+    assert.match(ow.text, /ppt_open으로 먼저/);
+  });
+
+  if (ATTACH) {
+    await scenario('Word·PowerPoint: 사용자 프로그램에 열린 문서를 잡아 읽고 저장, 닫아도 사용자 문서는 남음', async () => {
+      const stamp = Date.now();
+      // 시험이 띄운 Word·PowerPoint만 정리하려고 시작 전 프로세스 번호를 적어 둔다 (사용자가 쓰던 창은 건드리지 않는다).
+      const officePids = () => execFileSync(POWERSHELL, ['-NoProfile', '-Command', "(Get-Process WINWORD,POWERPNT -ErrorAction SilentlyContinue | ForEach-Object { $_.Id }) -join ','"], { encoding: 'utf8' }).trim().split(',').filter(Boolean);
+      const before = new Set(officePids());
+      const wd = join(dir, `edm-워드-${stamp}.docx`);
+      const pp = join(dir, `edm-발표-${stamp}.pptx`);
+      await fs.copyFile(docx, wd);
+      await fs.copyFile(pptx, pp);
+      // 이 PC에 .docx·.pptx 연결 프로그램이 없을 수 있어 Start-Process 대신 사용자가 프로그램을 띄워 문서를 연 것처럼 COM으로 연다 (띄운 프로그램은 창을 둔 채 남는다).
+      execFileSync(POWERSHELL, ['-NoProfile', '-Command', `$a=New-Object -ComObject Word.Application; $a.Visible=$true; $null=$a.Documents.Open("${wd}")`]);
+      execFileSync(POWERSHELL, ['-NoProfile', '-Command', `$a=New-Object -ComObject PowerPoint.Application; $a.Visible=-1; $null=$a.Presentations.Open("${pp}")`]);
+      const w = await office.ok('word_attach', { name: `edm-워드-${stamp}`, wait_sec: 60 });
+      assert.equal(w.attached, true);
+      assert.ok((await office.ok('word_read', { doc: w.doc })).paragraphs.length > 0);
+      await office.ok('word_write', { doc: w.doc, append: ['EDM에서 추가'] });
+      await office.ok('word_save', { doc: w.doc });
+      const nonPdf = await office.call('word_save', { doc: w.doc, path: join(dir, 'x.docx') });
+      assert.equal(nonPdf.error, true, '사용자의 Word 문서는 PDF 사본만');
+      await office.ok('word_save', { doc: w.doc, path: join(dir, `edm-${stamp}.pdf`) });
+      await office.ok('word_close', { doc: w.doc });
+
+      const p = await office.ok('ppt_attach', { name: `edm-발표-${stamp}`, wait_sec: 60 });
+      assert.equal(p.attached, true);
+      assert.ok((await office.ok('ppt_read', { doc: p.doc })).slides.length >= 2);
+      await office.ok('ppt_write', { doc: p.doc, slides: [{ title: 'EDM에서 추가', bullets: ['완료'] }] });
+      await office.ok('ppt_save', { doc: p.doc });
+      const copy = join(dir, `edm-사본-${stamp}.pptx`);
+      await office.ok('ppt_save', { doc: p.doc, path: copy });
+      assert.ok(unzip(copy, 'ppt/slides/slide3.xml').includes('EDM에서 추가'));
+      await office.ok('ppt_close', { doc: p.doc });
+
+      assert.ok((await office.ok('word_user_docs')).some((b) => b.name === `edm-워드-${stamp}.docx`), '사용자 Word 문서가 그대로 열려 있음');
+      assert.ok((await office.ok('ppt_user_docs')).some((b) => b.name === `edm-발표-${stamp}.pptx`), '사용자 PowerPoint 문서가 그대로 열려 있음');
+      // 정리: 시험으로 연 문서만 닫는다.
+      for (const f of [wd, pp]) {
+        execFileSync(POWERSHELL, ['-NoProfile', '-Command', `$d=[Runtime.InteropServices.Marshal]::BindToMoniker("${f}"); $app=$d.Application; $d.Close(); if (($app.Documents -ne $null -and $app.Documents.Count -eq 0) -or ($app.Presentations -ne $null -and $app.Presentations.Count -eq 0)) { $app.Quit() }`]);
+      }
+      assert.ok(unzip(wd, 'word/document.xml').includes('EDM에서 추가'), '저장한 Word 내용');
+      // 문서를 닫아도 시험이 띄운 프로그램이 남으므로 새로 생긴 프로세스만 끝낸다.
+      const fresh = officePids().filter((p) => !before.has(p));
+      if (fresh.length) execFileSync(POWERSHELL, ['-NoProfile', '-Command', `Stop-Process -Id ${fresh.join(',')} -Force -ErrorAction SilentlyContinue`]);
+    });
+  }
 
   if (ATTACH) {
     await scenario('EDM처럼 사용자 Excel에 열린 문서를 잡아 읽고 저장, 닫아도 사용자 문서는 남음', async () => {

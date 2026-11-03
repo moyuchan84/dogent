@@ -253,7 +253,7 @@ function inputLines(inputs: FlowInput[]): string[] | null {
 }
 
 const TOOL_HEAD =
-  /^(navigate|open_tab|click|close_tab|press_key|scroll|go_back|type|select|extract_table|download_table|fill_table|transform|write_excel|write_html|excel_docs|excel_read|excel_write|excel_save|call_tool|run_skill|run_script|read_text|summarize|finish)(?:으로|로)\s/;
+  /^(navigate|open_tab|click|close_tab|press_key|scroll|go_back|type|select|extract_table|download_table|fill_table|transform|write_excel|write_html|excel_docs|excel_read|excel_write|excel_save|word_read|word_write|word_save|ppt_read|ppt_write|ppt_save|call_tool|run_skill|run_script|read_text|summarize|finish)(?:으로|로)\s/;
 
 /** 단계 머리에서 도구 이름 (모델이 고르는 말로 적은 단계면 null) */
 export function toolOf(block: FlowBlock): string | null {

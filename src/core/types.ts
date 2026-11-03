@@ -227,8 +227,13 @@ export interface UiPort {
   confirm?(message: string): Promise<boolean>;
 }
 
-/** 사용자 Excel에 열려 있는 문서 하나 */
+/** 오피스 문서의 종류: 엑셀, 워드, 파워포인트 */
+export type OfficeKind = 'excel' | 'word' | 'ppt';
+
+/** 사용자 Excel·Word·PowerPoint에 열려 있는 문서 하나 */
 export interface OfficeDoc {
+  /** 문서 종류. 없으면 엑셀 */
+  kind?: OfficeKind;
   name: string;
   /** 전체 경로나 주소 */
   fullName: string;
@@ -249,8 +254,48 @@ export interface OfficePort {
   ): Promise<{ sheet: string; sheets: string[]; columns: string[]; rows: Cell[][]; total: number }>;
   /** 시트에 표를 쓴다 (저장은 하지 않는다). 시트가 없으면 만든다 */
   write(doc: string, sheet: string, table: { columns: string[]; rows: Cell[][] }, start?: string): Promise<string>;
-  /** Excel로 저장한다. path가 없으면 연 곳에, 있으면 그 경로에 다른 이름으로. 저장한 곳을 돌려준다 */
+  /** Excel·Word·PowerPoint로 저장한다. path가 없으면 연 곳에, 있으면 그 경로에 다른 이름으로. 저장한 곳을 돌려준다 */
   save(doc: string, path?: string): Promise<string>;
+  /** 워드 문서의 문단과 표를 읽는다. 없으면 워드 도구를 쓸 수 없다 */
+  readWord?(doc: string): Promise<WordContent>;
+  /** 워드 문서를 고친다 (저장은 하지 않는다). 한 일을 글로 돌려준다 */
+  writeWord?(doc: string, edit: WordEdit): Promise<string>;
+  /** 파워포인트 자료를 슬라이드별로 읽는다 */
+  readSlides?(doc: string): Promise<SlidesContent>;
+  /** 파워포인트 자료를 고친다 (저장은 하지 않는다). 한 일을 글로 돌려준다 */
+  writeSlides?(doc: string, edit: SlidesEdit): Promise<string>;
+}
+
+export interface OfficeTable {
+  columns: string[];
+  rows: Cell[][];
+}
+
+export interface WordContent {
+  /** 비어 있지 않은 본문 문단 수 (표 안의 글 제외) */
+  totalParagraphs: number;
+  paragraphs: { text: string; style: string }[];
+  tables: OfficeTable[];
+}
+
+export interface WordEdit {
+  replace?: { find: string; with: string }[];
+  /** 문서 끝에 덧붙일 문단. style: normal | title | heading1~3 | bullet | number */
+  append?: (string | { text: string; style?: string })[];
+  table?: OfficeTable;
+}
+
+export interface SlidesContent {
+  totalSlides: number;
+  slides: { index: number; title: string; texts: string[]; tables: OfficeTable[]; notes: string }[];
+}
+
+export interface SlidesEdit {
+  replace?: { find: string; with: string }[];
+  /** 끝에 덧붙일 슬라이드 */
+  slides?: { title?: string; bullets?: string[]; table?: OfficeTable; notes?: string }[];
+  /** 기존 슬라이드의 발표자 메모 */
+  notes?: { slide: number; text: string }[];
 }
 
 /** 외부 도구(MCP 서버 등) 하나. name은 "서버.도구" 모양이다. */

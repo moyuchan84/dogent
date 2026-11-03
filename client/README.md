@@ -112,12 +112,13 @@ pnpm client config browser edge         # 늘 그 브라우저
 
 ```bash
 pnpm client excel D:자료재공.xlsx       # Excel로 열어 시트와 앞부분 보기
-pnpm client excel docs                    # 사용자의 Excel에 열린 문서 (문서 공유망에서 연 문서 등)
+pnpm client excel docs                    # 사용자의 Excel·Word·PowerPoint에 열린 문서 (문서 공유망에서 연 문서 등)
 pnpm client excel resave <원본> <새 경로>  # Excel로 다시 저장 (문서 보안 재암호화 확인용)
 ```
 
 - **엑셀을 말하는 요청** (`dogent "열린 재공 엑셀에서 라인별 합계 정리해줘"`): 맞는 스킬이 없으면 자유 요청이 엑셀 도구(`excel_docs`, `excel_read`, `excel_write`, `excel_save`)를 씁니다. 요청에 "엑셀", 파일 경로, 지금 열린 문서의 이름이 나오면 엑셀이 필요하다고 보고, 주소·시스템 이름·"화면/브라우저/메뉴/클릭…" 같은 말이 없으면 브라우저 연결을 기다리지 않고 엑셀 도구로만 합니다. 둘 다 있으면 ("엑셀 값을 MES 화면에 입력해줘") 화면과 엑셀을 함께 씁니다. 모델에는 열린 문서의 이름이 보입니다.
-- 엑셀을 읽는 것은 늘 되고, 문서를 바꾸는 것(`excel_write`, 열린 곳에 저장)은 `--allow-write`일 때만, 그것도 그때마다 허락을 묻습니다 (`--yes`로 건너뛰지 않음). 다른 이름으로 저장은 허락만 받으면 됩니다. `--dry-run`이면 쓰기 직전에 멈춥니다.
+- **워드·파워포인트도 같은 방식입니다** (`dogent "열린 보고서.docx 맨 끝에 요약 문단 추가해줘"`, `dogent "재공.xlsx 표를 슬라이드로 만들어 발표.pptx에 붙여줘"`). 도구는 `word_read/word_write/word_save`, `ppt_read/ppt_write/ppt_save`이고, 요청에 "워드/Word/.docx", "파워포인트/PowerPoint/슬라이드/발표 자료"가 나오면 오피스 문서가 필요하다고 봅니다. 문서에서 읽은 글은 `<doc>`으로 감싸 모델에 주고 그 안의 지시는 따르지 않게 합니다. 엑셀 표와 워드·파워포인트 표는 데이터셋으로 서로 옮깁니다. 아직 없는 `.docx`/`.pptx` 경로를 쓰면 새 문서를 만들어 저장합니다.
+- 엑셀을 읽는 것은 늘 되고, 문서를 바꾸는 것(`excel_write`·`word_write`·`ppt_write`, 열린 곳에 저장)은 `--allow-write`일 때만, 그것도 그때마다 허락을 묻습니다 (`--yes`로 건너뛰지 않음). 다른 이름으로 저장은 허락만 받으면 됩니다. `--dry-run`이면 쓰기 직전에 멈춥니다.
 - 스킬의 파일 입력은 경로 대신 열린 문서의 이름도 받습니다 (`dogent run wip-adjust source=재공.xlsx`). 스킬이 단계에 `excel_read` 등을 쓰면 엑셀 통로가 자동으로 붙습니다.
 - 스킬의 엑셀 파일 입력은 먼저 직접 읽고, 안 되면(문서 보안 파일 등) Excel로 엽니다.
 - `config saveThroughExcel true`면 결과 엑셀을 Excel을 거쳐 저장합니다.
