@@ -430,6 +430,8 @@ svg .ar{fill:var(--sub)}
 </div>
 <div class="callout warn"><b>중지 스위치는 "닿지 못할 때"가 약점입니다.</b> PC가 Hub에 닿지 못하면 중지가 적용되지 않습니다. 정책 응답에 만료 시간(TTL)을 두고, <b>만료 뒤 Hub에 못 닿으면 쓰기(R3) 스킬은 막는</b> 방식을 권합니다. 조회(R1)는 계속 허용해 업무 중단을 줄입니다.</div>
 
+<p class="small">참고: 확장에서도 말로 만들기·말로 고치기가 되도록 편집 로직(<code>src/core/flow.ts</code>, <code>flow-words.ts</code>)을 앱·확장이 공유하는 코어에 두었습니다. 스킬의 자유도는 Claude 방식(조건·반복은 단계 문장으로 쓰고 모델이 판단)이라 분기·반복 노드나 서버 쪽 워크플로 엔진은 두지 않았습니다 (docs/23).</p>
+
 <h3>5-4. 모델 키 (선택안)</h3>
 <div class="tw"><table>
 <tr><th></th><th>A. 지금: 빌드에 공용 키</th><th>B. 개인 키</th><th>C. LLM 프록시</th></tr>

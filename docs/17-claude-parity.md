@@ -20,6 +20,7 @@ Dogent는 처음부터 Claude Code(판단·스킬·도구)와 Claude in Chrome(�
 | 지난 대화 골라 이어 가기 (`--resume`) | 있음 | 마지막 대화 하나만 | 일부 | P2 |
 | 긴 대화 압축 (compaction) | 자동 요약 | 최근 5차례만 보임 (요약 400자) | 일부 | P3 |
 | 스킬 | SKILL.md, 개인/프로젝트/플러그인 | SKILL.md, 개인 > 팀 > 기본, 지연 로딩, 품질 검사 | 있음 | — |
+| 스킬을 만들고 고치는 UX | 스킬 파일, 말로 요청 | **흐름 편집기**(확장): 대화 + 단계 카드, 말로 고치기, 여기까지 시험, 되돌리기. 스킬은 목표 문장들의 순서이고 모델이 판단하는 Claude 방식 (docs/23) | 있음 | ✅ |
 | 서브에이전트 | Task 도구 | `run_skill` (스킬을 자식으로). 일반 `delegate`는 아직 (13 문서) | 일부 | P2 |
 | MCP 클라이언트 | stdio·HTTP·SSE, 권한 | 같음 (`dogent mcp add/import`, allow/ask/deny, 키워드) | 있음 | — |
 | MCP 서버로 쓰이기 | `claude mcp serve` | **`dogent serve`, 앱의 MCP 주소** (G4) | 있음 | ✅ G4 |
