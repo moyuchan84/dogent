@@ -6,7 +6,8 @@ import { siteAllowed } from './sites';
 import { sameUrl } from './start';
 import { PRESS_KEYS } from './actions';
 import { findInSnapshot, renderSnapshot } from './snapshot';
-import type { ActResult, ApprovalRequest, BrowserPort, ConfirmPolicy, PageSnapshot, TableData } from './types';
+import { UPLOAD_BUTTON, UPLOAD_HARD_MAX_BYTES, base64Bytes, formatBytes, sensitiveNameReason } from './upload';
+import type { ActResult, ApprovalRequest, BrowserPort, ConfirmPolicy, PageSnapshot, Screenshot, TableData, UploadPayload } from './types';
 
 /**
  * 외부 클라이언트(MCP)가 부르는 브라우저 도구의 실행부. 도구 목록은 bridge/tools.mjs에 있다.
@@ -25,7 +26,11 @@ export interface ToolHost {
   /** 탭을 앞으로 가져온다. */
   focus(tabId: number): Promise<void>;
   /** 탭을 다루는 BrowserPort. 같은 탭에는 같은 것을 돌려줘야 ref가 유지된다. */
-  port(tabId: number): BrowserPort & { inspect?(): Promise<SiteInspection> };
+  port(tabId: number): BrowserPort & {
+    inspect?(): Promise<SiteInspection>;
+    /** 파일 입력 칸에 파일을 넣는다. 승인과 검사는 BrowserTools가 끝낸 뒤에 부른다 */
+    attachFile?(ref: number, file: UploadPayload): Promise<ActResult>;
+  };
   /** 지금 조작할 수 있는 사이트 규칙 */
   sites(): Promise<string[]>;
   /** 저장·상신 직전에 사람에게 묻는다. */
@@ -35,6 +40,9 @@ export interface ToolHost {
 }
 
 const LOGIN_POLL_MS = 1500;
+/** 로그인 화면에서 화면 그림을 요청받았을 때의 안내 (snapshot의 [login_required]와 같은 흐름) */
+const LOGIN_REQUIRED =
+  '[login_required] 로그인 화면입니다. 비밀번호가 그림에 담길 수 있어 화면을 찍지 않았습니다. 사용자에게 이 탭에서 직접 로그인해 달라고 알리고 wait_for_login을 부르세요.';
 const FIELD_ROLES = new Set(['textbox', 'combobox', 'checkbox', 'radio']);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -76,8 +84,20 @@ export class BrowserTools {
    * 승인받으면 바로 다음의 그 버튼 누름에만 이 승인을 쓴다. 승인 창이 두 번 뜨지 않게 한다.
    */
   private granted: { tab: number; button: string } | null = null;
+  /**
+   * 클라이언트가 조각으로 나눠 보낸 올릴 파일 (Native Messaging은 한 메시지가 1MB로 제한된다).
+   * 승인을 받기 전에는 메모리에만 있고 페이지에는 아무것도 하지 않는다. 한 번 쓰면 지운다.
+   */
+  private staged = new Map<string, { name: string; mime: string; size: number; chunks: string[]; at: number }>();
 
   constructor(private host: ToolHost) {}
+
+  /** 오래된 올릴 파일 조각을 버린다 (승인 창이 닫혔거나 클라이언트가 중간에 끊긴 경우) */
+  private pruneStaged(): void {
+    const old = Date.now() - 10 * 60_000;
+    for (const [id, s] of this.staged) if (s.at < old) this.staged.delete(id);
+    while (this.staged.size > 4) this.staged.delete(this.staged.keys().next().value!);
+  }
 
   private approvalOf(snap: PageSnapshot, button: string, skill: string): ApprovalRequest {
     return {
@@ -215,6 +235,76 @@ export class BrowserTools {
         const sites = await this.host.sites();
         const file = await port.download(n(0), Math.min(120_000, n(1)), (url) => url.startsWith('data:') || siteAllowed(url.replace(/^blob:/, ''), sites));
         return { filename: file.filename, url: file.url, base64: toBase64(file.data) };
+      }
+      case 'screenshot': {
+        if (!port.screenshot) throw new Error('이 환경에서는 화면을 찍을 수 없습니다');
+        // 비밀번호 칸이 보이는 로그인 화면은 찍지 않는다 (비밀번호가 그림에 담길 수 있다). 로그인은 사람이 하도록 알린다.
+        const now = await port.snapshot();
+        this.snaps.set(tab, now);
+        if (now.hasPassword) throw new Error(LOGIN_REQUIRED);
+        return port.screenshot();
+      }
+      case 'uploadBegin': {
+        this.pruneStaged();
+        const id = String(args[0] ?? '');
+        const name = String(args[1] ?? '');
+        const size = n(3);
+        if (!id) throw new Error('uploadBegin: 올리기 번호가 없습니다');
+        const bad = sensitiveNameReason(name);
+        if (bad) throw new Error(bad);
+        if (!(size > 0) || size > UPLOAD_HARD_MAX_BYTES) throw new Error(`파일 크기는 1바이트 이상 ${formatBytes(UPLOAD_HARD_MAX_BYTES)} 이하여야 합니다 (받은 크기 ${size}바이트)`);
+        this.staged.set(id, { name, mime: String(args[2] ?? '') || 'application/octet-stream', size, chunks: [], at: Date.now() });
+        return true;
+      }
+      case 'uploadChunk': {
+        const s = this.staged.get(String(args[0] ?? ''));
+        if (!s) throw new Error('uploadChunk: 먼저 uploadBegin이 필요합니다');
+        const index = n(1);
+        if (index !== s.chunks.length) throw new Error(`uploadChunk: 조각 순서가 맞지 않습니다 (받을 차례 ${s.chunks.length}, 받은 ${index})`);
+        s.chunks.push(String(args[2] ?? ''));
+        if (s.chunks.reduce((sum, c) => sum + c.length, 0) > ((UPLOAD_HARD_MAX_BYTES * 4) / 3 + 16)) {
+          this.staged.delete(String(args[0]));
+          throw new Error('uploadChunk: 받은 조각이 선언한 크기를 넘습니다');
+        }
+        return true;
+      }
+      case 'uploadFile': {
+        // 파일을 페이지에 넣는 유일한 길. 이 안에서 (1) 사이트 목록 안의 탭인지(위에서 이미 확인), (2) 파일 검사, (3) 사용자 승인을 모두 거친 뒤에만 attachFile을 부른다.
+        const snap = this.lastSnap(tab);
+        const ref = n(0);
+        const id = String(args[1] ?? '');
+        const el = findElement(snap, ref);
+        if (!el) return { ok: false, message: `[${ref}] 요소가 마지막 화면에 없습니다. snapshot을 다시 읽으세요` };
+        const staged = this.staged.get(id);
+        this.staged.delete(id);
+        if (!staged) return { ok: false, message: '올릴 파일을 받지 못했습니다 (시간이 지났거나 순서가 맞지 않음)' };
+        const data = staged.chunks.join('');
+        if (base64Bytes(data) !== staged.size) return { ok: false, message: `받은 파일이 선언한 크기와 다릅니다 (${base64Bytes(data)} / ${staged.size}바이트). 올리지 않았습니다` };
+        if (staged.size > UPLOAD_HARD_MAX_BYTES) return { ok: false, message: `파일이 너무 큽니다 (${formatBytes(staged.size)}). 올리지 않았습니다` };
+        const bad = sensitiveNameReason(staged.name);
+        if (bad) return { ok: false, message: `${bad}. 올리지 않았습니다` };
+        if (!port.attachFile) throw new Error('이 환경에서는 파일을 올릴 수 없습니다');
+        const request: ApprovalRequest = {
+          skill: 'Dogent 클라이언트의 요청',
+          button: UPLOAD_BUTTON,
+          url: snap.url,
+          fields: [
+            { name: '올릴 파일', value: `${staged.name} (${formatBytes(staged.size)})` },
+            { name: '올릴 사이트', value: new URL(snap.url).host },
+            { name: '올릴 칸', value: `[${el.ref}] ${el.role} "${el.name}"` },
+          ],
+          tables: [],
+        };
+        if (!(await this.host.approve(request, tab))) {
+          return { ok: false, message: `사용자가 "${staged.name}" 올리기를 승인하지 않았습니다. 올리지 않았습니다`, declined: true };
+        }
+        // 승인을 기다리는 사이 탭이 목록 밖으로 옮겨 갔을 수 있다. 올리기 직전에 한 번 더 확인한다.
+        const nowTab = (await this.host.tabs()).find((x) => x.id === tab);
+        if (!nowTab || !siteAllowed(nowTab.url, await this.host.sites())) {
+          return { ok: false, message: '승인하는 동안 탭이 조작할 사이트 목록 밖으로 옮겨 가 올리지 않았습니다' };
+        }
+        this.snaps.delete(tab);
+        return port.attachFile(ref, { name: staged.name, mime: staged.mime, base64: data });
       }
       case 'setActive':
         await port.setActive?.(args[0] === true);
@@ -446,6 +536,16 @@ export class BrowserTools {
         const text = await port.readText(ref);
         const max = num(args, 'max_chars', 20000);
         return text.length > max ? `${text.slice(0, max)}\n(이하 ${text.length - max}자 생략)` : text || '(보이는 글이 없습니다)';
+      }
+      case 'screenshot': {
+        if (args.tab_id !== undefined && args.tab_id !== null && args.tab_id !== '') await this.target(args.tab_id);
+        const shot = (await this.port('screenshot', [])) as Screenshot;
+        const kb = Math.round((shot.base64.length * 3) / 4 / 1024);
+        // 브리지(bridge/tools.mjs의 toContent)가 이 글을 MCP의 image content로 바꿔 내보낸다.
+        return JSON.stringify({
+          __image: { mimeType: shot.mimeType, data: shot.base64 },
+          text: `[tab ${this.current}] 화면 그림 ${shot.width}×${shot.height}px, ${kb}KB. 화면에 보이는 부분만 담겼습니다 (조작은 snapshot의 [번호]로 합니다)`,
+        });
       }
       case 'inspect': {
         const tab = await this.target();

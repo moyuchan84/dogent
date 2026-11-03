@@ -1,7 +1,9 @@
-import { userInfo } from 'node:os';
+import { homedir, userInfo } from 'node:os';
+import { join } from 'node:path';
 import { createHub, loadToken, type BrowserLink } from '../../bridge/hub.mjs';
 import { DEFAULT_PORT, pipePath } from '../../bridge/protocol.mjs';
 import { McpBrowser, type McpCall } from '../../src/core';
+import { defaultUploadDirs, readUploadFile, type UploadPolicy } from './upload';
 
 /**
  * 확장과의 연결. 브리지(bridge/hub.mjs)를 이 프로세스 안에서 띄우고 MCP 메시지로 부른다.
@@ -23,7 +25,7 @@ export interface Bridge {
   close(): void;
 }
 
-export async function openBridge(opts: { port?: number; log?: (line: string) => void } = {}): Promise<Bridge> {
+export async function openBridge(opts: { port?: number; log?: (line: string) => void; upload?: UploadPolicy } = {}): Promise<Bridge> {
   const port = opts.port ?? Number(process.env.DOGENT_BRIDGE_PORT ?? DEFAULT_PORT);
   const hub = createHub({
     token: loadToken(),
@@ -49,7 +51,8 @@ export async function openBridge(opts: { port?: number; log?: (line: string) => 
     return { text: result.content[0]?.text ?? '', isError: !!result.isError };
   };
   return {
-    browser: new McpBrowser(call),
+    // 파일 올리기: 올릴 수 있는 폴더 안의 파일만 읽어 확장에 보낸다 (client/src/upload.ts). 확장이 사용자 승인을 따로 받는다.
+    browser: new McpBrowser(call, (path) => readUploadFile(path, opts.upload ?? { dirs: defaultUploadDirs(join(homedir(), 'Downloads')) })),
     call,
     connected: () => hub.connected(),
     async waitForExtension(ms) {

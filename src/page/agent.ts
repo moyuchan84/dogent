@@ -18,6 +18,11 @@ export interface PageAgent {
    * 행이 모자라면 addRef(행 추가 버튼)를 눌러 늘린다.
    */
   fillTable(ref: number, columns: string[], rows: string[][], addRef?: number): ActResult;
+  /**
+   * ref의 요소(파일 입력 칸이나 그것을 여는 버튼·라벨)에 연결된 <input type="file">에 파일을 넣는다.
+   * File → DataTransfer → input.files로 넣고 input·change 이벤트를 보낸다. 사용자 승인은 이 함수를 부르기 전에 확장이 받는다.
+   */
+  attachFile(ref: number, name: string, mime: string, base64: string): ActResult;
   hasText(text: string): boolean;
   /** 화면(ref를 주면 그 요소)에 보이는 글. 요약처럼 화면의 글이 필요할 때 쓴다. 입력 칸의 값과 비밀번호는 담지 않는다. */
   readText(ref?: number): string;
@@ -221,10 +226,16 @@ export function createPageAgent(
       if (type === 'button' || type === 'submit' || type === 'reset' || type === 'image') {
         return { role: 'button', name: nameOf(el, false), disabled };
       }
+      // 파일 칸은 눌러도 PC의 파일 선택 창만 뜬다. 파일은 upload_file로 넣는다.
+      if (type === 'file') return { role: 'button', name: nameOf(el, false), detail: '파일 입력 칸(upload_file)', disabled };
       if (type === 'checkbox' || type === 'radio') {
         return { role: type, name: nameOf(el, false), value: input.checked ? '선택됨' : '선택 안 됨', disabled };
       }
       return { role: 'textbox', name: nameOf(el, false), value: input.value, disabled };
+    }
+    // 숨겨진 파일 칸을 여는 라벨은 파일 올리기 대상으로 보인다 (파일 칸 자체는 화면에 없어 읽히지 않는다).
+    if (tag === 'LABEL' && isFileInput((el as HTMLLabelElement).control)) {
+      return { role: 'button', name: clip(nameOf(el, true), 80), detail: '파일 입력 칸(upload_file)', disabled: (el as HTMLLabelElement).control!.hasAttribute('disabled') || undefined };
     }
     if (tag === 'BUTTON') return { role: 'button', name: clip(nameOf(el, true), 80), disabled };
     if (tag === 'A' && el.hasAttribute('href')) return { role: 'link', name: clip(nameOf(el, true), 80) };
@@ -387,6 +398,33 @@ export function createPageAgent(
     } catch (e) {
       return { ok: false, message: (e as Error).message };
     }
+  }
+
+  const isFileInput = (e: Element | null | undefined): e is HTMLInputElement =>
+    !!e && e.tagName === 'INPUT' && (e.getAttribute('type') ?? '').toLowerCase() === 'file';
+
+  /**
+   * 요소에 연결된 파일 입력 칸. 요소 자신이 파일 칸이면 그것, 숨겨진 파일 칸을 가리키는 버튼·라벨이면 연결된 칸이다.
+   * 연결을 알 수 없으면 가까운 곳(세 단계 위까지)에 파일 칸이 딱 하나일 때만 그것을 쓴다. 둘 이상이면 고르지 않는다.
+   */
+  function fileInputFor(el: Element): HTMLInputElement | null {
+    if (isFileInput(el)) return el;
+    const label = el.tagName === 'LABEL' ? (el as HTMLLabelElement) : el.closest('label');
+    if (isFileInput(label?.control)) return label!.control as HTMLInputElement;
+    const inner = el.querySelector('input[type=file]');
+    if (isFileInput(inner)) return inner;
+    const target = el.getAttribute('for') ?? el.getAttribute('aria-controls') ?? el.getAttribute('data-for');
+    if (target) {
+      const byId = doc.getElementById(target);
+      if (isFileInput(byId)) return byId;
+    }
+    let box = el.parentElement;
+    for (let i = 0; i < 3 && box; i++, box = box.parentElement) {
+      const found = box.querySelectorAll('input[type=file]');
+      if (found.length === 1) return found[0] as HTMLInputElement;
+      if (found.length > 1) return null;
+    }
+    return null;
   }
 
   // ---- 입력 가능한 표 ----
@@ -690,6 +728,24 @@ export function createPageAgent(
         fire(el, 'input');
         fire(el, 'change');
         return `"${norm(hit.textContent)}" 선택함`;
+      }),
+
+    attachFile: (ref, name, mime, base64) =>
+      act(() => {
+        const input = fileInputFor(resolve(ref));
+        if (!input) throw new Error(`[${ref}]에 연결된 파일 입력 칸(<input type="file">)을 찾지 못했습니다. 파일 칸이나 그것을 여는 버튼·라벨을 지정하세요`);
+        if (input.disabled) throw new Error('파일 입력 칸이 비활성 상태입니다');
+        const bin = win.atob(base64);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        if (typeof win.DataTransfer !== 'function') throw new Error('이 브라우저는 파일 입력 칸에 파일을 넣는 방법(DataTransfer)을 지원하지 않습니다');
+        // 사용자가 고른 것처럼 File → DataTransfer → input.files로 넣고 input·change 이벤트를 보낸다 (디버거 권한 없이).
+        const transfer = new win.DataTransfer();
+        transfer.items.add(new win.File([bytes], name, { type: mime }));
+        input.files = transfer.files;
+        input.dispatchEvent(new win.Event('input', { bubbles: true, composed: true }));
+        input.dispatchEvent(new win.Event('change', { bubbles: true }));
+        return `"${name}"(${bytes.length}바이트)을(를) 파일 칸에 넣었습니다`;
       }),
 
     fillTable: (ref, columns, rows, addRef) =>

@@ -1,4 +1,12 @@
-import type { ActResult, ApprovalRequest, BrowserPort, ConfirmPolicy, DownloadedFile, PageSnapshot, TabInfo, TableData } from './types';
+import { UPLOAD_CHUNK_BYTES, bytesToBase64 } from './upload';
+import type { ActResult, ApprovalRequest, BrowserPort, ConfirmPolicy, DownloadedFile, PageSnapshot, Screenshot, TabInfo, TableData } from './types';
+
+/** 올릴 파일을 읽어 검사한 결과 (클라이언트가 만든다. client/src/upload.ts) */
+export interface UploadSource {
+  name: string;
+  mime: string;
+  bytes: Uint8Array;
+}
 
 /** MCP 도구 하나를 부른다. 도구가 실패하면 isError가 true다. */
 export type McpCall = (name: string, args: Record<string, unknown>) => Promise<{ text: string; isError: boolean }>;
@@ -14,7 +22,14 @@ const PORT_TOOL = 'dogent_port';
  * 승인받은 버튼은 바로 다음 한 번만 승인 창 없이 눌린다.
  */
 export class McpBrowser implements BrowserPort {
-  constructor(private call: McpCall) {}
+  /**
+   * readUpload는 올릴 파일을 읽는다. 올릴 수 있는 폴더 안인지, 크기, 숨김·키 파일인지를 여기서 검사하고 어기면 던진다.
+   * 주지 않으면 파일 올리기를 쓸 수 없다 (확장은 PC의 파일을 읽을 수 없다).
+   */
+  constructor(
+    private call: McpCall,
+    private readUpload?: (path: string) => Promise<UploadSource>,
+  ) {}
 
   private async port<T>(method: string, ...args: unknown[]): Promise<T> {
     const r = await this.call(PORT_TOOL, { method, args });
@@ -108,6 +123,31 @@ export class McpBrowser implements BrowserPort {
 
   goBack(): Promise<ActResult> {
     return this.port('goBack');
+  }
+
+  /** 대상 탭의 화면 그림. 조작할 사이트 밖의 탭이거나 로그인 화면이면 확장이 거절한다. */
+  screenshot(): Promise<Screenshot> {
+    return this.port('screenshot');
+  }
+
+  /**
+   * 파일을 읽어 검사하고, 조각으로 나눠 확장에 보낸 뒤(Native Messaging은 한 메시지가 1MB까지)
+   * 확장에 올려 달라고 한다. 확장이 사용자 승인을 받아야 파일이 페이지에 들어간다.
+   */
+  async uploadFile(ref: number, path: string): Promise<ActResult> {
+    if (!this.readUpload) return { ok: false, message: '이 환경에서는 파일을 올릴 수 없습니다' };
+    let file: UploadSource;
+    try {
+      file = await this.readUpload(path);
+    } catch (e) {
+      return { ok: false, message: (e as Error).message };
+    }
+    const id = crypto.randomUUID();
+    await this.port('uploadBegin', id, file.name, file.mime, file.bytes.length);
+    for (let i = 0, at = 0; at < file.bytes.length; i++, at += UPLOAD_CHUNK_BYTES) {
+      await this.port('uploadChunk', id, i, bytesToBase64(file.bytes.subarray(at, at + UPLOAD_CHUNK_BYTES)));
+    }
+    return this.port('uploadFile', ref, id);
   }
 
   /** 저장·상신 직전에 확장의 승인 창으로 사람에게 묻는다. */

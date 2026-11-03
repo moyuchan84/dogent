@@ -593,7 +593,7 @@ export class Session {
   /** 확장과 이어지기를 기다린다. */
   async connect(): Promise<Bridge> {
     if (this.bridge?.connected() && this.chosen) return this.bridge;
-    this.bridge ??= await openBridge({ port: this.cfg.bridgePort });
+    this.bridge ??= await openBridge({ port: this.cfg.bridgePort, upload: this.cfg.uploadDirs ? { dirs: this.cfg.uploadDirs, maxBytes: this.cfg.uploadMaxBytes } : undefined });
     const bridge = this.bridge;
     // 확장은 보통 1초 안에 붙는다. 그보다 오래 걸릴 때만 무엇을 할지 알려 준다.
     if (!(await this.until(bridge.waitForExtension(2000)))) {
@@ -791,6 +791,8 @@ export class Session {
         signal,
         dryRun: !isFree && skill.risk === 'R3' && (opts.dryRun ?? this.flags.dryRun),
         direct: this.cfg.llm.skillDirect,
+        // 사내 모델이 화면 그림을 받는다고 설정했을 때만 그림을 붙인다 (llm.vision, 기본 꺼짐)
+        vision: this.cfg.llm.vision === true,
         paths: this.cfg.llm.pathCache && !isFree ? filePathStore(this.cfg.home) : undefined,
         files: folderFiles(
           this.cfg.outputDir,
@@ -1175,7 +1177,7 @@ export class Session {
 
   /** 브리지를 띄워 두어 확장이 미리 붙게 한다. 화면을 열 때 부른다. */
   async listen(): Promise<void> {
-    this.bridge ??= await openBridge({ port: this.cfg.bridgePort });
+    this.bridge ??= await openBridge({ port: this.cfg.bridgePort, upload: this.cfg.uploadDirs ? { dirs: this.cfg.uploadDirs, maxBytes: this.cfg.uploadMaxBytes } : undefined });
   }
 
   /** 실행 중인지 */
