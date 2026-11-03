@@ -164,6 +164,12 @@ try {
   await scenario('screenshot: 화면 그림을 image content(JPEG)로 받고, 로그인 화면은 찍지 않음', async () => {
     await ok('tab_open', { url: `${SITE}/wip.html` });
     const res = await hub.handleMcp({ jsonrpc: '2.0', id: rpc++, method: 'tools/call', params: { name: 'screenshot', arguments: {} } });
+    // 목록 방식 빌드(WXT_ALL_SITES=false)는 <all_urls>를 선언하지 않아, 사용자가 설정에서 허용하기 전에는 안내 오류로 끝난다.
+    if (process.env.WXT_ALL_SITES === 'false') {
+      assert.equal(res.result.isError, true);
+      assert.match(JSON.stringify(res.result.content), /화면 그림 권한/);
+      return;
+    }
     assert.equal(res.result.isError, undefined, JSON.stringify(res.result.content).slice(0, 300));
     const [image, text] = res.result.content;
     assert.equal(image.type, 'image');

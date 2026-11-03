@@ -98,6 +98,17 @@ export function App() {
   // 실행 화면은 숨기기만 해서, 적던 요청과 진행 중인 실행·녹화가 그대로 남는다.
   const [sheet, setSheet] = useState<null | 'settings' | 'inspect'>(null);
   const [llmTest, setLlmTest] = useState('');
+  // 화면 그림 권한(<all_urls>) 요청 결과 안내
+  const [shotPerm, setShotPerm] = useState('');
+  /** 화면 그림을 찍으려면 <all_urls> 권한이 필요하다. 크롬은 사용자가 누른 직후에만 요청을 받으므로 첫 await로 부른다. */
+  async function allowScreenshots() {
+    try {
+      const ok = await browser.permissions.request({ origins: ['<all_urls>'] });
+      setShotPerm(ok ? '허용됐습니다. 이제 화면 그림을 쓸 수 있습니다.' : '허용하지 않았습니다.');
+    } catch (e) {
+      setShotPerm(`요청하지 못했습니다: ${(e as Error).message}`);
+    }
+  }
   // 연결 시험에서 권한이 막혀 있던 모델 API 주소. 버튼으로 다시 요청한다.
   const [llmGrant, setLlmGrant] = useState<string | null>(null);
   const placeholders = useMemo(() => headerPlaceholders(builtInHeaders), []);
@@ -632,6 +643,13 @@ export function App() {
               켜기 전에 사내 게이트웨이의 모델이 이미지 입력을 지원하는지 먼저 확인하세요. 지원하지 않는 모델에 그림을 보내면 요청이 오류로 끝납니다.
               켜도 모델이 &quot;화면 보기&quot;를 고르거나 화면에 조작할 요소가 거의 없을 때만 그림을 붙입니다.
             </p>
+            <div className="row wrap">
+              <button className="secondary" id="shot-perm" onClick={() => void allowScreenshots()}>
+                화면 그림 권한 허용
+              </button>
+              {shotPerm && <span className="hint">{shotPerm}</span>}
+            </div>
+            <p className="hint">화면 그림(스크린샷)은 모든 사이트의 화면을 읽을 수 있는 크롬 권한이 있어야 찍힙니다. 쓰지 않으면 누르지 않아도 됩니다. 조작할 사이트 목록 밖의 탭은 권한이 있어도 찍지 않습니다.</p>
             <label>
               제한 시간 배율
               <input

@@ -40,8 +40,10 @@ export default defineConfig({
       key: EXTENSION_KEY,
       description: '스킬(업무 절차서)을 따라 사내 웹 시스템을 조작하는 업무 에이전트',
       permissions: ['sidePanel', 'scripting', 'storage', 'tabs', 'downloads', 'alarms', 'nativeMessaging', 'tabGroups'],
-      host_permissions: [...new Set([...sites, ...dogentConfig.llmPermissions, ...llmHost, ...skillsHost])],
-      optional_host_permissions: scope,
+      // 화면 그림(captureVisibleTab)은 <all_urls>나 activeTab이 있어야 찍힌다 (http·https 와일드카드로는 안 된다).
+      // 모든 사이트 빌드는 처음부터 선언하고, 목록 방식(회사) 빌드는 사용자가 설정의 "화면 그림 권한 허용"으로 그때 요청한다.
+      host_permissions: [...new Set([...sites, ...(sites.includes('https://*/*') ? ['<all_urls>'] : []), ...dogentConfig.llmPermissions, ...llmHost, ...skillsHost])],
+      optional_host_permissions: [...new Set([...scope, '<all_urls>'])],
       // 아이콘 원본은 public/icon/dogent.svg. PNG는 그것을 크기별로 그린 것이다 (Do-Agent: D 위의 클릭하는 포인터).
       icons: { 16: 'icon/16.png', 32: 'icon/32.png', 48: 'icon/48.png', 128: 'icon/128.png' },
       action: {

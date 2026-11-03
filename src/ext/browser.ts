@@ -501,7 +501,16 @@ export class ChromeBrowser implements BrowserPort {
       await browser.tabs.update(this.tabId, { active: true });
       await sleep(250);
     }
-    const dataUrl = await browser.tabs.captureVisibleTab(tab.windowId, { format: 'jpeg', quality: 85 });
+    let dataUrl: string;
+    try {
+      dataUrl = await browser.tabs.captureVisibleTab(tab.windowId, { format: 'jpeg', quality: 85 });
+    } catch (e) {
+      const m = (e as Error).message;
+      if (/all_urls|activeTab/.test(m)) {
+        throw new Error('화면 그림을 찍을 권한이 없습니다. Dogent 사이드 패널 → 설정 → "화면 그림 권한 허용"을 눌러 주세요 (모든 사이트의 화면을 읽을 수 있는 권한이라 처음 한 번 사용자가 허용해야 합니다)');
+      }
+      throw e;
+    }
     return shrinkScreenshot(dataUrl);
   }
 
