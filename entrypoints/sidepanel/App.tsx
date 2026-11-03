@@ -34,6 +34,7 @@ import { loadBundledSkills } from '@/src/ext/skills';
 import { Markdown } from '@/src/ui/Markdown';
 import { appendRun, builtInHeaders, resetSettings, clearPaths, effectiveSettings, hasBuiltInKey, loadDrafts, loadRuns, loadSettings, markTrial, pathStore, saveSettings, type DraftSkill } from '@/src/ext/storage';
 import { Author } from './Author';
+import type { TrialOptions } from './flow-ui';
 import { BatchView } from './Batch';
 import { History } from './History';
 import { Inspect } from './Inspect';
@@ -297,30 +298,37 @@ export function App() {
     download(`${base}_결과.xlsx`, data, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   }
 
-  async function execute(skill: Skill, values: SkillInputs): Promise<RunResult> {
+  /**
+   * 스킬을 실행한다. trial을 주면 스킬 만들기의 "여기까지 시험"이다: 저장·상신 직전에 멈추는 시험 실행(dryRun)으로만 돌리고,
+   * 실행 탭의 화면·초안의 시험 통과 기록·실행 기록·경로 캐시는 건드리지 않는다.
+   */
+  async function execute(skill: Skill, values: SkillInputs, trial?: TrialOptions): Promise<RunResult> {
     if (!settings) throw new Error('설정을 읽지 못했습니다');
+    const free = !trial && isFree;
     // 파일 입력은 여기서 읽어 데이터셋으로 넣어 둔다. 파일 내용은 모델에 보내지 않는다.
     const datasets = new DatasetStore();
     for (const spec of skill.inputs) {
-      const file = picked[spec.name];
+      const file = (trial ? trial.files : picked)[spec.name];
       if (spec.type !== 'file' || !spec.dataset || !file) continue;
       try {
         const table = await readTable(await file.arrayBuffer(), file.name);
         datasets.set(spec.dataset, table.columns, table.rows);
       } catch (e) {
         const message = `${spec.label ?? spec.name}: ${(e as Error).message}`;
-        setNotice(message);
+        if (!trial) setNotice(message);
         return { status: 'error', message, lastStep: 0, actions: 0, files: [], datasets: [], outputs: {}, elapsedMs: 0 };
       }
     }
-    setNotice('');
-    setEvents([]);
-    setResult(null);
-    setPreviews([]);
-    setLastFree(null);
+    if (!trial) {
+      setNotice('');
+      setEvents([]);
+      setResult(null);
+      setPreviews([]);
+      setLastFree(null);
+    }
 
-    const abort = new AbortController();
-    abortRef.current = abort;
+    const abort = trial ? { signal: trial.signal } : new AbortController();
+    if (!trial) abortRef.current = abort as AbortController;
     const collected: RunEvent[] = [];
     const startedAt = new Date().toISOString();
     let tabUrl = '';
@@ -328,8 +336,8 @@ export function App() {
     try {
       const tab = await targetTab();
       tabUrl = tab.url;
-      const active = isFree ? buildFreeSkill(tab.url, allowWrite, undefined, false, false, [], true) : skill;
-      if (isFree) {
+      const active = free ? buildFreeSkill(tab.url, allowWrite, undefined, false, false, [], true) : skill;
+      if (free) {
         const origin = `${new URL(tab.url).origin}/*`;
         if (!(await browser.permissions.contains({ origins: [origin] }))) {
           throw new Error(`이 사이트(${new URL(tab.url).host})는 Dogent의 허용 목록에 없습니다. dogent.config.ts의 sitePermissions에 추가해야 합니다`);
@@ -343,10 +351,10 @@ export function App() {
         browser: new ChromeBrowser(tab.id),
         datasets,
         signal: abort.signal,
-        dryRun: !isFree && skill.risk === 'R3' && dryRun,
+        dryRun: trial ? true : !isFree && skill.risk === 'R3' && dryRun,
         direct: settings.skillDirect,
         // 자유 요청은 매번 내용이 달라 다시 쓸 경로가 없다.
-        paths: settings.pathCache && !isFree ? pathStore : undefined,
+        paths: settings.pathCache && !isFree && !trial ? pathStore : undefined,
         files: {
           async save(filename, data) {
             download(filename, data, /\.html$/i.test(filename) ? 'text/html' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -354,12 +362,18 @@ export function App() {
         },
         ui: {
           ask: (text) =>
-            new Promise<string>((resolve, reject) => {
+            trial
+              ? new Promise<string>((resolve, reject) => {
+                  abort.signal.addEventListener('abort', () => reject(new Error('중지됨')), { once: true });
+                  void trial.ask(text).then(resolve);
+                })
+              : new Promise<string>((resolve, reject) => {
               abort.signal.addEventListener('abort', () => reject(new Error('중지됨')), { once: true });
               setQuestion({ text, answer: resolve });
             }),
+          // 시험 실행은 저장·상신 직전에 멈추므로 승인을 받는 일이 없다. 혹시 물으면 승인하지 않는다.
           approve: (request) =>
-            new Promise<boolean>((resolve, reject) => {
+            trial ? Promise.resolve(false) : new Promise<boolean>((resolve, reject) => {
               abort.signal.addEventListener('abort', () => reject(new Error('중지됨')), { once: true });
               setApproval({ request, decide: resolve });
             }),
@@ -368,6 +382,7 @@ export function App() {
         loginWaitMs: LOGIN_WAIT_MS,
         onEvent(e) {
           collected.push(e);
+          if (trial) return;
           setEvents([...collected]);
           // 로그인할 화면을 사람 앞으로 가져온다.
           if (e.type === 'login_wait') void browser.tabs.update(tab.id, { active: true }).catch(() => {});
@@ -385,6 +400,7 @@ export function App() {
         elapsedMs: 0,
       };
     }
+    if (trial) return res;
     setQuestion(null);
     setApproval(null);
     setResult(res);
@@ -669,7 +685,7 @@ export function App() {
       <div className="main" hidden={sheet !== null}>
       {tab === 'history' && <History names={Object.fromEntries([...skills.map((s) => [s.id, s.name]), [FREE_SKILL_ID, '자유 요청']])} onExport={exportLog} />}
 
-      {tab === 'author' && <Author bundledIds={bundled.map((s) => s.id)} drafts={drafts} onChange={reloadDrafts} llm={() => new OpenAiCompatClient(effectiveSettings(settings), undefined, 2048)} seed={seed} onSeedTaken={() => setSeed(null)} />}
+      {tab === 'author' && <Author bundledIds={bundled.map((s) => s.id)} drafts={drafts} onChange={reloadDrafts} llm={() => new OpenAiCompatClient(effectiveSettings(settings), undefined, 2048)} onTrial={(skill, values, trial) => execute(skill, values, trial)} seed={seed} onSeedTaken={() => setSeed(null)} />}
 
       {skillErrors.map((e) => (
         <p key={e} className="notice error">

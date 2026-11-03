@@ -1146,3 +1146,428 @@ details.batch > summary,
 .result .md-table-scroll {
   background: var(--surface);
 }
+
+/* 스킬 만들기: 대화 + 단계 카드 편집기 (Flow.tsx, Author.tsx) */
+.idle {
+  display: grid;
+  gap: 10px;
+}
+.idle textarea {
+  width: 100%;
+  resize: vertical;
+}
+.entry-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+.entry-grid #create-words {
+  grid-column: 1 / -1;
+}
+.flow-editor {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.flow-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.flow-top .lint {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+.undo-bar {
+  display: inline-flex;
+  gap: 2px;
+}
+.chip.risk-R1 {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+.chip.risk-R2 {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+.chip.risk-R3 {
+  background: var(--risk-soft);
+  color: var(--risk);
+}
+.icon-btn {
+  padding: 2px 8px;
+  min-width: 28px;
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid transparent;
+  font-weight: 600;
+}
+.icon-btn:hover:not(:disabled) {
+  background: var(--hover);
+  color: var(--ink);
+}
+.chip-btn {
+  padding: 2px 8px;
+  font-size: 12px;
+  font-weight: 500;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+.add-chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.panel {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 10px;
+  background: var(--surface);
+}
+.panel > summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 13px;
+  padding: 2px 0;
+}
+.panel[open] > summary {
+  margin-bottom: 6px;
+}
+.badge-warn {
+  color: var(--warn);
+  font-weight: 500;
+}
+.info-fields {
+  display: grid;
+  gap: 6px;
+}
+
+/* 단계 카드 */
+.step-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0;
+}
+.step-card {
+  --kind: var(--muted);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--kind);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 4px 6px;
+  min-width: 0;
+}
+.step-card.kind-navigate { --kind: #6b6a64; }
+.step-card.kind-click { --kind: var(--accent); }
+.step-card.kind-type,
+.step-card.kind-select { --kind: #b0700a; }
+.step-card.kind-extract,
+.step-card.kind-download,
+.step-card.kind-fill { --kind: var(--ok); }
+.step-card.kind-summarize,
+.step-card.kind-goal { --kind: #7a45b8; }
+.step-card.kind-report { --kind: var(--ok); }
+.step-card.submit {
+  border-color: var(--risk);
+  background: var(--risk-soft);
+}
+.step-card.locked {
+  background: var(--sunken);
+}
+.step-card.open {
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.step-card.drop-over {
+  outline: 2px dashed var(--accent);
+  outline-offset: 1px;
+}
+.step-card.flash {
+  animation: flow-flash 1.6s ease-out;
+}
+@keyframes flow-flash {
+  0%, 60% { box-shadow: 0 0 0 3px var(--warn); }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+.step-head {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+.grip {
+  flex: none;
+  cursor: grab;
+  color: var(--muted);
+  font-size: 12px;
+  padding: 4px 2px;
+  user-select: none;
+}
+.grip.off {
+  cursor: default;
+  font-size: 10px;
+}
+.step-toggle {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  text-align: left;
+  white-space: normal;
+  background: transparent;
+  color: var(--ink);
+  border: 0;
+  padding: 4px 4px;
+  font-weight: 500;
+}
+.step-no {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--kind);
+  color: var(--surface);
+  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.step-glyph {
+  flex: none;
+  width: 18px;
+  text-align: center;
+  color: var(--kind);
+}
+.step-title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  line-height: 1.35;
+}
+.step-kind {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 500;
+}
+.badge-submit {
+  flex: none;
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--risk);
+  color: #fff;
+  font-weight: 600;
+}
+.card-warn {
+  margin: 4px 4px 2px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--warn-soft);
+  color: var(--warn);
+  font-size: 12px;
+}
+.step-menu,
+.step-body {
+  display: grid;
+  gap: 6px;
+  padding: 6px 4px 4px;
+}
+.step-menu .menu-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 12px;
+}
+.step-menu .menu-row > span:first-child {
+  flex: none;
+  width: 62px;
+  color: var(--muted);
+}
+.step-body label {
+  display: grid;
+  gap: 2px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.step-body label.check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.step-body textarea,
+.step-body input:not([type='checkbox']) {
+  width: 100%;
+  color: var(--ink);
+}
+.hint-inline {
+  font-weight: 400;
+}
+.args-view {
+  display: grid;
+  gap: 2px;
+}
+.args-view code,
+.step-body code {
+  font-size: 11px;
+  overflow-wrap: anywhere;
+  background: var(--sunken);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.param-box {
+  display: grid;
+  gap: 4px;
+  padding: 6px;
+  border: 1px dashed var(--line);
+  border-radius: 6px;
+}
+.param-box .param {
+  display: grid;
+  gap: 4px;
+}
+.step-tools button {
+  padding: 3px 8px;
+  font-size: 12px;
+}
+
+/* 카드 사이 삽입 지점 */
+.insert-point {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 14px;
+  flex-wrap: wrap;
+  list-style: none;
+}
+.insert-point .plus {
+  padding: 0 8px;
+  line-height: 14px;
+  height: 14px;
+  font-size: 11px;
+  background: transparent;
+  color: var(--muted);
+  border: 1px dashed transparent;
+  border-radius: 999px;
+}
+.insert-point .plus:hover,
+.insert-point .plus:focus-visible,
+.insert-point.open .plus {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--surface);
+}
+.adder-li {
+  list-style: none;
+}
+
+/* 시험 실행 */
+.trial {
+  margin: 4px;
+  padding: 8px;
+  border-radius: 6px;
+  background: var(--sunken);
+  display: grid;
+  gap: 6px;
+}
+.trial label {
+  display: grid;
+  gap: 2px;
+  font-size: 12px;
+}
+.trial .notice {
+  margin: 0;
+}
+
+/* 입력값 */
+.inputs-list {
+  display: grid;
+  gap: 8px;
+}
+.input-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.input-row .wide {
+  grid-column: 1 / -1;
+}
+.input-row input,
+.input-row select {
+  width: 100%;
+  min-width: 0;
+}
+
+/* 하단 고정 대화 입력 */
+.flow-chat {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  margin: 4px -12px -12px;
+  padding: 8px 12px 12px;
+  background: var(--bg);
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 6px;
+}
+.chat-log {
+  max-height: 180px;
+  overflow-y: auto;
+  display: grid;
+  gap: 6px;
+}
+.chat-msg {
+  font-size: 12px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+.chat-msg p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+.chat-msg.user {
+  background: var(--accent-soft);
+  border-color: transparent;
+}
+.chat-msg.error {
+  background: var(--risk-soft);
+  color: var(--risk);
+}
+.chat-changes,
+.chat-skipped {
+  margin: 4px 0 0;
+  padding-left: 16px;
+}
+.chat-skipped {
+  color: var(--warn);
+}
+.chat-run {
+  margin: 0;
+}
+.chat-input {
+  display: flex;
+  gap: 6px;
+  align-items: flex-end;
+}
+.chat-input textarea {
+  flex: 1;
+  min-width: 0;
+  resize: none;
+}
+.flow-editor,
+.step-card,
+.panel {
+  overflow-wrap: anywhere;
+}

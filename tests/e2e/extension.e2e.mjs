@@ -153,6 +153,20 @@ try {
     }
   }
 
+  /** 접이식 칸을 연다 (스킬 정보, 원문). 이미 열려 있으면 그대로 둔다. */
+  async function openPanel(panel, id) {
+    if (!(await panel.locator(id).evaluate((el) => el.open))) await panel.click(id + ' > summary');
+  }
+  /** 저장하기 전에 스킬 정보를 채운다. 이름을 먼저 적으면 ID를 제안하므로 ID는 그 뒤에 덮어쓴다. */
+  async function fillInfo(panel, { id, name, desc, owner = '생산관리' }) {
+    await openPanel(panel, '#info-panel');
+    await panel.fill('#a-name', name);
+    await panel.fill('#a-id', id);
+    await panel.fill('#a-desc', desc ?? `녹화로 만든 ${name}`);
+    await panel.fill('#a-owner', owner);
+  }
+  const recMeta = new WeakMap();
+
   /** 실패했을 때 모델이 무엇을 했는지 보이도록 동작 기록을 붙인다. */
   function check(r, fn) {
     try {
@@ -484,19 +498,19 @@ try {
     assert.match(list, /"조회" 누름/);
     assert.match(list, /다음 요청에 답한다: \{line\}을 선택하고 조회해서 총 몇 건인지 알려줘/);
     assert.equal(await panel.inputValue('[data-param-name="0"]'), 'line');
-    assert.equal(await panel.inputValue('#a-desc'), '8라인을 선택하고 조회해서 총 몇 건인지 알려줘');
     // 이름을 바꾸면 마지막 단계의 자리표시자도 따라 바뀐다.
     await panel.fill('[data-param-name="0"]', 'fab_line');
     await panel.fill('[data-param-desc="0"]', '조회할 라인 (예: 7라인)');
-    await panel.locator('#a-id').click();
+    await panel.locator('h2').first().click();
     assert.match(await rec.innerText(), /\{fab_line\}을 선택하고/);
     await panel.screenshot({ path: join(ROOT, 'test-results/panel-run-to-skill.png'), fullPage: true });
 
-    await panel.fill('#a-id', 'wip-count-run');
-    await panel.fill('#a-name', '라인 재공 건수');
-    await panel.fill('#a-owner', '생산관리');
     await panel.click('#review-draft');
     await panel.locator('#lint').waitFor();
+    // 스킬 정보는 저장할 때 정한다. 실행에서 옮긴 초안은 설명이 이미 채워져 있다.
+    await openPanel(panel, '#info-panel');
+    assert.equal(await panel.inputValue('#a-desc'), '8라인을 선택하고 조회해서 총 몇 건인지 알려줘');
+    await fillInfo(panel, { id: 'wip-count-run', name: '라인 재공 건수', desc: '8라인을 선택하고 조회해서 총 몇 건인지 알려줘' });
     const source = await panel.inputValue('#draft-src');
     assert.match(source, /name: fab_line/);
     assert.match(source, /`\{"ref":"라인","value":"\{fab_line\}"\}`/);
@@ -618,10 +632,7 @@ try {
   await scenario('스킬 만들기: 녹화 중에 매개변수 이름·설명, 목적, 말로 단계, 화면 정리를 넣고 다른 검색어로 실행', async (openPages) => {
     const { target, panel } = await openPages('/wip.html');
     await panel.click('#tab-author');
-    await panel.fill('#a-id', 'wip-find');
-    await panel.fill('#a-name', '재공 찾아 정리');
-    await panel.fill('#a-desc', '제품코드로 재공을 검색해 공정별로 정리한다');
-    await panel.fill('#a-owner', '생산관리');
+    // 스킬 정보를 먼저 적지 않아도 바로 녹화를 시작할 수 있다.
     await panel.click('#rec-start');
     await panel.locator('#rec').waitFor();
 
@@ -656,6 +667,9 @@ try {
     assert.match(await panel.locator('.rec-list').innerText(), /"재공 목록" 표 \("다음" 버튼으로 끝 페이지까지\) 정리: 공정별 건수를 정리한다/);
     await panel.screenshot({ path: join(ROOT, 'test-results/panel-author-flex.png'), fullPage: true });
     await panel.click('#rec-stop');
+    // 끝나면 원문이 아니라 단계 카드 편집기로 열린다.
+    await panel.locator('#step-list [data-card]').first().waitFor();
+    await fillInfo(panel, { id: 'wip-find', name: '재공 찾아 정리', desc: '제품코드로 재공을 검색해 공정별로 정리한다' });
 
     const source = await panel.locator('#draft-src').inputValue();
     assert.match(source, /- name: keyword\n {4}label: "제품코드"\n {4}description: "제품코드 검색창에 넣을 값"/);
@@ -683,10 +697,6 @@ try {
     const { target, panel } = await openPages('/fw.html');
     await fwApi('DELETE');
     await panel.click('#tab-author');
-    await panel.fill('#a-id', 'fw-recorded');
-    await panel.fill('#a-name', '방화벽 신청 녹화');
-    await panel.fill('#a-desc', '녹화로 만든 방화벽 해제 신청');
-    await panel.fill('#a-owner', '인프라운영');
     await panel.click('#rec-start');
     await panel.locator('#rec').waitFor();
 
@@ -707,15 +717,21 @@ try {
     await panel.locator('.rec-list li', { hasText: '프로토콜' }).locator('input[type=checkbox]').uncheck();
     await panel.screenshot({ path: join(ROOT, 'test-results/panel-author-recording.png'), fullPage: true });
     await panel.click('#rec-stop');
+    await panel.locator('#step-list [data-card]').first().waitFor();
+    await fillInfo(panel, { id: 'fw-recorded', name: '방화벽 신청 녹화', desc: '녹화로 만든 방화벽 해제 신청', owner: '인프라운영' });
 
     // 초안은 손대지 않아도 배포 기준(B 이상)이고, 상신 통제가 선언되어 있다.
     assert.equal(await panel.locator('#lint').getAttribute('data-grade'), 'B');
+    // 상신 단계 카드는 "승인 필요" 표시가 붙고, 위험 등급이 R3으로 보인다.
+    assert.equal(await panel.locator('#step-list .badge-submit').count(), 1);
+    assert.equal(await panel.locator('#risk-chip').getAttribute('data-risk'), 'R3');
     const source = await panel.locator('#draft-src').inputValue();
     assert.match(source, /risk: R3/);
     assert.match(source, /submit_steps: \[8\]/);
     assert.match(source, /submit_labels: \["상신"\]/);
     await panel.screenshot({ path: join(ROOT, 'test-results/panel-author-lint.png'), fullPage: true });
     // 내용을 깨뜨리면 저장할 수 없다.
+    await openPanel(panel, '#src-panel');
     await panel.fill('#draft-src', source.replace('submit_steps: [8]', 'submit_steps: [2]'));
     assert.equal(await panel.locator('#lint').getAttribute('data-grade'), 'F');
     assert.ok(await panel.locator('#draft-save').isDisabled());
@@ -752,13 +768,12 @@ try {
 
   const startRecording = async (panel, id, name) => {
     await panel.click('#tab-author');
-    await panel.fill('#a-id', id);
-    await panel.fill('#a-name', name);
-    await panel.fill('#a-desc', `녹화로 만든 ${name}`);
-    await panel.fill('#a-owner', '생산관리');
+    recMeta.set(panel, { id, name });
     await panel.click('#rec-start');
     await panel.locator('#rec').waitFor();
   };
+  /** 녹화를 마친 뒤, startRecording에서 정한 이름으로 스킬 정보를 채운다. */
+  const finishInfo = async (panel) => fillInfo(panel, recMeta.get(panel));
 
   await scenario('스킬 만들기: 새 창에서 행을 고르고 확인·알림 창을 거친 조작도 녹화', async (openPages) => {
     const { target, panel } = await openPages('/hold.html');
@@ -784,6 +799,8 @@ try {
       await panel.getByText('알림 "접수되었습니다. 접수 번호: HR-000001"').waitFor();
       await panel.screenshot({ path: join(ROOT, 'test-results/panel-author-popup.png'), fullPage: true });
       await panel.click('#rec-stop');
+      await panel.locator('#step-list [data-card]').first().waitFor();
+      await finishInfo(panel);
 
       const source = await panel.locator('#draft-src').inputValue();
       assert.match(source, /\{"ref":"선택","row":"P7-00031"\}/);
@@ -812,6 +829,8 @@ try {
     await panel.locator('#rec-paging [data-next="다음"]').click();
     await panel.locator('#rec[data-count="3"]').waitFor();
     await panel.click('#rec-stop');
+    await panel.locator('#step-list [data-card]').first().waitFor();
+    await finishInfo(panel);
     const source = await panel.locator('#draft-src').inputValue();
     assert.match(source, /"dataset":"data1","next_ref":"다음"\}/);
     assert.notEqual(await panel.locator('#lint').getAttribute('data-grade'), 'F', source);
@@ -830,6 +849,8 @@ try {
     await panel.locator('[data-table]').first().click();
     await panel.locator('#rec-paging [data-next="다음"]').click();
     await panel.click('#rec-stop');
+    await panel.locator('#step-list [data-card]').first().waitFor();
+    await finishInfo(panel);
     const before = await panel.locator('#draft-src').inputValue();
     const grade = await panel.locator('#lint').getAttribute('data-grade');
 
@@ -898,6 +919,8 @@ try {
     await panel.locator('#rec[data-count="7"]').waitFor();
     await panel.screenshot({ path: join(ROOT, 'test-results/panel-author-fill.png'), fullPage: true });
     await panel.click('#rec-stop');
+    await panel.locator('#step-list [data-card]').first().waitFor();
+    await finishInfo(panel);
 
     const source = await panel.locator('#draft-src').inputValue();
     assert.match(source, /type: file\n\s+dataset: src1/);
@@ -924,6 +947,138 @@ try {
     assert.deepEqual(await adjustApi(), [adjustRows.map((row) => row.map(String))]);
     assert.doesNotMatch(await panel.locator('.log').innerText(), /모델 응답/);
     await adjustApi('DELETE');
+  });
+
+  await scenario('스킬 만들기: 말로 만든 초안을 카드로 고치고(끌기·위아래·되돌리기), 여기까지 시험하고, 말로 고치기 오류를 읽을 수 있게 보임', async (openPages) => {
+    const { target, panel } = await openPages('/wip.html');
+    await panel.click('#tab-author');
+    // 시작 화면: 스킬 정보를 먼저 받지 않고 큰 입력창과 세 입구만 있다
+    assert.equal(await panel.locator('#a-id').count(), 0);
+    assert.ok(await panel.locator('#create-words').isDisabled(), '말을 적기 전에는 말로 만들기를 못 누름');
+    await panel.fill('#idle-request', '라인별 재공 건수를 알려 주는 스킬');
+    await panel.click('#create-words');
+    await panel.locator('#step-list [data-card]').first().waitFor({ timeout: RUN_TIMEOUT });
+    const kinds = () => panel.locator('#step-list [data-card]').evaluateAll((els) => els.map((e) => e.dataset.kind));
+    assert.deepEqual(await kinds(), ['navigate', 'select', 'click', 'goal']);
+    // 말로 만든 초안은 이름·설명이 이미 채워져 있다
+    await openPanel(panel, '#info-panel');
+    assert.equal(await panel.inputValue('#a-name'), '라인 재공 건수');
+    assert.match(await panel.inputValue('#a-desc'), /라인별 재공 건수를 알려 주는 스킬/);
+    assert.equal(await panel.locator('#risk-chip').getAttribute('data-risk'), 'R1');
+    await panel.screenshot({ path: join(ROOT, 'test-results/panel-flow-cards.png'), fullPage: true });
+
+    // 1번(시작 화면) 카드는 잠겨 있다
+    assert.equal(await panel.locator('[data-card="0"] .grip.off').count(), 1);
+    await panel.click('[data-menu="0"]');
+    assert.ok(await panel.locator('[data-card="0"] [data-act=del]').isDisabled());
+    await panel.click('[data-menu="0"]');
+
+    // 위/아래 버튼과 되돌리기
+    const heads = async () => (await panel.inputValue('#draft-src')).match(/^\d+\. .*/gm);
+    const before = await heads();
+    await panel.click('[data-toggle="2"]');
+    await panel.getByRole('button', { name: '3번 단계를 위로' }).click();
+    const moved = await heads();
+    assert.notDeepEqual(moved, before);
+    assert.match(moved[1], /^2\. click으로/);
+    await panel.click('#flow-undo');
+    assert.deepEqual(await heads(), before);
+    await panel.click('#flow-redo');
+    assert.deepEqual(await heads(), moved);
+    await panel.keyboard.press('Control+z');
+    assert.deepEqual(await heads(), before, 'Ctrl+Z로도 되돌림');
+
+    // 끌어서 순서 바꾸기 (선택 카드를 위로)
+    await panel.locator('[data-card="2"] .grip').dragTo(panel.locator('[data-card="1"]'));
+    assert.deepEqual(await heads(), moved);
+    await panel.click('#flow-undo');
+
+    // 시작 화면 카드로는 옮길 수 없다
+    await panel.locator('[data-card="1"] .grip').dragTo(panel.locator('[data-card="0"]'));
+    assert.deepEqual(await heads(), before);
+
+    // 문장을 직접 고치면 문서에 반영되고, 한 번에 되돌려진다
+    await panel.click('[data-toggle="3"]');
+    await panel.fill('[data-card="3"] [data-field=head]', '총 건수를 확인해 한 줄로 보고한다');
+    assert.match(await panel.inputValue('#draft-src'), /4\. 총 건수를 확인해 한 줄로 보고한다/);
+    await panel.click('#flow-undo');
+    assert.doesNotMatch(await panel.inputValue('#draft-src'), /한 줄로 보고한다/);
+
+    // 말로 단계 넣기: 3번 자리에 (위치는 ＋ 삽입 지점)
+    await panel.click('[data-insert="2"] .plus');
+    await panel.click('[data-insert="2"] [data-add-kind=words]');
+    await panel.fill('#add-words-text', '안내 창이 있으면 닫는다');
+    await panel.click('#add-words-ok');
+    assert.deepEqual(await kinds(), ['navigate', 'select', 'goal', 'click', 'goal']);
+    await panel.click('#flow-undo');
+
+    // 여기까지 시험: 1번부터 3번 카드(조회)까지만 실제 화면에서 돌리고, 저장하지 않는다
+    await panel.click('[data-trial="2"]');
+    await panel.locator('[data-trial-panel="2"] [data-trial-input=line]').waitFor();
+    assert.equal(await panel.inputValue('[data-trial-input=line]'), '7라인', '기본값을 미리 채움');
+    await panel.fill('[data-trial-input=line]', '8라인');
+    await panel.click('[data-trial-run]');
+    const done = panel.locator('[data-trial-panel="2"][data-trial-phase=done]');
+    await done.waitFor({ timeout: RUN_TIMEOUT });
+    assert.match((await done.getAttribute('data-trial-status')) ?? '', /^(done|dryrun)$/, await done.innerText());
+    assert.equal(await target.locator('#line').inputValue(), '8라인');
+    assert.match(await target.locator('#total').innerText(), /^총 \d+건$/);
+    await panel.screenshot({ path: join(ROOT, 'test-results/panel-flow-trial.png'), fullPage: true });
+
+    // 말로 고치기: 모의 모델은 연산을 내지 않으므로, 읽을 수 없는 답은 사람이 읽을 오류로 보인다 (카드는 그대로)
+    const same = await heads();
+    await panel.fill('#flow-chat-input', '3번 앞에 HOLD만 거르는 단계 추가');
+    await panel.click('#flow-chat-send');
+    await panel.locator('.chat-msg.error').waitFor({ timeout: RUN_TIMEOUT });
+    assert.match(await panel.locator('.chat-msg.error').innerText(), /고치지 못했습니다.*읽지 못했습니다/);
+    assert.deepEqual(await heads(), same);
+
+    // 저장·상신 통제 경고: 승인 표시가 없는 "상신" 단계를 말로 넣으면 경고가 뜬다
+    await panel.click('[data-insert="3"] .plus');
+    await panel.click('[data-insert="3"] [data-add-kind=words]');
+    await panel.fill('#add-words-text', '내용을 확인하고 상신한다');
+    await panel.click('#add-words-ok');
+    assert.match(await panel.locator('#flow-warnings').innerText(), /승인 필요/);
+    await panel.click('#flow-undo');
+    assert.equal(await panel.locator('#flow-warnings').count(), 0);
+
+    // 저장한다 (이름·설명은 채워져 있고 ID와 담당 부서만 정한다)
+    await panel.fill('#a-id', 'wip-count-words');
+    await panel.fill('#a-owner', '생산관리');
+    await panel.click('#draft-save');
+    await panel.locator('.draft[data-id="wip-count-words"]').waitFor();
+    // 시험 실행은 초안 저장·통과 기록을 남기지 않는다
+    assert.equal(await panel.locator('.draft[data-id="wip-count-words"]').getAttribute('data-trial'), 'none');
+  });
+
+  await scenario('스킬 만들기: 빈 흐름에서 시작해 카드 사이에 여기서부터 녹화로 단계를 끼워 넣음', async (openPages) => {
+    const { target, panel } = await openPages('/wip.html');
+    await panel.click('#tab-author');
+    await panel.click('#create-blank');
+    await panel.locator('#step-list [data-card]').first().waitFor();
+    assert.equal(await panel.locator('#step-list [data-card]').count(), 2);
+
+    await panel.click('[data-insert="1"] .plus');
+    await panel.click('[data-insert="1"] [data-add-kind=record]');
+    await panel.locator('#splice-banner').waitFor();
+    await target.bringToFront();
+    await target.selectOption('#line', '7라인');
+    await target.click('#query');
+    await target.locator('#total').filter({ hasText: '총' }).waitFor();
+    await panel.bringToFront();
+    await panel.locator('#rec[data-count="2"]').waitFor();
+    await panel.click('#rec-stop');
+
+    // 녹화한 조각이 1번 뒤, 보고 단계 앞에 들어가고 시작 화면은 하나뿐이다
+    await panel.locator('#step-list [data-card]').nth(2).waitFor();
+    const kinds = await panel.locator('#step-list [data-card]').evaluateAll((els) => els.map((e) => e.dataset.kind));
+    assert.deepEqual(kinds, ['navigate', 'select', 'click', 'report']);
+    const source = await panel.inputValue('#draft-src');
+    assert.match(source, /"ref":"라인","value":"\{v1\}"/);
+    assert.equal((source.match(/navigate로/g) ?? []).length, 1);
+    // 입력값 패널에 끼워 넣은 입력이 보인다
+    await openPanel(panel, '#inputs-panel');
+    assert.equal(await panel.locator('#inputs-panel [data-input="v1"]').count(), 1);
   });
 
   await scenario('스킬 가져오기: 받은 SKILL.md를 검사해 초안으로 쓰고, 모델이 정한 동작은 다음 실행에서 기억한 경로로 재사용', async (openPages) => {
