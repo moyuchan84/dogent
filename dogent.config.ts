@@ -42,6 +42,8 @@ export const dogentConfig = {
     apiKey: '',
     model: 'gemma',
     jsonMode: false,
+    // 모델이 화면 그림(이미지)을 받을 때만 켠다. 사내 게이트웨이의 모델이 이미지 입력을 지원하는지 먼저 확인할 것.
+    vision: false,
     timeoutScale: 1,
     skillDirect: true,
     pathCache: true,

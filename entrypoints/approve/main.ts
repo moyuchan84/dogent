@@ -1,5 +1,6 @@
 import { browser } from 'wxt/browser';
 import type { ApprovalRequest } from '@/src/core/types';
+import { UPLOAD_BUTTON } from '@/src/core/upload';
 import '../sidepanel/style.css';
 
 /**
@@ -57,7 +58,7 @@ async function show() {
       { className: 'approval', id: 'approval' },
       el('b', {}, `"${request.button}" 전에 확인해 주세요`),
       el('p', { className: 'hint' }, `${request.skill} · ${request.url}`),
-      el('p', { className: 'hint' }, '화면에서 다시 읽은 현재 값입니다. 승인하면 실제로 제출됩니다.'),
+      el('p', { className: 'hint' }, request.button === UPLOAD_BUTTON ? '아래 파일이 이 사이트의 파일 칸에 들어갑니다. 승인한 파일만 올라가며, 올린 뒤 제출은 따로 승인합니다.' : '화면에서 다시 읽은 현재 값입니다. 승인하면 실제로 제출됩니다.'),
       fields,
       ...tables,
       el('div', { className: 'row' }, decline, approve),

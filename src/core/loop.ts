@@ -15,6 +15,7 @@ import { approvalText, parseScriptOutput, SCRIPT_OUTPUT_MAX, scriptHash, scriptL
 import { findInSnapshot, renderSnapshot } from './snapshot';
 import { listForPrompt, prepareChild, summarizeChild } from './subagent';
 import { transform } from './transform';
+import { shotDataUrl } from './upload';
 import type {
   ActResult,
   ActionTarget,
@@ -31,6 +32,7 @@ import type {
   LlmPort,
   PageSnapshot,
   PathStore,
+  Screenshot,
   RunEvent,
   RunResult,
   RunStatus,
@@ -73,7 +75,16 @@ export interface RunDeps {
    * 에이전트는 비밀번호 칸에 입력하지 않는다 (docs/09 D9).
    */
   loginWaitMs?: number;
+  /**
+   * 사내 모델이 화면 그림(image_url)을 받는다 (llm.vision). 기본 꺼짐.
+   * 켜져 있으면 모델이 look을 고르거나 화면에 조작할 요소가 거의 없을 때 화면 그림을 프롬프트에 붙인다.
+   * 꺼져 있으면 그림을 찍지도 붙이지도 않으며, 모델에 가는 프롬프트는 이 기능이 없던 때와 같다.
+   */
+  vision?: boolean;
 }
+
+/** 요소가 이만큼 이하이면 요소 목록만으로는 화면을 읽을 수 없다고 보고 그림을 붙인다 (canvas 그리드 등) */
+const SPARSE_ELEMENTS = 2;
 
 const MAX_FORMAT_RETRIES = 2;
 const MAX_STRIKES = 3;
@@ -289,6 +300,22 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps, memo: PathM
   let seenLines: Set<string> | null = null;
   const MAX_CHANGES = 10;
 
+  const vision = deps.vision === true;
+  /** look으로 찍어 둔 그림. 다음 판단 한 번에만 붙인다. */
+  let lookShot: Screenshot | null = null;
+
+  /** 이번 판단에 붙일 화면 그림. look으로 찍어 둔 것이 먼저이고, 없으면 화면에 조작할 요소가 거의 없을 때 자동으로 찍는다. */
+  async function imageFor(snap: PageSnapshot): Promise<string | undefined> {
+    if (!vision) return undefined;
+    const kept = lookShot;
+    lookShot = null;
+    if (kept) return shotDataUrl(kept);
+    const els = snap.items.filter((i) => i.kind === 'el').length;
+    if (!browser.screenshot || els > SPARSE_ELEMENTS || !hostAllowed(snap.url, skill.domains)) return undefined;
+    // 그림을 못 찍어도(로그인 화면, 권한 없음 등) 판단은 요소 목록만으로 계속한다.
+    return browser.screenshot().then(shotDataUrl, () => undefined);
+  }
+
   async function decide(n: number, snap: PageSnapshot): Promise<Action> {
     const page = renderSnapshot(snap);
     const lines = page.split('\n').map((l) => l.replace(/^\[\d+\] /, ''));
@@ -308,13 +335,15 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps, memo: PathM
       page,
       changes,
       step: { n: current, total: steps.length, text: withOutputs(promptSteps[current - 1]), unmet: unmetNow(snap) },
+      vision,
+      image: await imageFor(snap),
     });
     for (let attempt = 0; ; attempt++) {
       const sent = Date.now();
       const text = await llm.complete(messages, signal);
       const sizeOf = (role: string) => messages.filter((m) => m.role === role).reduce((sum, m) => sum + m.content.length, 0);
       emit({ type: 'llm_usage', n, systemChars: sizeOf('system'), userChars: sizeOf('user'), replyChars: text.length, ms: Date.now() - sent });
-      const parsed = parseAction(text, snap, toolNames);
+      const parsed = parseAction(text, snap, toolNames, { vision });
       if (parsed.ok) return parsed.action;
       if (attempt >= MAX_FORMAT_RETRIES) {
         throw new Error(`모델이 형식에 맞는 응답을 내지 못했습니다: ${parsed.error}`);
@@ -635,6 +664,20 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps, memo: PathM
         if (!browser.goBack) return { ok: false, result: '이 환경에서는 뒤로 갈 수 없습니다' };
         return acted(await browser.goBack());
       }
+      case 'look': {
+        if (!vision) return { ok: false, result: '이 모델 설정은 화면 그림을 받지 않습니다 (llm.vision이 꺼져 있음). 화면 요소 목록으로 판단하세요' };
+        if (!browser.screenshot) return { ok: false, result: '이 환경에서는 화면을 찍을 수 없습니다' };
+        lookShot = await browser.screenshot();
+        return { ok: true, result: `화면을 찍었습니다 (${lookShot.width}×${lookShot.height}). 다음 판단에 그림이 함께 붙습니다` };
+      }
+      case 'upload_file': {
+        if (!browser.uploadFile) return { ok: false, result: '이 환경에서는 파일을 올릴 수 없습니다' };
+        const what = `[${action.args.ref}] 칸에 파일 "${action.args.path}"을(를) 올립니다`;
+        // 시험 실행은 올리기 직전에 멈춘다. 파일을 읽지도 확장에 보내지도 않는다.
+        if (deps.dryRun) return { ok: true, result: `시험 실행이라 하지 않았습니다: ${what}`, end: 'dryrun' };
+        // 사용자 승인은 확장의 승인 창에서 받는다 (BrowserPort.uploadFile). 승인 없이는 파일이 들어가지 않는다.
+        return acted(await browser.uploadFile(action.args.ref, action.args.path));
+      }
       case 'read_text': {
         if (!browser.readText) return { ok: false, result: '이 환경에서는 화면 글을 읽을 수 없습니다' };
         const text = await browser.readText(action.args.ref);
@@ -687,7 +730,7 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps, memo: PathM
         tool: parts.tool,
         args: JSON.parse(withOutputs(parts.literal, true)),
       });
-      const parsed = parseAction(reply, snap, toolNames);
+      const parsed = parseAction(reply, snap, toolNames, { vision });
       return parsed.ok ? parsed.action : null;
     } catch {
       return null;

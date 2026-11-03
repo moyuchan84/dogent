@@ -13,3 +13,4 @@ release
 
 # 확장 ID를 정하는 개인키 (CRX로 묶을 때만 쓴다)
 keys
+hub-data

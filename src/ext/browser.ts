@@ -2,6 +2,7 @@ import { browser, type Browser } from 'wxt/browser';
 import { allSites } from './sites';
 import type { SiteInspection } from '../core/inspect';
 import { mergeFrames } from '../core/snapshot';
+import { SHOT_MAX_BASE64, bytesToBase64, fitSize } from '../core/upload';
 import type {
   ActResult,
   BrowserPort,
@@ -11,7 +12,9 @@ import type {
   FrameSnapshot,
   PageDialog,
   PageSnapshot,
+  Screenshot,
   TableData,
+  UploadPayload,
 } from '../core/types';
 import { dialogHook, type DialogCommand } from '../page/dialogs';
 
@@ -39,6 +42,26 @@ const RUN_TIMEOUT_MS = 30_000;
 const HOOK_SCRIPT_ID = 'dogent-dialog-hook';
 /** 알림 창 처리기가 켜져 있다는 표시의 수명. 화면을 읽을 때마다 늘린다. 패널이 갑자기 닫혀도 이 시간이 지나면 풀린다. */
 const HOOK_TTL_MS = 10 * 60_000;
+
+/** 찍은 화면(data URL)을 긴 변 SHOT_MAX_SIDE로 줄이고, base64가 SHOT_MAX_BASE64를 넘으면 화질을 낮춰 다시 인코딩한다. */
+async function shrinkScreenshot(dataUrl: string): Promise<Screenshot> {
+  const bitmap = await createImageBitmap(await (await fetch(dataUrl)).blob());
+  try {
+    let { width, height } = fitSize(bitmap.width, bitmap.height);
+    for (let quality = 0.8; ; quality -= 0.15) {
+      const canvas = new OffscreenCanvas(width, height);
+      canvas.getContext('2d')!.drawImage(bitmap, 0, 0, width, height);
+      const blob = await canvas.convertToBlob({ type: 'image/jpeg', quality });
+      const base64 = bytesToBase64(new Uint8Array(await blob.arrayBuffer()));
+      if (base64.length <= SHOT_MAX_BASE64) return { mimeType: 'image/jpeg', base64, width, height };
+      // 화질을 더 낮추기 어려우면 크기를 줄인다.
+      if (quality <= 0.35) ({ width, height } = { width: Math.round(width * 0.75), height: Math.round(height * 0.75) });
+      if (width < 200) throw new Error('화면 그림이 너무 커서 상한 안으로 줄일 수 없습니다');
+    }
+  } finally {
+    bitmap.close();
+  }
+}
 
 /** 응답의 Content-Disposition에 적힌 파일 이름 */
 function dispositionName(header: string | null): string | undefined {
@@ -463,6 +486,46 @@ export class ChromeBrowser implements BrowserPort {
     await this.settle();
     const moved = await this.follow();
     return moved ? { ...res.reply.value, message: `${res.reply.value.message}.${moved}` } : res.reply.value;
+  }
+
+  /**
+   * 대상 탭의 보이는 화면을 찍는다. 긴 변을 1280px로 줄인 JPEG로, 용량 상한을 넘으면 화질을 낮춘다.
+   * 조작할 사이트 안의 탭인지와 로그인 화면인지는 부르는 쪽(BrowserTools)이 확인한다.
+   */
+  async screenshot(): Promise<Screenshot> {
+    await this.follow();
+    await this.waitLoaded();
+    const tab = await browser.tabs.get(this.tabId);
+    // captureVisibleTab은 창에서 보이는 탭만 찍는다.
+    if (!tab.active) {
+      await browser.tabs.update(this.tabId, { active: true });
+      await sleep(250);
+    }
+    let dataUrl: string;
+    try {
+      dataUrl = await browser.tabs.captureVisibleTab(tab.windowId, { format: 'jpeg', quality: 85 });
+    } catch (e) {
+      const m = (e as Error).message;
+      if (/all_urls|activeTab/.test(m)) {
+        throw new Error('화면 그림을 찍을 권한이 없습니다. Dogent 사이드 패널 → 설정 → "화면 그림 권한 허용"을 눌러 주세요 (모든 사이트의 화면을 읽을 수 있는 권한이라 처음 한 번 사용자가 허용해야 합니다)');
+      }
+      throw e;
+    }
+    return shrinkScreenshot(dataUrl);
+  }
+
+  /**
+   * ref의 파일 입력 칸(또는 그것을 여는 버튼·라벨)에 파일을 넣는다. 사용자 승인과 사이트·크기 검사는 부르는 쪽(BrowserTools)이 끝낸 뒤다.
+   */
+  async attachFile(ref: number, file: UploadPayload): Promise<ActResult> {
+    const target = this.refs.get(ref);
+    if (!target) return { ok: false, message: `ref ${ref} 이(가) 현재 화면에 없습니다` };
+    await this.point(target, '파일 올리기');
+    const [res] = await this.run<ActResult>('attachFile', [target.localRef, file.name, file.mime, file.base64], target.frame);
+    if (!res) return { ok: false, message: '프레임이 사라졌습니다' };
+    if (!res.reply.ok) return { ok: false, message: res.reply.error };
+    await this.settle();
+    return res.reply.value;
   }
 
   pressKey(key: string, ref?: number): Promise<ActResult> {

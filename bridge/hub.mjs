@@ -21,7 +21,7 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { WebSocketServer } from 'ws';
 import { DEFAULT_PORT, acceptAuth, lineReader, pipePath, randomNonce } from './protocol.mjs';
-import { HUB_TOOLS, PORT_TOOL, TOOLS } from './tools.mjs';
+import { HUB_TOOLS, PORT_TOOL, TOOLS, toContent } from './tools.mjs';
 
 const VERSION = '0.1.0';
 /** 승인 창이나 로그인을 기다리는 도구가 있어 넉넉히 둔다. */
@@ -275,7 +275,7 @@ export function createHub({ token, port = DEFAULT_PORT, pipe = pipePath(userInfo
         if (name !== PORT_TOOL && !TOOLS.some((t) => t.name === name)) return fail(-32602, `모르는 도구: ${name}`);
         try {
           const text = await callTool(name, req.params?.arguments ?? {});
-          return reply({ content: [{ type: 'text', text }] });
+          return reply({ content: toContent(name, text) });
         } catch (e) {
           return reply({ content: [{ type: 'text', text: e.message }], isError: true });
         }

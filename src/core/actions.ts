@@ -125,6 +125,16 @@ export const TOOL_ARGS = {
   /** 브라우저의 뒤로 가기 */
   go_back: z.object({}),
   /**
+   * 화면을 그림으로 본다. 다음 판단에 화면 그림이 함께 붙는다 (canvas 그리드, 차트처럼 요소 목록으로 읽을 수 없는 화면).
+   * 모델 설정 llm.vision이 켜져 있을 때만 쓸 수 있다.
+   */
+  look: z.object({}),
+  /**
+   * 페이지의 파일 입력 칸(ref는 그 칸이나 그것을 여는 버튼·라벨)에 PC의 파일을 넣는다. path는 올릴 수 있는 폴더 안의 파일이다.
+   * 저장·상신 허용(R3)일 때만 쓸 수 있고, 확장의 승인 창에서 사용자가 승인해야 넣는다.
+   */
+  upload_file: z.object({ ref, path: z.string().min(1) }),
+  /**
    * 화면의 글(source "page")이나 데이터셋을 지시대로 정리해 기록 값 name에 남긴다. 뒤 단계에서 {out.name}으로 쓴다.
    * 정리할 자료를 모델에 보낸다. 데이터셋은 앞부분 행만 보내므로, 많으면 transform으로 먼저 줄인다.
    */
@@ -160,7 +170,7 @@ export type ToolName = keyof typeof TOOL_ARGS;
 
 /** 모델 없이 실행할 수 있는 단계의 첫머리. 예: "select로 ...", "click으로 ..." */
 const DIRECT_STEP =
-  /^(navigate|open_tab|click|close_tab|press_key|scroll|go_back|type|select|extract_table|download_table|fill_table|transform|write_excel|write_html|excel_docs|excel_read|excel_write|excel_save|call_tool|run_skill|run_script|read_text|summarize|finish)(?:으로|로)\s/;
+  /^(navigate|open_tab|click|close_tab|press_key|scroll|go_back|upload_file|type|select|extract_table|download_table|fill_table|transform|write_excel|write_html|excel_docs|excel_read|excel_write|excel_save|call_tool|run_skill|run_script|read_text|summarize|finish)(?:으로|로)\s/;
 
 /**
  * 단계가 "도구로 ..."로 시작하고 `{...}` 인자가 적혀 있으면 그 도구 이름과 인자 원문을 돌려준다.
@@ -355,7 +365,7 @@ function pickObject(text: string): { value: Record<string, unknown> } | { error:
  * external은 쓸 수 있는 외부 도구 이름들. 모델이 call_tool로 감싸지 않고 도구 이름을 바로 tool에 적어도
  * call_tool로 받아 준다. 예: {"tool":"mes.lot_status","args":{"lot":"L1"}}
  */
-export function parseAction(text: string, snap?: PageSnapshot, external: string[] = []): ParseResult {
+export function parseAction(text: string, snap?: PageSnapshot, external: string[] = [], opts: { vision?: boolean } = {}): ParseResult {
   const picked = pickObject(text);
   if ('error' in picked) return { ok: false, error: picked.error };
   const raw = normalizeEnvelope(picked.value);
@@ -368,7 +378,8 @@ export function parseAction(text: string, snap?: PageSnapshot, external: string[
     if (!ext) {
       return {
         ok: false,
-        error: `알 수 없는 도구 "${env.data.tool}". 사용 가능: ${[...Object.keys(TOOL_ARGS), ...external].join(', ')}`,
+        // look은 llm.vision이 켜졌을 때만 쓸 수 있는 도구라서, 꺼져 있으면 목록에도 적지 않는다 (꺼져 있을 때의 응답은 예전과 같다).
+        error: `알 수 없는 도구 "${env.data.tool}". 사용 가능: ${[...Object.keys(TOOL_ARGS).filter((k) => opts.vision || k !== 'look'), ...external].join(', ')}`,
       };
     }
     const { dataset, ...inner } = rawArgs;

@@ -37,6 +37,7 @@ export function llmFromEnv(mode) {
       apiKey: env.WXT_LLM_API_KEY,
       model: env.WXT_LLM_MODEL,
       jsonMode: bool(env.WXT_LLM_JSON_MODE),
+      vision: bool(env.WXT_LLM_VISION),
       timeoutScale: Number(env.WXT_LLM_TIMEOUT_SCALE) || undefined,
       headers: env.WXT_LLM_HEADERS?.trim() ? JSON.parse(env.WXT_LLM_HEADERS) : undefined,
       userId: env.WXT_LLM_USER_ID,
@@ -95,12 +96,14 @@ export function buildDefines(mode) {
   const skillsUrl = loadEnv(mode).WXT_SKILLS_URL?.trim() || undefined;
   // 공용 시스템 사전 서버의 주소 (사용자가 dogent config systemsUrl로 바꿀 수 있다)
   const systemsUrl = loadEnv(mode).WXT_SYSTEMS_URL?.trim() || undefined;
+  // Hub 서버의 주소 (사용자가 dogent config hubUrl로 바꿀 수 있다)
+  const hubUrl = loadEnv(mode).WXT_HUB_URL?.trim() || undefined;
   return {
     llm,
     skills: bundledSkills(samplesWanted(mode)),
     define: {
       // samples: 예시 스킬을 넣었는지. 앱은 개발용 빌드(모드 없음)에서만 예시를 처음부터 보이고, 집·회사 빌드는 숨겨 둔다
-      __DOGENT_BUILD__: JSON.stringify({ mode, version, llm, ...(skillsUrl ? { skillsUrl } : {}), ...(systemsUrl ? { systemsUrl } : {}), ...(samplesWanted(mode) ? { samples: true } : {}) }),
+      __DOGENT_BUILD__: JSON.stringify({ mode, version, llm, ...(skillsUrl ? { skillsUrl } : {}), ...(systemsUrl ? { systemsUrl } : {}), ...(hubUrl ? { hubUrl } : {}),...(samplesWanted(mode) ? { samples: true } : {}) }),
       __DOGENT_SKILLS__: JSON.stringify(bundledSkills(samplesWanted(mode))),
       __DOGENT_HOST__: JSON.stringify(Object.fromEntries(['native-host.mjs', 'protocol.mjs'].map((f) => [f, readFileSync(join(ROOT, 'bridge', f), 'utf8')]))),
     },

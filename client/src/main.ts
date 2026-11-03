@@ -399,7 +399,7 @@ async function main(): Promise<number> {
     for (const f of report.findings) console.log(`  [${f.level}] ${f.rule}${f.step ? ` ${f.step}단계` : ''}: ${f.message}`);
     return report.grade === 'F' ? 1 : 0;
   }
-  if (cmd === 'sync' && !cfg.teamSkillsUrl && !cfg.systemsUrl) {
+  if (cmd === 'sync' && !cfg.teamSkillsUrl && !cfg.systemsUrl && !cfg.hubUrl) {
     if (!cfg.teamSkills) {
       console.log('팀 스킬 저장소가 없습니다. dogent config teamSkillsUrl <index.json 주소> (git 없이), 또는 git clone한 폴더를 dogent config teamSkills <폴더> 로 알려 주세요');
       return 1;

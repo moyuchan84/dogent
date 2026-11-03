@@ -161,6 +161,84 @@ try {
     assert.deepEqual(await (await fetch(`${SITE}/api/fw`)).json(), []);
   });
 
+  await scenario('screenshot: 화면 그림을 image content(JPEG)로 받고, 로그인 화면은 찍지 않음', async () => {
+    await ok('tab_open', { url: `${SITE}/wip.html` });
+    const res = await hub.handleMcp({ jsonrpc: '2.0', id: rpc++, method: 'tools/call', params: { name: 'screenshot', arguments: {} } });
+    // 목록 방식 빌드(WXT_ALL_SITES=false)는 <all_urls>를 선언하지 않아, 사용자가 설정에서 허용하기 전에는 안내 오류로 끝난다.
+    if (process.env.WXT_ALL_SITES === 'false') {
+      assert.equal(res.result.isError, true);
+      assert.match(JSON.stringify(res.result.content), /화면 그림 권한/);
+      return;
+    }
+    assert.equal(res.result.isError, undefined, JSON.stringify(res.result.content).slice(0, 300));
+    const [image, text] = res.result.content;
+    assert.equal(image.type, 'image');
+    assert.equal(image.mimeType, 'image/jpeg');
+    const bytes = Buffer.from(image.data, 'base64');
+    assert.deepEqual([...bytes.subarray(0, 2)], [0xff, 0xd8], 'JPEG 머리말이 아님');
+    assert.ok(image.data.length <= 1_500_000, `그림이 상한(1.5MB)을 넘음: ${image.data.length}`);
+    // JPEG의 SOF0/SOF2 표식에서 크기를 읽어 긴 변 상한을 확인한다.
+    let w = 0, h = 0;
+    for (let i = 2; i < bytes.length - 9; ) {
+      if (bytes[i] !== 0xff) { i++; continue; }
+      const m = bytes[i + 1];
+      if (m === 0xc0 || m === 0xc2) { h = bytes.readUInt16BE(i + 5); w = bytes.readUInt16BE(i + 7); break; }
+      i += 2 + bytes.readUInt16BE(i + 2);
+    }
+    assert.ok(w > 0 && Math.max(w, h) <= 1280, `긴 변이 1280px를 넘음: ${w}x${h}`);
+    assert.match(text.text, /화면 그림/);
+    // 로그인 화면(비밀번호 칸)은 찍지 않고 login_required로 알린다.
+    await ok('tab_open', { url: `${SITE}/login.html` });
+    const login = await call('screenshot');
+    assert.equal(login.error, true);
+    assert.match(login.text, /login_required/);
+    await context.pages().find((p) => p.url().includes('login.html'))?.close();
+  });
+
+  await scenario('upload_file: 승인해야 파일 칸에 들어가고, 거절하면 들어가지 않음', async () => {
+    const port = async (method, ...args) => {
+      const r = await call('dogent_port', { method, args });
+      assert.equal(r.error, false, `${method} 실패: ${r.text}`);
+      return JSON.parse(r.text);
+    };
+    await ok('tab_open', { url: `${SITE}/upload.html` });
+    const snap = await ok('snapshot');
+    const label = refOf(snap, /button "파일 선택"/);
+    const content = '로트,수량\nL001,25\n';
+    const size = Buffer.byteLength(content);
+    const stage = async (id) => {
+      await port('uploadBegin', id, '신청서.csv', 'text/csv', size);
+      await port('uploadChunk', id, 0, Buffer.from(content).toString('base64'));
+    };
+    const page = context.pages().find((p) => p.url().includes('upload.html'));
+    // 거절하면 파일 칸은 그대로다.
+    await stage('no');
+    let opened = context.waitForEvent('page', { predicate: (p) => p.url().includes('approve.html') });
+    let pending = call('dogent_port', { method: 'uploadFile', args: [label, 'no'] });
+    let popup = await opened;
+    await popup.locator('#approval').waitFor();
+    const text = await popup.locator('#approval').innerText();
+    assert.match(text, /"파일 올리기" 전에 확인해 주세요/);
+    assert.match(text, /신청서\.csv/);
+    assert.match(text, /localhost:4173/);
+    assert.equal(await page.evaluate(() => document.getElementById('file').files.length), 0);
+    await popup.click('#decline');
+    assert.match((await pending).text, /승인하지 않았습니다/);
+    assert.equal(await page.evaluate(() => document.getElementById('file').files.length), 0);
+    // 승인하면 이름·크기·내용이 그대로 들어가고 input·change 이벤트가 난다.
+    await ok('snapshot');
+    await stage('yes');
+    opened = context.waitForEvent('page', { predicate: (p) => p.url().includes('approve.html') });
+    pending = call('dogent_port', { method: 'uploadFile', args: [label, 'yes'] });
+    popup = await opened;
+    await popup.locator('#approval').waitFor();
+    await popup.click('#approve');
+    const r = await pending;
+    assert.equal(r.error, false, r.text);
+    await page.waitForFunction(() => /첨부됨/.test(document.getElementById('result').textContent), null, { timeout: 5000 });
+    assert.equal(await page.locator('#result').innerText(), `첨부됨: 신청서.csv (${size}바이트) 첫 줄: 로트,수량 [이벤트: input,change]`);
+  });
+
   await scenario('로그인 화면은 알리고, 사람이 로그인하면 이어 감', async () => {
     await ok('tab_open', { url: `${SITE}/login.html` });
     assert.match(await ok('snapshot'), /^\[login_required\]/);

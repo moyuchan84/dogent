@@ -12,6 +12,8 @@ import {
   type FilePort,
   type LlmPort,
   type PageDialog,
+  type Screenshot,
+  type UploadPayload,
 } from '../src/core';
 import { createPageAgent, type PageAgent } from '../src/page/agent';
 import { dialogHook, type DialogCommand } from '../src/page/dialogs';
@@ -49,6 +51,26 @@ async function load(pathname: string, opener?: object): Promise<JSDOM> {
     pretendToBeVisual: true,
     beforeParse(window) {
       const w = window as any;
+      // jsdom에는 DataTransfer와 input.files 쓰기가 없다. 실제 브라우저의 File → DataTransfer → input.files 흐름을 흉내 낸다.
+      class FakeDataTransfer {
+        private list: File[] = [];
+        items = { add: (f: File) => void this.list.push(f) };
+        get files() {
+          return this.list;
+        }
+      }
+      w.DataTransfer = FakeDataTransfer;
+      const inputProto = w.HTMLInputElement.prototype;
+      const filesDesc = Object.getOwnPropertyDescriptor(inputProto, 'files')!;
+      Object.defineProperty(inputProto, 'files', {
+        configurable: true,
+        get() {
+          return this.__files ?? filesDesc.get!.call(this);
+        },
+        set(v) {
+          this.__files = v;
+        },
+      });
       // 알림·확인 창은 확장과 같은 처리기가 받는다. 확장에서처럼 문자열로 옮겨 페이지 안에서 실행한다.
       w.__hook = window.eval(`(${dialogHook.toString()})`);
       w.__hook({ do: 'on', until: Date.now() + 60_000 });
@@ -220,6 +242,20 @@ export class JsdomBrowser implements BrowserPort {
     const line = q.get('line') ?? '';
     const buf = new Uint8Array(await wipXlsx(line, q.get('step') ?? '', q.get('product') ?? ''));
     return { filename: `재공_${line}.xlsx`, url: href, data: buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer };
+  }
+
+  /** 확장의 ChromeBrowser.attachFile과 같은 일: 페이지 에이전트에 파일을 넘긴다 */
+  async attachFile(ref: number, file: UploadPayload) {
+    const r = this.agent.attachFile(this.local(ref), file.name, file.mime, file.base64);
+    await this.agent.settle(50, 3000);
+    return r;
+  }
+
+  /** 화면 그림을 흉내 낸다 (조회 횟수를 센다) */
+  shots = 0;
+  async screenshot(): Promise<Screenshot> {
+    this.shots++;
+    return { mimeType: 'image/jpeg', base64: 'AAAA', width: 640, height: 480 };
   }
 
   async readText(ref?: number) {

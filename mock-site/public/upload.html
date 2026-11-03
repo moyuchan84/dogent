@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>첨부 올리기 - 모의 신청 포털</title>
+<style>
+  body { font: 14px "Malgun Gothic", sans-serif; margin: 24px; color: #1c2733; max-width: 640px; }
+  h1 { font-size: 20px; }
+  .box { display: grid; gap: 12px; padding: 16px; background: #f0f3f7; border-radius: 6px; }
+  /* 실제 업무 화면처럼 파일 칸은 숨기고, 라벨과 버튼으로 연다 */
+  #file { display: none; }
+  .pick { display: inline-block; padding: 6px 12px; background: #1d5fa8; color: #fff; border-radius: 4px; cursor: pointer; }
+  #result { min-height: 20px; color: #1b6e46; }
+</style>
+</head>
+<body>
+<h1>첨부 올리기</h1>
+<p>신청서에 첨부할 파일을 고르세요. (모의 화면: 고른 파일의 이름·크기·첫 줄만 아래에 보여 주고 어디로도 보내지 않습니다)</p>
+
+<div class="box">
+  <div>
+    <input id="file" type="file" accept=".xlsx,.csv,.txt">
+    <label class="pick" for="file">파일 선택</label>
+    <span id="name">선택된 파일 없음</span>
+  </div>
+  <div id="result"></div>
+</div>
+
+<script>
+  var input = document.getElementById('file');
+  var events = [];
+  ['input', 'change'].forEach(function (type) {
+    input.addEventListener(type, function () { events.push(type); });
+  });
+  input.addEventListener('change', function () {
+    var f = input.files && input.files[0];
+    if (!f) return;
+    document.getElementById('name').textContent = f.name;
+    var reader = new FileReader();
+    reader.onload = function () {
+      var first = String(reader.result).split(/\r?\n/)[0];
+      document.getElementById('result').textContent =
+        '첨부됨: ' + f.name + ' (' + f.size + '바이트) 첫 줄: ' + first + ' [이벤트: ' + events.join(',') + ']';
+    };
+    reader.readAsText(f);
+  });
+</script>
+</body>
+</html>
