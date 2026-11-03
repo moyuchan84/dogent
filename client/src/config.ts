@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import type { LlmSettings } from '../../src/core';
 import { dogentConfig } from '../../dogent.config';
 import { findOfficeExe } from './office';
+import { defaultUploadDirs } from './upload';
 
 /**
  * 클라이언트 설정.
@@ -26,6 +27,10 @@ export interface UserConfig {
   systemsToken?: string;
   /** 엑셀 결과를 저장할 폴더. 기본은 내려받기 폴더 */
   outputDir?: string;
+  /** 파일 올리기(upload_file)로 올릴 수 있는 폴더들. 배열 또는 세미콜론(;)으로 나눈 글. 기본은 결과 저장 폴더, 내려받기, 문서, 바탕 화면 */
+  uploadDirs?: string[] | string;
+  /** 올릴 수 있는 파일의 최대 크기(MB). 기본 10, 확장의 절대 상한은 30 */
+  uploadMaxMb?: number;
   /** 확장과 잇는 WebSocket 포트 */
   bridgePort?: number;
   /** 확장이 든 브라우저가 여럿일 때 쓸 브라우저 이름 일부 (예: edge, chrome) */
@@ -50,6 +55,10 @@ export interface ClientConfig {
   systemsUrl?: string;
   systemsToken?: string;
   outputDir: string;
+  /** 파일 올리기로 올릴 수 있는 폴더들 */
+  uploadDirs?: string[];
+  /** 올릴 수 있는 파일의 최대 크기(바이트) */
+  uploadMaxBytes?: number;
   bridgePort?: number;
   officeExe?: string;
   saveThroughExcel: boolean;
@@ -77,6 +86,12 @@ export function dogentHome(): string {
   return process.env.DOGENT_HOME ?? join(homedir(), '.dogent');
 }
 
+/** 설정의 uploadDirs(배열 또는 ;로 나눈 글)를 폴더 목록으로. 비어 있으면 기본 폴더들 */
+export function uploadDirsOf(value: string[] | string | undefined, outputDir: string): string[] {
+  const list = (Array.isArray(value) ? value : typeof value === 'string' ? value.split(/[;\n]/) : []).map((d) => d.trim()).filter(Boolean);
+  return list.length > 0 ? list : defaultUploadDirs(outputDir);
+}
+
 export function loadConfig(): ClientConfig {
   const home = dogentHome();
   const file = join(home, 'config.json');
@@ -101,6 +116,8 @@ export function loadConfig(): ClientConfig {
     systemsUrl: user.systemsUrl?.trim() || __DOGENT_BUILD__.systemsUrl,
     systemsToken: user.systemsToken,
     outputDir: user.outputDir ?? join(homedir(), 'Downloads'),
+    uploadDirs: uploadDirsOf(user.uploadDirs, user.outputDir ?? join(homedir(), 'Downloads')),
+    uploadMaxBytes: Math.round((Number(user.uploadMaxMb) > 0 ? Number(user.uploadMaxMb) : 10) * 1024 * 1024),
     bridgePort: user.bridgePort,
     officeExe: user.officeExe,
     browser: user.browser,
@@ -145,6 +162,7 @@ export function describeConfig(c: ClientConfig): string {
     `팀 스킬 주소   ${c.teamSkillsUrl ?? '(없음: dogent config teamSkillsUrl <index.json 주소>)'}${c.teamSkillsToken ? ' (토큰 있음)' : ''}`,
     `시스템 사전    ${c.systemsUrl ?? '(없음: dogent config systemsUrl http://서버:8787)'}${c.systemsToken ? ' (토큰 있음)' : ''}`,
     `결과 저장      ${c.outputDir}${c.saveThroughExcel ? ' (Excel로 저장)' : ''}`,
+    `올릴 수 있는 폴더  ${(c.uploadDirs ?? []).join('; ')} (최대 ${Math.round((c.uploadMaxBytes ?? 0) / 1024 / 1024)}MB)`,
     `오피스 도구    ${findOfficeExe(c.officeExe) ?? '(없음: pnpm office:build)'}`,
     `MCP 주소(앱)   ${c.mcpServePort ? `http://127.0.0.1:${c.mcpServePort}/mcp` : '(꺼짐: dogent config mcpServePort 39218)'}`,
     `설정 파일      ${c.file}`,

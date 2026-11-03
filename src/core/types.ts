@@ -169,11 +169,41 @@ export interface BrowserPort {
   scroll?(ref?: number, direction?: 'up' | 'down'): Promise<ActResult>;
   /** 브라우저의 뒤로 가기 */
   goBack?(): Promise<ActResult>;
+  /**
+   * 대상 탭의 보이는 화면을 그림으로 찍는다. 조작할 사이트 안의 탭에서만 찍고, 로그인 화면이면 찍지 않고 실패한다.
+   * 사내 모델이 그림을 받을 때(llm.vision)만 루프가 쓴다.
+   */
+  screenshot?(): Promise<Screenshot>;
+  /**
+   * 페이지의 파일 입력 칸(ref가 그 칸, 또는 그 칸을 여는 버튼·라벨)에 PC의 파일을 넣는다.
+   * path는 올릴 수 있는 폴더 안의 파일이어야 하고, 확장의 승인 창에서 사용자가 승인해야 넣는다.
+   */
+  uploadFile?(ref: number, path: string): Promise<ActResult>;
+}
+
+/** 화면을 찍은 그림. 긴 변을 줄인 JPEG/PNG의 base64다. */
+export interface Screenshot {
+  mimeType: 'image/jpeg' | 'image/png';
+  base64: string;
+  width: number;
+  height: number;
+}
+
+/** 확장이 페이지의 파일 입력 칸에 넣을 파일. 클라이언트가 읽어 base64로 넘긴다. */
+export interface UploadPayload {
+  name: string;
+  mime: string;
+  base64: string;
 }
 
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
   content: string;
+  /**
+   * 함께 보낼 그림(data URL). 모델 설정 llm.vision이 켜져 있을 때만 OpenAI 호환 image_url 파트로 붙는다.
+   * 꺼져 있으면 무시되어, 요청은 그림이 없던 때와 똑같다.
+   */
+  images?: string[];
 }
 
 export interface LlmPort {

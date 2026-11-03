@@ -98,6 +98,25 @@ export function checkAction(action: Action, snap: PageSnapshot, skill: Skill): V
     }
     return { ok: true };
   }
+  // 화면 그림도 허용 도메인 안의 화면에서만 찍는다.
+  if (action.tool === 'look') {
+    return hostAllowed(snap.url, skill.domains)
+      ? { ok: true }
+      : { ok: false, reason: `현재 페이지(${snap.url})는 허용 도메인 밖이라 화면 그림을 찍지 않습니다` };
+  }
+  // 파일 올리기는 PC의 파일을 업무 시스템에 보내는 일이라 저장·상신과 같은 R3로 본다. 사용자 승인은 확장의 승인 창에서 받는다.
+  if (action.tool === 'upload_file') {
+    if (skill.risk !== 'R3') {
+      return { ok: false, reason: '파일 올리기는 저장·상신 허용(--allow-write) 또는 R3 스킬일 때만 할 수 있습니다' };
+    }
+    if (!hostAllowed(snap.url, skill.domains)) {
+      return { ok: false, reason: `현재 페이지(${snap.url})는 허용 도메인 밖이라 파일을 올리지 않습니다` };
+    }
+    const el = findElement(snap, action.args.ref);
+    if (!el) return { ok: false, reason: `ref ${action.args.ref} 이(가) 현재 화면에 없습니다` };
+    if (el.disabled) return { ok: false, reason: `[${el.ref}] "${el.name}"은(는) 비활성 상태입니다` };
+    return { ok: true };
+  }
   // 키 누르기와 스크롤도 허용 도메인 안의 화면에서만 한다. ref를 주면 지금 화면에 있어야 한다.
   if (action.tool === 'press_key' || action.tool === 'scroll') {
     if (!hostAllowed(snap.url, skill.domains)) {

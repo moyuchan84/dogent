@@ -37,6 +37,7 @@ export function llmFromEnv(mode) {
       apiKey: env.WXT_LLM_API_KEY,
       model: env.WXT_LLM_MODEL,
       jsonMode: bool(env.WXT_LLM_JSON_MODE),
+      vision: bool(env.WXT_LLM_VISION),
       timeoutScale: Number(env.WXT_LLM_TIMEOUT_SCALE) || undefined,
       headers: env.WXT_LLM_HEADERS?.trim() ? JSON.parse(env.WXT_LLM_HEADERS) : undefined,
       userId: env.WXT_LLM_USER_ID,

@@ -345,6 +345,7 @@ export function App() {
         signal: abort.signal,
         dryRun: !isFree && skill.risk === 'R3' && dryRun,
         direct: settings.skillDirect,
+        vision: settings.vision === true,
         // 자유 요청은 매번 내용이 달라 다시 쓸 경로가 없다.
         paths: settings.pathCache && !isFree ? pathStore : undefined,
         files: {
@@ -619,6 +620,18 @@ export function App() {
               />
               JSON 출력 모드 사용 (API가 response_format을 지원할 때)
             </label>
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={settings.vision === true}
+                onChange={(e) => setSettings({ ...settings, vision: e.target.checked })}
+              />
+              화면 그림을 모델에 함께 보내기 (모델이 이미지 입력을 지원할 때만)
+            </label>
+            <p className="hint">
+              켜기 전에 사내 게이트웨이의 모델이 이미지 입력을 지원하는지 먼저 확인하세요. 지원하지 않는 모델에 그림을 보내면 요청이 오류로 끝납니다.
+              켜도 모델이 &quot;화면 보기&quot;를 고르거나 화면에 조작할 요소가 거의 없을 때만 그림을 붙입니다.
+            </p>
             <label>
               제한 시간 배율
               <input

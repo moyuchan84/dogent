@@ -6,6 +6,12 @@ export interface LlmSettings {
   model: string;
   /** API가 response_format: json_object 를 지원하면 켠다. */
   jsonMode: boolean;
+  /**
+   * 모델에 화면 그림(image_url)을 함께 보낸다. 기본 꺼짐.
+   * 켜기 전에 사내 게이트웨이의 모델이 이미지 입력을 지원하는지 먼저 확인할 것: 지원하지 않는 모델에 그림을 보내면 요청이 오류로 끝난다.
+   * 켜져 있어도 모델이 look 동작을 고르거나 화면에 조작할 요소가 거의 없을 때만 붙인다.
+   */
+  vision?: boolean;
   /** 제한 시간 배율. CPU로 도는 로컬 모델처럼 느린 환경에서 올린다. */
   timeoutScale: number;
   /** 도구와 인자가 스킬에 적힌 단계는 모델을 부르지 않고 바로 실행한다. */
@@ -83,6 +89,18 @@ export function buildHeaders(settings: LlmSettings, uuid: () => string = () => c
   return out;
 }
 
+/**
+ * 요청에 실을 메시지 하나. 그림은 vision이 켜져 있을 때만 image_url 파트로 붙이고, 꺼져 있으면 버린다.
+ * 그림이 없는 메시지는 예전과 똑같이 role·content 둘만 가진다.
+ */
+export function wireMessage(m: ChatMessage, vision: boolean): { role: ChatMessage['role']; content: unknown } {
+  if (!vision || !m.images?.length) return { role: m.role, content: m.content };
+  return {
+    role: m.role,
+    content: [{ type: 'text', text: m.content }, ...m.images.map((url) => ({ type: 'image_url', image_url: { url } }))],
+  };
+}
+
 const CALL_TIMEOUT_MS = 60_000;
 const BUSY_STATUS = new Set([429, 502, 503, 504]);
 const BUSY_RETRIES = 3;
@@ -117,7 +135,7 @@ export class OpenAiCompatClient implements LlmPort {
     const url = `${baseUrl.replace(/\/+$/, '')}/chat/completions`;
     const body = JSON.stringify({
       model,
-      messages,
+      messages: messages.map((m) => wireMessage(m, this.settings.vision === true)),
       temperature: 0,
       max_tokens: this.maxTokens,
       ...(jsonMode ? { response_format: { type: 'json_object' } } : {}),

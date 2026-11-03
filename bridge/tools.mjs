@@ -153,9 +153,36 @@ export const TOOLS = [
     inputSchema: { type: 'object', properties: {} },
   },
   {
+    name: 'screenshot',
+    description:
+      '대상 탭의 보이는 화면을 그림(이미지)으로 받는다. canvas로 그린 그리드, 차트, 그림 버튼처럼 snapshot의 글로는 알 수 없는 화면을 볼 때 쓴다. 긴 변 1280px 이하로 줄인 JPEG이고, 스크롤해야 보이는 부분은 담기지 않는다. 조작할 사이트 목록 안의 탭에서만 찍고, 비밀번호 칸이 보이는 로그인 화면이면 찍지 않고 [login_required]를 알린다. 조작은 그림이 아니라 snapshot의 [번호]로 한다.',
+    inputSchema: { type: 'object', properties: { tab_id: tabId } },
+  },
+  {
     name: 'wait_for_login',
     description:
       '로그인 화면에서 사람이 직접 로그인하기를 기다린다. 비밀번호 칸이 사라지면 끝난다. snapshot이 [login_required]를 알렸을 때 사용자에게 로그인을 부탁하고 부른다.',
     inputSchema: { type: 'object', properties: { timeout_sec: { type: 'number', default: 300, maximum: 900 } } },
   },
 ];
+
+/**
+ * 확장이 돌려준 글을 MCP content 목록으로 바꾼다. screenshot은 확장이 {"__image": {mimeType, data}, "text"} 형태의 글을 주므로
+ * MCP의 image content({type:'image'})로 내보내 클라이언트(Claude Code 등)가 그림을 받게 한다. 그 밖의 도구는 글 하나다.
+ */
+export function toContent(tool, text) {
+  if (tool === 'screenshot') {
+    try {
+      const o = JSON.parse(text);
+      if (o && o.__image && typeof o.__image.data === 'string') {
+        return [
+          { type: 'image', data: o.__image.data, mimeType: o.__image.mimeType || 'image/jpeg' },
+          { type: 'text', text: String(o.text ?? '') },
+        ];
+      }
+    } catch {
+      /* 글 그대로 낸다 */
+    }
+  }
+  return [{ type: 'text', text }];
+}
