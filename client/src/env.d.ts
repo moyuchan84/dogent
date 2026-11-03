@@ -9,6 +9,8 @@ declare const __DOGENT_BUILD__: {
   skillsUrl?: string;
   /** 공용 시스템 사전 서버의 주소 (환경 파일의 WXT_SYSTEMS_URL) */
   systemsUrl?: string;
+  /** Hub 서버의 주소 (환경 파일의 WXT_HUB_URL) */
+  hubUrl?: string;
   /** 목업 사이트용 예시 스킬(samples/skills)을 넣어 빌드했는지 (WXT_SAMPLE_SKILLS=true). 그러면 예시 스킬을 처음부터 보인다 */
   samples?: boolean;
 };

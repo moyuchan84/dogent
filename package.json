@@ -23,6 +23,8 @@
     "skill:lint": "vitest run tests/author.test.ts -t 번들된",
     "skill:bundle": "node tools/skill-bundle.mjs",
     "skill:check": "node templates/dogent-skills/tools/skill-check.mjs skills",
+    "hub:bundle": "node tools/hub-bundle.mjs",
+    "hub": "node templates/dogent-hub/tools/hub.mjs --data hub-data",
     "systems:bundle": "node tools/systems-bundle.mjs",
     "systems:check": "node templates/dogent-systems/tools/system-check.mjs templates/dogent-systems",
     "systems:mcp": "node templates/dogent-systems/tools/systems-mcp.mjs --root templates/dogent-systems",

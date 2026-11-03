@@ -142,7 +142,7 @@ describe('실제 시스템 사전 서버와 연결', () => {
       stdio: 'ignore',
       windowsHide: true,
     });
-    for (let i = 0; i < 60; i++) {
+    for (let i = 0; i < 240; i++) {
       try {
         if ((await fetch(`${url}/health`)).ok) return;
       } catch {

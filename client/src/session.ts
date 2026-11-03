@@ -41,6 +41,7 @@ import { composeFlow, editSkill } from './compose-skill';
 import { setConfig, type ClientConfig } from './config';
 import { enabledAgents, loadAgents, mentionedAgents } from './agents';
 import { Conversation, addInstruction, contextNote, conversationFile, describeInstructions, loadInstructions, personalInstructionsFile } from './conversation';
+import { buildRunSummary, evaluatePolicy, fetchPolicy, flushOutbox, hubRisk, hubStale, loadHubCache, reportRun, systemsCoveredBy, type HubCache } from './hub';
 import { sharedCacheDir, sharedMeta, sharedStale, syncShared, type SharedMeta } from './shared-systems';
 import { loadSystems, type SystemEntry } from './systems';
 import { McpHub, enabledServers, loadMcpConfig, mentionedServers } from './mcp-hub';
@@ -305,11 +306,58 @@ export class Session {
     }
   }
 
-  /** 팀 스킬 저장소와 공용 시스템 사전을 함께 받아 온다. 하나라도 바뀌었으면 참 */
+  /**
+   * Hub의 정책(중지 스위치 포함)을 받아 온다. hubUrl이 없으면 아무것도 하지 않는다.
+   * force가 아니면 정책의 ttlSec 절반이 지났을 때만 (ETag로 바뀐 게 없으면 304). 닿지 못하면 받아 둔 것을 쓴다.
+   * 받은 김에 보내지 못했던 실행 요약도 다시 보낸다. 서버가 있든 없든 사용자의 흐름은 막지 않는다.
+   */
+  async refreshHub(opts: { force?: boolean; quiet?: boolean; timeoutMs?: number } = {}): Promise<HubCache | null> {
+    const url = this.cfg.hubUrl;
+    if (!url) return null;
+    if (!opts.force && !hubStale(loadHubCache(this.cfg.home), url)) return null;
+    try {
+      const { cache, changed } = await fetchPolicy(this.cfg.home, url, { token: this.cfg.hubToken, timeoutMs: opts.timeoutMs ?? (opts.force ? 10_000 : 4_000) });
+      if (!opts.quiet) this.term.print(`Hub 정책 판 ${cache.policy.version}${changed ? '을 받았습니다' : ' — 바뀐 것 없음'} (중지 ${cache.policy.killSwitches.length}건)`);
+      if (cache.policy.notice && changed) this.term.print(`  Hub 공지: ${cache.policy.notice}`);
+      void flushOutbox(this.cfg.home, url, { token: this.cfg.hubToken });
+      return cache;
+    } catch (e) {
+      if (!opts.quiet) this.term.print(`Hub에 닿지 못했습니다: ${(e as Error).message}${loadHubCache(this.cfg.home) ? '\n  받아 둔 정책을 씁니다' : ''}`);
+      return null;
+    }
+  }
+
+  /** 팀 스킬 저장소, 공용 시스템 사전, Hub 정책을 함께 받아 온다. 팀 스킬·사전 중 하나라도 바뀌었으면 참 */
   async refreshAll(opts: { force?: boolean; quiet?: boolean } = {}): Promise<boolean> {
     const team = await this.refreshTeam(opts);
     const systems = await this.refreshSystems(opts);
+    await this.refreshHub(opts);
     return !!(team || systems);
+  }
+
+  /**
+   * 실행하기 전에 Hub 정책을 확인한다. hubUrl이 없으면 늘 통과. 정책이 오래됐으면 먼저 다시 받아 본다.
+   * 막히면 이유를 보여 주고 거절 사유를 돌려준다.
+   */
+  private async hubGate(skill: Skill, patterns: string[]): Promise<{ reason: string; errorClass: 'killswitch' | 'expired' } | null> {
+    if (!this.cfg.hubUrl) return null;
+    if (hubStale(loadHubCache(this.cfg.home), this.cfg.hubUrl)) await this.refreshHub({ quiet: true, timeoutMs: 3_000 });
+    const systemIds = systemsCoveredBy(patterns, this.systems.map((e) => e.system));
+    const verdict = evaluatePolicy(loadHubCache(this.cfg.home), { skillId: skill.id, risk: hubRisk(skill.risk), systemIds });
+    if (verdict.allow) {
+      if (verdict.warn) this.term.print(`  주의: ${verdict.warn}`);
+      return null;
+    }
+    this.term.print(`\n실행하지 않았습니다 — ${verdict.reason}`);
+    return verdict;
+  }
+
+  /** 실행 요약을 Hub로 보낸다 (기다리지 않는다). 입력값·화면 글자·결과 글은 보내지 않는다 */
+  private reportToHub(skill: Skill, run: Pick<Parameters<typeof buildRunSummary>[0], 'runId' | 'result' | 'events' | 'startedAt' | 'blocked'>): void {
+    const url = this.cfg.hubUrl;
+    if (!url) return;
+    const summary = buildRunSummary({ ...run, userId: this.cfg.llm.userId || 'unknown', skill: { id: skill.id, version: skill.version, risk: hubRisk(skill.risk) }, clientVersion: __DOGENT_BUILD__.version });
+    void reportRun(this.cfg.home, url, this.cfg.hubToken, summary);
   }
 
   /** 지금 브라우저 탭. 확장이 붙어 있지 않으면 기다리지 않고 null (앱의 "지금 화면" 스킬에 쓴다) */
@@ -689,6 +737,14 @@ export class Session {
     const isFree = skill.id === FREE_SKILL_ID;
     const excelOnly = isFree && !!opts.excelOnly;
     const noWeb = excelOnly || (isFree && !!opts.toolsOnly);
+    // Hub의 중지 스위치·정책 만료를 먼저 본다 (자유 요청은 요청이 말한 사이트의 시스템으로 본다)
+    const blocked = await this.hubGate(skill, isFree ? (opts.extraHosts ?? []) : skill.domains);
+    if (blocked) {
+      const now = new Date().toISOString();
+      const result: RunResult = { status: 'aborted', cause: 'policy', message: blocked.reason, lastStep: 0, actions: 0, files: [], datasets: [], outputs: {}, elapsedMs: 0 };
+      this.reportToHub(skill, { runId: crypto.randomUUID(), result, events: [], startedAt: now, blocked: blocked.errorClass });
+      return { result, entries: [], tabUrl: '' };
+    }
     const bridge = noWeb ? null : await this.connect();
     // MCP 도구는 자유 요청이거나 스킬이 call_tool을 쓸 때 붙인다
     const tools = isFree || /\bcall_tool\b/.test(skill.body) ? await this.until(this.toolPort()) : null;
@@ -771,7 +827,9 @@ export class Session {
     }
     if (this.term.result) this.term.result(result, saved);
     else this.term.print(describeResult(result, saved));
-    appendRun(this.cfg.home, { id: crypto.randomUUID(), startedAt, skill: { id: skill.id, version: skill.version }, inputs: values, tabUrl: target.url, events, result });
+    const runId = crypto.randomUUID();
+    appendRun(this.cfg.home, { id: runId, startedAt, skill: { id: skill.id, version: skill.version }, inputs: values, tabUrl: target.url, events, result });
+    this.reportToHub(skill, { runId, result, events, startedAt });
     if (!opts.noRecord) {
       const made = datasets.list();
       if (made.length) this.carry = made.map((d) => ({ ...d, columns: [...d.columns], rows: d.rows.map((r) => [...r]) }));

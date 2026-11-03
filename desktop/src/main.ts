@@ -321,6 +321,8 @@ else {
     const team = () => void session.refreshAll({ quiet: true }).then((changed) => changed && ui.send({ kind: 'skills' }));
     team();
     setInterval(() => !busy && team(), 60 * 60_000);
+    // Hub 정책(중지 스위치)은 몇 분마다 확인한다 (hubUrl이 없으면 아무 일도 하지 않는다)
+    setInterval(() => void session.refreshHub({ quiet: true }), 5 * 60_000);
     let last = '';
     setInterval(() => {
       const list = session.browsersNow();

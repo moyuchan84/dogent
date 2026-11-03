@@ -1,0 +1,138 @@
+# 샘플입니다. 사내 k8s 표준(네임스페이스, 이미지 레지스트리, Ingress 클래스, 비밀 저장소)에 맞게 고쳐 쓰세요.
+# 이미지는 ../Dockerfile 로 만들어 사내 레지스트리에 올린다.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: dogent-hub
+  namespace: dogent
+type: Opaque
+stringData:
+  # 실제 값은 여기에 적지 말고 외부 비밀 저장소(ExternalSecret 등)에서 채운다
+  HUB_TOKEN: "(클라이언트용 토큰, 16자 이상)"
+  HUB_ADMIN_TOKEN: "(관리용 토큰, 16자 이상, 위와 다르게)"
+  LLM_UPSTREAM_KEY: "(Gemma 게이트웨이 키)"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: dogent-hub-data
+  namespace: dogent
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 1Gi
+---
+# 주의: 파일 저장소(state.json, runs.jsonl)는 한 프로세스만 써야 한다. replicas는 반드시 1,
+# 롤링 배포 중에 두 개가 겹치지 않도록 strategy는 Recreate. 여러 개로 늘리려면 PostgreSQL 저장소 구현(schema.sql)이 먼저 필요하다.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dogent-hub
+  namespace: dogent
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels: { app: dogent-hub }
+  template:
+    metadata:
+      labels: { app: dogent-hub }
+    spec:
+      containers:
+        - name: hub
+          image: registry.example.corp/dogent/hub:0.1.0   # 사내 레지스트리 주소로 바꾼다
+          args: ["node", "tools/hub.mjs", "--data", "/data", "--host", "0.0.0.0", "--port", "8790"]
+          ports: [{ containerPort: 8790 }]
+          envFrom:
+            - secretRef: { name: dogent-hub }
+          readinessProbe:
+            httpGet: { path: /health, port: 8790 }
+          livenessProbe:
+            httpGet: { path: /health, port: 8790 }
+          volumeMounts:
+            - { name: data, mountPath: /data }
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: dogent-hub-data }
+---
+# LLM 프록시는 상태가 없다 (속도 제한 버킷은 메모리). 복제를 늘리면 사용자별 한도가 복제마다 따로 센다 (한도 N → 최대 N×복제 수).
+# 토큰 표(tokens.json)는 Secret으로 마운트한다.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dogent-llm-proxy
+  namespace: dogent
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: dogent-llm-proxy }
+  template:
+    metadata:
+      labels: { app: dogent-llm-proxy }
+    spec:
+      containers:
+        - name: proxy
+          image: registry.example.corp/dogent/hub:0.1.0
+          args: ["node", "tools/llm-proxy.mjs", "--tokens", "/etc/dogent/tokens.json", "--host", "0.0.0.0", "--port", "8791", "--rate", "60"]
+          ports: [{ containerPort: 8791 }]
+          env:
+            - name: LLM_UPSTREAM_URL
+              value: "https://gemma-gateway.example.corp/v1"   # 사내 게이트웨이 주소
+            - name: LLM_UPSTREAM_HEADERS
+              value: '{"x-dep-ticket":"{key}","Send-System-Name":"{systemName}","user-id":"{userId}","user-type":"{userType}","prompt-msg-id":"{uuid}","completion-msg-id":"{uuid}","content-type":"application/json"}'
+            - name: LLM_SYSTEM_NAME
+              value: "dogent"
+            - name: LLM_DEFAULT_USER_TYPE
+              value: "employee"
+            - name: LLM_UPSTREAM_KEY
+              valueFrom:
+                secretKeyRef: { name: dogent-hub, key: LLM_UPSTREAM_KEY }
+          readinessProbe:
+            httpGet: { path: /health, port: 8791 }
+          volumeMounts:
+            - { name: tokens, mountPath: /etc/dogent, readOnly: true }
+      volumes:
+        - name: tokens
+          secret: { secretName: dogent-llm-tokens }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dogent-hub
+  namespace: dogent
+spec:
+  selector: { app: dogent-hub }
+  ports: [{ port: 80, targetPort: 8790 }]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dogent-llm-proxy
+  namespace: dogent
+spec:
+  selector: { app: dogent-llm-proxy }
+  ports: [{ port: 80, targetPort: 8791 }]
+---
+# 경로로 나누는 예. 스트리밍 응답이 끊기지 않게 프록시 버퍼링을 끄고 읽기 시간을 넉넉히 둔다 (Ingress 클래스마다 주석 이름이 다르다).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: dogent
+  namespace: dogent
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: ["dogent.example.corp"]
+      secretName: dogent-tls
+  rules:
+    - host: dogent.example.corp
+      http:
+        paths:
+          - { path: /hub(/|$)(.*), pathType: ImplementationSpecific, backend: { service: { name: dogent-hub, port: { number: 80 } } } }
+          - { path: /llm(/|$)(.*), pathType: ImplementationSpecific, backend: { service: { name: dogent-llm-proxy, port: { number: 80 } } } }

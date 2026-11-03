@@ -24,6 +24,10 @@ export interface UserConfig {
   systemsUrl?: string;
   /** 그 서버가 토큰을 요구하면 보낼 토큰 (서버의 SYSTEMS_MCP_TOKEN) */
   systemsToken?: string;
+  /** Hub(정책·중지 스위치·실행 요약 서버, templates/dogent-hub)의 주소. 없으면 Hub를 쓰지 않는다 (빌드의 WXT_HUB_URL이 기본) */
+  hubUrl?: string;
+  /** Hub의 클라이언트용 토큰 (서버의 HUB_TOKEN) */
+  hubToken?: string;
   /** 엑셀 결과를 저장할 폴더. 기본은 내려받기 폴더 */
   outputDir?: string;
   /** 확장과 잇는 WebSocket 포트 */
@@ -49,6 +53,8 @@ export interface ClientConfig {
   teamSkillsToken?: string;
   systemsUrl?: string;
   systemsToken?: string;
+  hubUrl?: string;
+  hubToken?: string;
   outputDir: string;
   bridgePort?: number;
   officeExe?: string;
@@ -100,6 +106,8 @@ export function loadConfig(): ClientConfig {
     teamSkillsToken: user.teamSkillsToken,
     systemsUrl: user.systemsUrl?.trim() || __DOGENT_BUILD__.systemsUrl,
     systemsToken: user.systemsToken,
+    hubUrl: user.hubUrl?.trim() || __DOGENT_BUILD__.hubUrl,
+    hubToken: user.hubToken,
     outputDir: user.outputDir ?? join(homedir(), 'Downloads'),
     bridgePort: user.bridgePort,
     officeExe: user.officeExe,
@@ -144,7 +152,8 @@ export function describeConfig(c: ClientConfig): string {
     `팀 스킬        ${c.teamSkills ?? '(폴더 없음: dogent config teamSkills <폴더>)'}`,
     `팀 스킬 주소   ${c.teamSkillsUrl ?? '(없음: dogent config teamSkillsUrl <index.json 주소>)'}${c.teamSkillsToken ? ' (토큰 있음)' : ''}`,
     `시스템 사전    ${c.systemsUrl ?? '(없음: dogent config systemsUrl http://서버:8787)'}${c.systemsToken ? ' (토큰 있음)' : ''}`,
-    `결과 저장      ${c.outputDir}${c.saveThroughExcel ? ' (Excel로 저장)' : ''}`,
+    `Hub           ${c.hubUrl ?? '(없음: dogent config hubUrl http://서버:8790, 토큰은 hubToken)'}${c.hubToken ? ' (토큰 있음)' : ''}`,
+    `결과 저장     ${c.outputDir}${c.saveThroughExcel ? ' (Excel로 저장)' : ''}`,
     `오피스 도구    ${findOfficeExe(c.officeExe) ?? '(없음: pnpm office:build)'}`,
     `MCP 주소(앱)   ${c.mcpServePort ? `http://127.0.0.1:${c.mcpServePort}/mcp` : '(꺼짐: dogent config mcpServePort 39218)'}`,
     `설정 파일      ${c.file}`,
