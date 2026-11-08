@@ -7,6 +7,12 @@ import {
   buildFreeSkill,
   noBrowser,
   officeIntent,
+  carryIntent,
+  composeHook,
+  draftPlan,
+  hookRequestKind,
+  HOOK_EVENTS,
+  type HookPayload,
   skillUsesOffice,
   describeSystem,
   docOfSkill,
@@ -38,6 +44,8 @@ import {
 import type { BrowserLink } from '../../bridge/hub.mjs';
 import { openBridge, type Bridge } from './bridge';
 import { composeFlow, editSkill } from './compose-skill';
+import { launchBrowser } from './launch-browser';
+import { describeHookEntries, loadHookEntries, loadHooks, saveHookEntries } from './hooks';
 import { setConfig, type ClientConfig } from './config';
 import { enabledAgents, loadAgents, mentionedAgents } from './agents';
 import { Conversation, addInstruction, contextNote, conversationFile, describeInstructions, loadInstructions, personalInstructionsFile } from './conversation';
@@ -87,6 +95,8 @@ export interface SessionOptions {
    * recent = 마지막 대화가 오래되지 않았으면 이어 감 (앱: 설정을 바꿔 세션을 새로 만들어도 대화가 끊기지 않게)
    */
   conversation?: 'new' | 'continue' | 'recent';
+  /** 브라우저가 꺼져 있어 확장이 안 붙으면 브라우저를 띄운다 (CLI·앱에서 켠다. 테스트는 켜지 않는다) */
+  launchBrowser?: boolean;
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -127,6 +137,7 @@ function stoppable<T extends object>(port: T, signal: AbortSignal, keep: string[
 }
 
 /** "기억해: …", "memory add …" — 개인 지침에 한 줄 더하기 */
+const PLAN_FIRST = /^(계획\s*[:：]|\/plan\s+|plan\s+)\s*/i;
 const MEMORY_ADD = /^(memory\s+add|기억해\s*줘?\s*[:：])\s*/;
 
 /** 로그인을 기다리는 최대 시간 (사이드 패널과 같다) */
@@ -599,6 +610,10 @@ export class Session {
     const bridge = this.bridge;
     // 확장은 보통 1초 안에 붙는다. 그보다 오래 걸릴 때만 무엇을 할지 알려 준다.
     if (!(await this.until(bridge.waitForExtension(2000)))) {
+      if (this.flags.launchBrowser) {
+        const r = launchBrowser(this.flags.browser ?? this.cfg.browser);
+        if (r === 'started') this.term.print('브라우저가 꺼져 있어 새로 실행합니다. 확장이 붙기를 기다립니다…');
+      }
       this.term.print('브라우저의 Dogent 확장이 연결되기를 기다립니다…');
       this.term.print('  사이드 패널 → 설정 → 클라이언트 연결에서 방식을 고르고 저장하세요 (WebSocket이면 토큰: dogent token).');
       this.term.print('  계속 안 붙으면 터미널에서 dogent doctor 로 원인을 찾을 수 있습니다 (Native Messaging 등록은 dogent doctor --fix).');
@@ -790,6 +805,7 @@ export class Session {
         // 다른 스킬을 run_skill로 부를 수 있게 한다. 자식은 부모보다 권한이 넓어지지 않는다 (core/subagent.ts)
         skills: { list: () => this.skills.map((e) => e.skill), get: (id) => this.skills.find((e) => e.skill.id === id)?.skill },
         datasets,
+        hooks: loadHooks(this.cfg.home).port ?? undefined,
         signal,
         dryRun: !isFree && skill.risk === 'R3' && (opts.dryRun ?? this.flags.dryRun),
         direct: this.cfg.llm.skillDirect,
@@ -831,6 +847,7 @@ export class Session {
     }
     if (this.term.result) this.term.result(result, saved);
     else this.term.print(describeResult(result, saved));
+    await this.fireHook({ event: 'Stop', skill: skill.name, status: result.status, message: result.message, files: saved });
     const runId = crypto.randomUUID();
     appendRun(this.cfg.home, { id: runId, startedAt, skill: { id: skill.id, version: skill.version }, inputs: values, tabUrl: target.url, events, result });
     this.reportToHub(skill, { runId, result, events, startedAt });
@@ -844,6 +861,7 @@ export class Session {
         summary: result.message,
         files: saved,
         datasets: made.map((d) => ({ name: d.name, rows: d.rows.length, columns: d.columns })),
+        uses: { office: !!office, web: !!bridge },
       });
     }
     return { result, entries: events.flatMap((e) => (e.type === 'action' ? [e.entry] : [])), tabUrl: target.url };
@@ -988,11 +1006,52 @@ export class Session {
     return this.job(() => this.requestNow(text), false);
   }
 
-  private async requestNow(text: string): Promise<boolean> {
+  private sessionStarted = false;
+
+  /** 훅 하나를 돌려 알림을 보인다. 막으면 이유를 돌려준다 (Stop·SessionStart는 막지 않으므로 무시된다) */
+  private async fireHook(payload: HookPayload): Promise<{ block?: string; context: string[] }> {
+    const { port, errors } = loadHooks(this.cfg.home);
+    for (const e of errors) this.term.print(`훅 설정 오류: ${e}`);
+    if (!port || !port.has(payload.event, payload.tool_name)) return { context: [] };
+    const d = await this.until(port.run(payload));
+    for (const n of d.notes) this.term.print(`  ${n}`);
+    for (const c of d.context) this.term.print(`  훅: ${c}`);
+    return { block: d.block ? (d.reason ?? '훅이 막았습니다') : undefined, context: d.context };
+  }
+
+  private async requestNow(request: string): Promise<boolean> {
+    if (!this.sessionStarted) {
+      this.sessionStarted = true;
+      await this.fireHook({ event: 'SessionStart' });
+    }
+    const gate = await this.fireHook({ event: 'UserPromptSubmit', prompt: request });
+    if (gate.block) {
+      this.term.print(`훅이 이 요청을 막았습니다: ${gate.block}`);
+      return false;
+    }
+    // 계획 먼저: "계획:" · "/plan" · "plan "으로 시작하면 할 일을 먼저 보이고 확인받은 뒤 실행한다
+    let text = request;
+    if (PLAN_FIRST.test(text)) {
+      text = text.replace(PLAN_FIRST, '').trim();
+      if (!text) {
+        this.term.print('무슨 일을 할지 함께 말해 주세요. 예: 계획: MES에서 7라인 재공 내려받아 엑셀로 정리');
+        return false;
+      }
+      this.term.print('계획을 세우는 중…');
+      const steps = await draftPlan(text, this.llm(), this.context(), this.abort?.signal).catch((e) => {
+        if (this.abort?.signal.aborted) throw e;
+        this.term.print(`계획을 세우지 못했습니다: ${(e as Error).message}`);
+        return [] as string[];
+      });
+      if (!steps.length) return false;
+      this.term.print(`계획:\n${steps.map((st, i) => `  ${i + 1}. ${st}`).join('\n')}`);
+      if (!(await this.term.confirm('이 계획대로 진행할까요?', true))) return false;
+      text = `${text}\n\n(사용자가 확인한 계획)\n${steps.map((st, i) => `${i + 1}. ${st}`).join('\n')}`;
+    }
     this.reloadSkills();
     await this.followActiveTab();
     const { named, systemInfo } = await this.systemsFor(text);
-    const context = this.context();
+    const context = [this.context(), ...gate.context].filter(Boolean).join('\n\n') || undefined;
     if (named.length) this.term.print(`시스템: ${named.map((m) => m.name).join(', ')}`);
     this.term.print('요청을 해석하는 중…');
     let plan: { skill_id: string | null; inputs: Record<string, unknown> };
@@ -1026,7 +1085,10 @@ export class Session {
     const docs = office ? await this.until(office.docs().catch(() => [])) : [];
     // 시스템 이름이 MCP 서버 이름과 겹치면(MES 등) 화면 단서가 따로 없는 한 서버로 처리한다
     const viaServer = this.mentioned(text).length > 0;
-    const intent = officeIntent(text, { openDocs: docs.map((d) => d.name), hasUrl: !!asked, hasSystem: named.length > 0 && !viaServer });
+    const said = officeIntent(text, { openDocs: docs.map((d) => d.name), hasUrl: !!asked, hasSystem: named.length > 0 && !viaServer });
+    // 이번 문장에 단서가 없으면 직전 요청의 통로를 잇는다 (엑셀을 연 직후 "거기 있는 거 봐줘"가 브라우저로 가지 않게)
+    const intent = viaServer || !office ? said : carryIntent(said, this.conversation.lastUses());
+    if (intent !== said) this.term.print('앞선 요청이 오피스 문서였으므로 이어서 오피스 도구로 합니다 (브라우저가 필요하면 "브라우저에서"라고 말하세요).');
     if (intent.excel && !office) {
       this.term.print('엑셀·워드·파워포인트 문서가 필요한 요청 같지만 오피스 도구(dogent-office.exe)가 없습니다. pnpm office:build로 만들거나 dogent config officeExe <경로>로 알려 주세요');
       if (!intent.web) return false;
@@ -1145,7 +1207,7 @@ export class Session {
 
   /** 대화: 요청을 한 줄씩 받는다. */
   async repl(): Promise<void> {
-    this.term.print(`Dogent 클라이언트 (${__DOGENT_BUILD__.mode}). 할 일을 말해 주세요. 앞선 요청을 이어서 말해도 됩니다 ("그거 엑셀로도"). new(새 대화), 기억해: <지침>, memory, skills, 찾기 <말>, skills info <id>, systems, skill new, skill edit <id>, sync, tabs, browsers, browser <이름>, help, exit`);
+    this.term.print(`Dogent 클라이언트 (${__DOGENT_BUILD__.mode}). 할 일을 말해 주세요. 앞선 요청을 이어서 말해도 됩니다 ("그거 엑셀로도"). new(새 대화), 기억해: <지침>, memory, hooks, /스킬id, 계획: <요청>, skills, 찾기 <말>, skills info <id>, systems, skill new, skill edit <id>, sync, tabs, browsers, browser <이름>, help, exit`);
     for (;;) {
       const line = await this.term.ask('\n무엇을 할까요? > ');
       if (line === null) return;
@@ -1193,7 +1255,10 @@ export class Session {
   }
 
   private async handleNow(text: string): Promise<void> {
-    if (text === 'help') this.term.print(this.help);
+    if (text === 'help' || text === '/help') this.term.print(this.help);
+    else if (/^\/?hooks?(\s|$)/.test(text)) await this.hooksCommand(text.replace(/^\/?hooks?\s*/, ''));
+    else if (/^\/\S/.test(text) && (await this.slash(text))) return;
+    else if (hookRequestKind(text)) await this.hooksCommand(text, true);
     else if (text === 'new' || text === '새 대화' || text === '/new' || text === '/clear') this.newConversation();
     else if (text === 'memory' || text === '기억' || text === '/memory') this.memory();
     else if (MEMORY_ADD.test(text)) this.memory(text.replace(MEMORY_ADD, ''));
@@ -1215,6 +1280,87 @@ export class Session {
     else if (/^skill\s+edit\s+\S/.test(text)) await this.editSkill(text.replace(/^skill\s+edit\s+/, '').trim());
     else if (/^excel(\s|$)/.test(text)) await this.excel(text.replace(/^excel\s*/, '').split(/\s+/).filter(Boolean));
     else await this.request(text);
+  }
+
+  /**
+   * 훅 관리. hooks(목록) · hooks remove <번호> · hooks test · 말로("엑셀 저장 전에 기록 남기는 훅 만들어줘").
+   * 말로 만든 훅은 명령을 보여 주고 사람이 확인해야 저장한다 (모델이 만든 명령이 바로 돌면 안 된다).
+   */
+  async hooksCommand(arg: string, natural = false): Promise<void> {
+    const { entries, errors } = loadHookEntries(this.cfg.home);
+    for (const e of errors) this.term.print(`훅 설정 오류: ${e}`);
+    const explicit = /^(|list|목록|(remove|rm|삭제)s+d+|(add|추가)s+S|test|시험)/.test(arg.trim());
+    if (!natural && !explicit) natural = true;
+    const kind = natural ? (hookRequestKind(arg) ?? (arg.trim() ? 'add' : 'list')) : /^(remove|rm|삭제)\s+\d+/.test(arg) ? 'remove' : /^(add|추가)\s+\S/.test(arg) ? 'add' : /^(test|시험)/.test(arg) ? 'test' : 'list';
+    if (kind === 'list') {
+      this.term.print(`${describeHookEntries(entries)}\n파일: ${this.cfg.home}\\hooks.json · 이벤트: ${HOOK_EVENTS.join(', ')}`);
+      return;
+    }
+    if (kind === 'test') {
+      const { port } = loadHooks(this.cfg.home);
+      if (!port) return void this.term.print('걸어 둔 훅이 없습니다');
+      for (const ev of HOOK_EVENTS) {
+        const d = await this.until(port.run({ event: ev, tool_name: 'test_tool', prompt: '시험', status: 'done' }));
+        this.term.print(`${ev}: ${d.block ? `막음 (${d.reason})` : '통과'}${d.notes.length ? ` · ${d.notes.join(' / ')}` : ''}`);
+      }
+      return;
+    }
+    if (kind === 'remove') {
+      const n = Number(/\d+/.exec(arg)?.[0]);
+      if (!n || n > entries.length) {
+        this.term.print(`지울 훅 번호를 말해 주세요 (1~${entries.length || 0}).\n${describeHookEntries(entries)}`);
+        return;
+      }
+      const gone = entries[n - 1];
+      if (!(await this.term.confirm(`훅 ${n}번 [${gone.event}] ${gone.command} 을(를) 지울까요?`, true))) return;
+      saveHookEntries(this.cfg.home, entries.filter((_, i) => i !== n - 1));
+      this.term.print('지웠습니다');
+      return;
+    }
+    this.term.print('훅을 만드는 중…');
+    let drafted;
+    try {
+      drafted = await this.until(composeHook(arg.replace(/^(add|추가)\s+/, ''), this.llm(), this.abort?.signal));
+    } catch (e) {
+      this.term.print(`훅을 만들지 못했습니다: ${(e as Error).message}. 직접 ${this.cfg.home}\\hooks.json에 적어도 됩니다`);
+      return;
+    }
+    const { entry, reason } = drafted;
+    this.term.print(`이런 훅을 만들었습니다${reason ? ` (${reason})` : ''}:\n  이벤트: ${entry.event}${entry.matcher ? `\n  도구: ${entry.matcher}` : ''}\n  명령: ${entry.command}`);
+    if (!(await this.term.confirm('이 명령은 이 PC에서 실행됩니다. 저장할까요?', false))) return;
+    const file = saveHookEntries(this.cfg.home, [...entries, entry]);
+    this.term.print(`저장했습니다 (${file}). 다음 요청부터 적용됩니다`);
+  }
+
+  /**
+   * /명령: /스킬id 로 스킬을 바로 부른다. 뒤에 k=v가 있으면 입력값으로, 말이 있으면 그 말에서 입력값을 뽑는다.
+   * 스킬 id가 아니면 false (그 줄은 보통 요청으로 처리된다).
+   */
+  private async slash(text: string): Promise<boolean> {
+    const m = /^\/(\S+)\s*(.*)$/s.exec(text);
+    if (!m) return false;
+    const [, name, rest] = m;
+    const alias: Record<string, string> = { memory: 'memory', new: 'new', clear: 'new', skills: 'skills', systems: 'systems', sync: 'sync', tabs: 'tabs' };
+    if (name in alias) {
+      await this.handleNow(alias[name] + (rest ? ' ' + rest : ''));
+      return true;
+    }
+    this.reloadSkills();
+    const entry = this.allSkills.find((e) => e.skill.id === name || e.skill.name === name);
+    if (!entry) return false;
+    const pairs = rest.split(/\s+/).filter((t) => /^[^=\s]+=/.test(t));
+    if (pairs.length || !rest.trim()) {
+      await this.runSkillByIdNow(entry.skill.id, pairs);
+      return true;
+    }
+    this.term.print('요청에서 입력값을 읽는 중…');
+    const plan = await planRequest(rest, [entry.skill], this.llm(), this.abort?.signal, undefined, this.context()).catch(() => null);
+    const given = Object.fromEntries(Object.entries(plan?.inputs ?? {}).map(([k, v]) => [k, String(v)]));
+    await this.followActiveTab();
+    const filled = await this.fillInputs(entry.skill, given);
+    if (!filled || !(await this.ensureStartTab(entry.skill, rest))) return true;
+    await this.execute(entry.skill, filled.values, filled.files, { request: rest });
+    return true;
   }
 
   async close(): Promise<void> {

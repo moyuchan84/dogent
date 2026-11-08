@@ -9,6 +9,8 @@ import { describeConfig, loadConfig, setConfig } from './config';
 import { McpHub, describeHub, describeMcpConfig, loadMcpConfig, saveMcpConfig, type McpServerSpec } from './mcp-hub';
 import { remoteMcpUsed } from './mcp-http';
 import { stdioMcpUsed } from './mcp-stdio';
+import { fetchCatalog, missingEnv, specOf } from './mcp-catalog';
+import { describeCatalogServer } from '../../src/core';
 import { describeInstall, normalizeServers, parseMcpAdd } from './mcp-install';
 import { addSchedule, describeSchedule, listSchedules, parseSpec, removeSchedule } from './schedule';
 import { Session, type SessionOptions } from './session';
@@ -41,6 +43,8 @@ const HELP = `Dogent 클라이언트 ${__DOGENT_BUILD__.version} (${__DOGENT_BUI
   dogent ask <에이전트> "<할 일>"     에이전트에 바로 맡긴다 (예: dogent ask claude "Downloads의 재공.xlsx를 라인별로 요약")
   dogent serve [--http <포트>]       Dogent를 MCP 서버로 띄운다. Claude Code·opencode가 사내 웹 업무를 Dogent에 맡긴다
                                   (claude mcp add dogent -- node <경로>\dogent.mjs serve). 앱이 켜져 있으면 앱의 주소를 쓴다
+  (대화 중) /스킬ID [말]             스킬을 바로 부른다. 예: /wip-check 7라인.  계획: <요청>  할 일을 먼저 보이고 확인받은 뒤 실행
+  (대화 중) hooks [remove N|test]    훅(도구 쓰기 전후·요청·끝날 때 명령 실행, ~/.dogent/hooks.json). 말로도 된다: "엑셀에 쓰기 전에 기록 남기는 훅 만들어줘"
   dogent memory [add "<지침>"|edit]  늘 지킬 지침 (~/.dogent/DOGENT.md). 모든 요청에서 모델이 함께 본다
   dogent mcp [list|add|remove|test|allow|ask|deny|keyword|on|off]
                                   MCP 서버 연결 (사내 시스템 도구를 에이전트가 부른다). 설정은 ~/.dogent/mcp.json
@@ -73,7 +77,9 @@ const MCP_USAGE = `사용법:
   dogent mcp test [<이름>]                  서버를 띄워 도구 목록 보기 (안 뜨는 이유도 보여 줌)
   dogent mcp allow|ask|deny <서버> <도구|*>  도구 권한: 바로 부름 / 부르기 전에 묻기 / 금지
   dogent mcp keyword <서버> <말 …>           요청에 이 말이 나오면 브라우저 없이 이 서버로 처리
-  dogent mcp off|on <이름>                  서버 끄기 / 켜기`;
+  dogent mcp off|on <이름>                  서버 끄기 / 켜기
+  dogent mcp browse                         사내 MCP 카탈로그 (팀 저장소 mcp/catalog.json, 주소: dogent config mcpCatalogUrl)
+  dogent mcp install <카탈로그ID> [--yes]    카탈로그의 서버를 내 설정에 더하고 연결 시험`;
 
 /** 더할 서버를 보여 주고 확인을 받는다. 터미널이 아니면(자동 실행) --yes 없이는 더하지 않는다. */
 async function confirmInstall(entries: Record<string, McpServerSpec>, existing: Record<string, McpServerSpec>, yes: boolean): Promise<boolean> {
@@ -155,6 +161,32 @@ async function runMcpCommand(rest: string[]): Promise<number> {
     Object.assign(cfg.servers, entries);
     console.log(`${saveMcpConfig(cfg)}에 저장했습니다`);
     return noTest ? 0 : await testInstalled(Object.keys(entries), cfg);
+  }
+  if (sub === 'browse' || sub === 'install') {
+    const c = loadConfig();
+    if (!c.mcpCatalogUrl) throw new Error('카탈로그 주소가 없습니다. dogent config mcpCatalogUrl <…/mcp/catalog.json 주소> (팀 스킬 주소가 있으면 그 옆 mcp/catalog.json을 씁니다)');
+    const { servers, errors } = await fetchCatalog(c.mcpCatalogUrl, { token: c.mcpCatalogToken });
+    for (const e of errors) console.log(`(건너뜀) ${e}`);
+    if (sub === 'browse') {
+      if (!servers.length) console.log('카탈로그가 비어 있습니다');
+      for (const s of servers) console.log(describeCatalogServer(s, !!cfg.servers[s.id]));
+      if (servers.length) console.log('\n더하려면: dogent mcp install <ID>');
+      return 0;
+    }
+    const want = servers.find((s) => s.id === a[0]);
+    if (!want) throw new Error(`카탈로그에 "${a[0] ?? ''}"이(가) 없습니다 (dogent mcp browse)`);
+    console.log(`${want.name} — ${want.description}\n담당: ${want.owner}${want.writes ? ' · 바꾸는(쓰기) 도구가 있습니다' : ''}${want.notes ? `\n${want.notes}` : ''}`);
+    const lack = missingEnv(want);
+    if (lack.length) console.log(`(이 PC에 환경 변수 ${lack.join(', ')}이(가) 없습니다. 설치 뒤 설정해야 연결됩니다)`);
+    const entries = { [want.id]: specOf(want) };
+    const yes = a.includes('--yes');
+    if (!(await confirmInstall(entries, cfg.servers, yes))) {
+      console.log('더하지 않았습니다');
+      return 1;
+    }
+    Object.assign(cfg.servers, entries);
+    console.log(`${saveMcpConfig(cfg)}에 저장했습니다`);
+    return a.includes('--no-test') || lack.length ? 0 : await testInstalled([want.id], cfg);
   }
   if (sub === 'remove') {
     need(a[0]);
@@ -283,7 +315,7 @@ async function runAgentsCommand(rest: string[], workdir: string): Promise<number
 }
 
 function parseArgs(argv: string[]): { args: string[]; flags: SessionOptions } {
-  const flags: SessionOptions = { yes: false, allowWrite: false, dryRun: false, waitSec: 60 };
+  const flags: SessionOptions = { yes: false, allowWrite: false, dryRun: false, waitSec: 60, launchBrowser: true };
   const args: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];

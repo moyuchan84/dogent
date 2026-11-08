@@ -6,6 +6,7 @@ import { tableFromText } from './external';
 import { extractPages } from './pages';
 import { FREE_SKILL_ID } from './free';
 import { PathMemo } from './paths';
+import type { HookPort } from './hooks';
 import { SUBMIT_PATTERN, checkAction, findElement, hostAllowed, optionsOf } from './policy';
 import { buildSummarizeMessages, buildTurnMessages } from './prompt';
 import { checkInputRules, extractSteps, fillTemplate, fillValue, type Skill, type SkillInputs } from './skill';
@@ -54,6 +55,8 @@ export interface RunDeps {
   scripts?: ScriptPort;
   /** 다른 스킬을 부르는 통로. 주면 run_skill을 쓸 수 있다. */
   skills?: SkillCatalogPort;
+  /** 훅(PreToolUse·PostToolUse). 주면 도구를 쓰기 전후에 사용자의 명령을 돌린다 (core/hooks.ts) */
+  hooks?: HookPort;
   /** run_skill로 불린 스킬이면 1. 불린 스킬 안에서는 다시 부를 수 없다. */
   depth?: number;
   datasets?: DatasetStore;
@@ -902,6 +905,14 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps, memo: PathM
       const earlyFinish = action.tool === 'finish' && current < steps.length;
       const unmet = action.tool === 'next_step' ? unmetNow(snap) : null;
       let outcome: Outcome;
+      // 훅(PreToolUse): 정책 검사를 통과한 도구만 훅에 보인다. 훅이 막으면 승인 창도 띄우지 않는다.
+      let hookBlock: string | undefined;
+      const hooked = !!deps.hooks && action.tool !== 'next_step' && action.tool !== 'finish' && action.tool !== 'abort';
+      if (hooked && verdict.ok && !earlyFinish && !unmet && deps.hooks!.has('PreToolUse', action.tool)) {
+        const d = await deps.hooks!.run({ event: 'PreToolUse', tool_name: action.tool, tool_input: action.args, skill: skill.name });
+        for (const note of d.notes) emit({ type: 'blocked', n, tool: action.tool, reason: `(훅 알림) ${note}` });
+        if (d.block) hookBlock = d.reason ?? '훅이 막았습니다';
+      }
       if (unmet) {
         outcome = { ok: false, result: `이 단계는 아직 끝나지 않았습니다: ${unmet.join(' / ')}` };
       } else if (earlyFinish) {
@@ -912,6 +923,9 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps, memo: PathM
       } else if (!verdict.ok) {
         emit({ type: 'blocked', n, tool: action.tool, reason: verdict.reason });
         outcome = { ok: false, result: `차단됨: ${verdict.reason}` };
+      } else if (hookBlock !== undefined) {
+        emit({ type: 'blocked', n, tool: action.tool, reason: `훅이 막음: ${hookBlock}` });
+        outcome = { ok: false, result: `훅이 막았습니다: ${hookBlock}. 이 동작은 하지 말고 다른 방법을 쓰거나 abort로 사정을 알리세요` };
       } else if (verdict.approval) {
         const button = verdict.approval.name;
         // 제출 전 대조: 앞 단계에서 확인한 입력값이 지금 화면에도 그대로인지 다시 본다.
@@ -980,6 +994,13 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps, memo: PathM
         by,
         ...targetsOf(action.args as Record<string, unknown>, snap),
       };
+      // 훅(PostToolUse): 결과를 본 훅이 덧붙일 말이 있으면 모델이 보는 결과에 붙인다
+      if (hooked && hookBlock === undefined && deps.hooks!.has('PostToolUse', action.tool)) {
+        const d = await deps.hooks!.run({ event: 'PostToolUse', tool_name: action.tool, tool_input: action.args, tool_response: outcome.result.slice(0, 2000), ok: outcome.ok, skill: skill.name });
+        for (const note of d.notes) emit({ type: 'blocked', n, tool: action.tool, reason: `(훅 알림) ${note}` });
+        const extra = [...(d.block ? [`훅 의견: ${d.reason}`] : []), ...d.context.map((c) => `훅: ${c}`)];
+        if (extra.length) entry.result = `${entry.result}\n${extra.join('\n')}`;
+      }
       history.push(entry);
       screens.push(screenPrint(snap));
       emit({ type: 'action', entry });

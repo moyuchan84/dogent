@@ -25,9 +25,9 @@ Dogent는 처음부터 Claude Code(판단·스킬·도구)와 Claude in Chrome(�
 | MCP 클라이언트 | stdio·HTTP·SSE, 권한 | 같음 (`dogent mcp add/import`, allow/ask/deny, 키워드) | 있음 | — |
 | MCP 서버로 쓰이기 | `claude mcp serve` | **`dogent serve`, 앱의 MCP 주소** (G4) | 있음 | ✅ G4 |
 | 권한 모드 | ask/acceptEdits/plan/bypass | 저장·상신 승인 창(확장), 도구 권한, `--allow-write`, `--dry-run` | 일부 | — |
-| 계획 먼저 보이기 (plan mode, 할 일 목록) | TodoWrite, plan mode | 스킬은 단계가 보임. 자유 요청은 계획을 먼저 보이지 않음 | 일부 | P2 |
-| 훅 (PreToolUse 등) | 있음 | 없음 (감사 기록·사내 정책 검사에 쓸 수 있음) | 없음 | P3 |
-| 사용자 명령 (`/명령`) | `.claude/commands` | 스킬이 그 역할. 대화창에서 `/스킬id` 바로 부르기는 없음 | 일부 | P3 |
+| 계획 먼저 보이기 (plan mode, 할 일 목록) | TodoWrite, plan mode | 요청 앞에 **`계획:`** (또는 `/plan`)을 붙이면 할 일을 먼저 보이고 확인받은 뒤 실행 (G5) | 있음 | ✅ G5 |
+| 훅 (PreToolUse 등) | 있음 | **있음** (G5): `~/.dogent/hooks.json`, 이벤트 SessionStart·UserPromptSubmit·PreToolUse·PostToolUse·Stop. 종료 코드 2로 막기. `hooks`, 말로 만들기 | 있음 | ✅ G5 |
+| 사용자 명령 (`/명령`) | `.claude/commands` | 대화창에서 **`/스킬id [말 또는 k=v]`** 바로 부르기 (G5) | 있음 | ✅ G5 |
 | 비대화 실행 (`-p --output-format json`) | 있음 | `dogent "<요청>"`(글), `dogent serve`(MCP, JSON) | 일부 | P3 |
 | 예약 실행 | 클라우드 루틴 | `dogent schedule` (작업 스케줄러) | 있음 | — |
 | 모델 고르기 | 작업마다 | 사내 모델 하나. 어려운 일은 에이전트(Claude·GLM)에 맡김 | 일부 | — |
@@ -142,6 +142,36 @@ opencode (`opencode.json`):
 - 앱 주소는 이 PC 안(127.0.0.1)에서만 받고, 토큰이 맞아야 하며, 브라우저에서 온 요청(Origin 머리글)은 거절한다.
 - `dogent serve`는 브리지를 자기 안에 띄운다. 앱이 켜져 있으면 포트가 겹쳐 뜨지 않으니 앱의 주소를 쓴다.
 - 한 번에 한 일만 받는다. 앱이 다른 일을 하는 중이면 "끝난 뒤에 다시"로 답한다.
+
+### G5. 훅 · /명령 · 계획 먼저
+
+**훅** — `~/.dogent/hooks.json` (개인 것만 읽는다. 팀 저장소에서 받은 파일은 동기화만으로 명령이 실행되면 안 되므로 읽지 않는다)
+
+```json
+{ "hooks": {
+  "PreToolUse":  [{ "matcher": "excel_write|excel_save", "command": "node D:\hooks\check.mjs" }],
+  "PostToolUse": [{ "command": "type con >> %USERPROFILE%\.dogent\audit.log" }],
+  "Stop":        [{ "command": "node D:\hooks\notify.mjs" }]
+} }
+```
+
+| 이벤트 | 때 | 막을 수 있나 |
+|---|---|---|
+| SessionStart | 대화의 첫 요청 | 아니오 |
+| UserPromptSubmit | 요청을 받은 직후 | 예 (이 요청을 처리하지 않음) |
+| PreToolUse | 도구를 쓰기 직전 (정책 검사 통과 뒤, 승인 창 앞) | 예 (모델에는 "훅이 막았습니다"로 보임) |
+| PostToolUse | 도구를 쓴 직후 | 아니오 (stdout은 모델이 보는 결과에 붙음) |
+| Stop | 요청 하나가 끝났을 때 | 아니오 |
+
+- 명령은 표준입력으로 JSON(`event, tool_name, tool_input, tool_response, prompt, status …`)을 받는다. 종료 코드 **2**면 막고 이유는 stderr. 0이면 통과, stdout이 `{"decision":"block","reason":"…"}`여도 막고 `{"additionalContext":"…"}`는 모델에 덧붙는다.
+- 고장 난 훅(다른 종료 코드·시간 초과 10초·실행 실패)은 **막지 않고 알리기만** 한다. 훅이 죽었다고 업무가 멈추면 안 된다.
+- Claude Code의 `{"matcher","hooks":[{"type":"command","command"}]}` 모양도 읽는다.
+- 대화에서: `hooks`(목록) · `hooks remove 2` · `hooks test` · 말로 "엑셀 저장 전에 기록 남기는 훅 만들어줘". 모델이 만든 명령은 **보여 주고 사람이 확인해야** 저장한다.
+- 훅은 PC의 권한으로 돈다. 스킬이 run_skill로 부른 자식 실행에도 걸린다.
+
+**/명령** — `/wip-check 7라인`(말에서 입력값을 읽음), `/wip-check line=7라인`, `/memory` `/new` `/skills` `/hooks`.
+
+**계획 먼저** — `계획: MES에서 7라인 재공 내려받아 엑셀로 정리` → 3~7단계 계획이 보이고 확인하면 그 계획을 지침 삼아 실행. 저장·상신 단계는 "(확인 필요)"로 표시된다.
 
 ## 3. 연계 방법 정리 — 누가 무엇을 맡나
 

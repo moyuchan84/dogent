@@ -5,3 +5,5 @@
 *                      @(조직)/dogent-maintainers
 # 스킬별 예
 /skills/wip-check/     @(조직)/fab-ops
+# MCP 카탈로그 항목은 그 서버를 운영하는 팀이 승인한다
+/mcp/mes-lots/         @(조직)/mes-it

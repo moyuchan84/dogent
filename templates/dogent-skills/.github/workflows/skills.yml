@@ -7,7 +7,7 @@ name: skills
 
 on:
   pull_request:
-    paths: ['skills/**', 'tools/**', '.github/workflows/skills.yml']
+    paths: ['skills/**', 'mcp/**', 'tools/**', '.github/workflows/skills.yml']
   push:
     branches: [main]
 
@@ -31,3 +31,6 @@ jobs:
             git diff -- skills/index.json
             exit 1
           fi
+
+      - name: MCP 카탈로그 확인 (항목 검사 + 최신 여부)
+        run: node tools/mcp-index.mjs mcp --check

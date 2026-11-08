@@ -122,7 +122,7 @@ class WindowUi implements Ui {
 
 const ui = new WindowUi();
 // 대화 맥락은 앱을 다시 켜거나 설정을 바꿔도 이어 간다 (오래되면 새로). 새로 하려면 "새 대화"
-const options: SessionOptions = { yes: false, allowWrite: false, dryRun: false, waitSec: 60, conversation: 'recent' };
+const options: SessionOptions = { yes: false, allowWrite: false, dryRun: false, waitSec: 60, conversation: 'recent', launchBrowser: true };
 let session = new Session(ui, loadConfig(), options);
 let busy = false;
 

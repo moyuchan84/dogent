@@ -76,3 +76,32 @@ GitHub Enterprise Server에는 GitHub가 제공하는 러너가 없어서 사내
 ## 검사기 업데이트
 
 `tools/skill-check.mjs`는 Dogent 저장소에서 만듭니다. Dogent의 검사 규칙이 바뀌면 거기서 `pnpm skill:bundle`을 실행하고, 생긴 `templates/dogent-skills/tools/skill-check.mjs`로 이 저장소의 파일을 바꿉니다.
+
+## MCP 서버 카탈로그 (`mcp/`)
+
+사내 MCP 서버를 모두가 같은 방법으로 찾고 설치하게 하는 목록입니다. 스킬과 같은 저장소·같은 PR 절차를 씁니다.
+
+```
+mcp/
+  catalog.json        ← 목록 (tools/mcp-index.mjs 가 만든다. 손으로 고치지 않는다)
+  mes-lots/server.json  ← 서버 하나 = 폴더 하나. 폴더 이름 = id
+```
+
+**더하기:** `mcp/<id>/server.json`을 쓰고(예: `mcp/mes-lots/server.json`), `node tools/mcp-index.mjs mcp`로 목록을 다시 만들어 함께 PR로 올립니다. CI가 `--check`로 항목과 최신 여부를 봅니다. 승인은 CODEOWNERS의 해당 서버 운영팀이 합니다.
+
+**규칙**
+- 토큰·비밀번호는 파일에 적지 않고 `${환경변수}`로 가리키고, 그 이름을 `requires_env`에 적습니다 (검사기가 막습니다).
+- 토큰이 필요한 원격 서버 주소는 https여야 합니다.
+- 바꾸는(쓰기) 도구가 있으면 `writes: true`, `permissions`에서 그 도구를 `ask`로 둡니다.
+- `keywords`: 요청에 이 말이 나오면 브라우저 없이 이 서버로 처리합니다.
+
+**사용자:** `dogent config teamSkillsUrl <…/skills/index.json의 raw 주소>`를 정해 두었다면 카탈로그 주소는 그 옆의 `…/mcp/catalog.json`으로 자동 정해집니다 (따로 정하려면 `dogent config mcpCatalogUrl`). 로그인이 필요한 저장소면 `teamSkillsToken`(개인 토큰)을 같이 씁니다.
+
+```
+dogent mcp browse            # 목록 (✔ = 이미 설치)
+dogent mcp install mes-lots  # 내용을 보여 주고 확인 → ~/.dogent/mcp.json에 더하고 연결 시험
+```
+
+설치는 항상 내용(주소·실행 명령·환경 변수)을 보여 주고 사람이 확인해야 합니다. 이 PC에서 명령을 실행하는 서버(`command`)는 특히 승인된 저장소의 것만 설치하세요.
+
+새 MCP 서버를 직접 만들려면 Dogent 저장소의 `templates/dogent-mcp`를 복사해 시작하세요.
