@@ -1,0 +1,32 @@
+{
+  "servers": [
+    {
+      "writes": true,
+      "requires_env": [
+        "MES_MCP_TOKEN"
+      ],
+      "id": "mes-lots",
+      "name": "MES Lot 조회·홀드",
+      "description": "라인의 재공 Lot 목록을 읽고, 필요하면 Lot을 홀드한다.",
+      "owner": "제조IT팀",
+      "notes": "토큰은 제조IT팀 포털에서 발급받아 환경 변수 MES_MCP_TOKEN에 넣습니다. lot_hold는 부르기 전에 항상 묻습니다.",
+      "spec": {
+        "url": "https://mes-mcp.example.corp/mcp",
+        "transport": "http",
+        "headers": {
+          "Authorization": "Bearer ${MES_MCP_TOKEN}"
+        },
+        "permissions": {
+          "lot_list": "allow",
+          "lot_hold": "ask"
+        },
+        "keywords": [
+          "MES",
+          "Lot",
+          "재공",
+          "홀드"
+        ]
+      }
+    }
+  ]
+}

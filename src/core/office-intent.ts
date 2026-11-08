@@ -43,6 +43,15 @@ export function officeIntent(text: string, o: { openDocs?: string[]; hasUrl?: bo
   return { excel, web, ...(word ? { word: true as const } : {}), ...(ppt ? { ppt: true as const } : {}) };
 }
 
+/**
+ * 이번 문장에 단서가 하나도 없으면("거기 있는 거 봐줘", "방금 그거 합계 내줘") 직전 요청이 쓴 통로를 이어 쓴다.
+ * 단서가 있으면 그 판정을 그대로 둔다. 직전이 브라우저뿐이었다면 기본값(브라우저)과 같으니 바꿀 것이 없다.
+ */
+export function carryIntent(intent: OfficeIntent, prev?: { office?: boolean; web?: boolean }): OfficeIntent {
+  if (intent.excel || intent.web || !prev?.office) return intent;
+  return { excel: true, web: !!prev.web };
+}
+
 /** 스킬 단계가 오피스 도구나 파일 입력을 쓰는지 (그러면 실행에 오피스 통로를 붙인다) */
 export function skillUsesOffice(skill: Skill): boolean {
   return /(excel_(docs|read|write|save)|word_(read|write|save)|ppt_(read|write|save))/.test(skill.body) || skill.inputs.some((i) => i.type === 'file');

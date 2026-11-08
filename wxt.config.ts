@@ -95,7 +95,7 @@ function printProfile(mode: string, sites: string[], scope: string[]): void {
     `  API 키     ${env.WXT_LLM_API_KEY ? '있음 (빌드에 포함)' : '없음'}`,
     `  요청 헤더  ${headers.length ? headers.join(', ') : 'Authorization: Bearer (OpenAI 방식)'}`,
     `  시스템 이름 Send-System-Name: ${systemName}`,
-    `  사이트     ${sites.join(', ')}${sites.includes('https://*/*') ? '  (모든 http·https 사이트. 회사 빌드에서 목록 방식으로 하려면 WXT_ALL_SITES=false)' : mode === 'company' ? '  (목록 방식: 나머지는 패널의 "이 사이트 허용"으로 더함)' : ''}`,
+    `  사이트     ${sites.join(', ')}${sites.includes('https://*/*') ? '  (모든 http·https 사이트. 목록 방식으로 하려면 WXT_ALL_SITES=false)' : '  (목록 방식: 나머지는 패널의 "이 사이트 허용"으로 더함)'}`,
     `  추가 가능  ${scope.join(', ')} (설정 → 조작할 사이트에서 더함)`,
     `  확장 폴더  ${out}  ← chrome://extensions 에서 이 폴더를 로드`,
   ];

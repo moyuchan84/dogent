@@ -1,0 +1,16 @@
+{
+  "id": "my-mcp",
+  "name": "내 MCP 서버 (이름을 바꾸세요)",
+  "description": "이 서버가 하는 일을 한 문장으로.",
+  "owner": "(담당 부서)",
+  "writes": true,
+  "requires_env": ["MY_MCP_TOKEN"],
+  "notes": "토큰은 (어디서) 발급받아 환경 변수 MY_MCP_TOKEN에 넣습니다.",
+  "spec": {
+    "url": "https://my-mcp.example.corp/mcp",
+    "transport": "http",
+    "headers": { "Authorization": "Bearer ${MY_MCP_TOKEN}" },
+    "permissions": { "echo": "allow", "lot_list": "allow", "lot_hold": "ask" },
+    "keywords": ["키워드1", "키워드2"]
+  }
+}

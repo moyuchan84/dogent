@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir, userInfo } from 'node:os';
 import { join } from 'node:path';
-import type { LlmSettings } from '../../src/core';
+import { catalogUrlFor, type LlmSettings } from '../../src/core';
 import { dogentConfig } from '../../dogent.config';
 import { findOfficeExe } from './office';
 import { defaultUploadDirs } from './upload';
@@ -21,6 +21,10 @@ export interface UserConfig {
   teamSkillsUrl?: string;
   /** 그 주소가 로그인을 요구하면 보낼 토큰 (사내 GitHub의 개인 토큰 등) */
   teamSkillsToken?: string;
+  /** 사내 MCP 카탈로그(mcp/catalog.json)의 주소. 없으면 teamSkillsUrl 옆의 ../mcp/catalog.json */
+  mcpCatalogUrl?: string;
+  /** 카탈로그 토큰. 없으면 teamSkillsToken */
+  mcpCatalogToken?: string;
   /** 공용 시스템 사전 서버의 주소 (http://서버:8787 또는 …/mcp). 주면 사전을 받아 와 로컬 사전으로 쓴다 (빌드의 WXT_SYSTEMS_URL이 기본) */
   systemsUrl?: string;
   /** 그 서버가 토큰을 요구하면 보낼 토큰 (서버의 SYSTEMS_MCP_TOKEN) */
@@ -56,6 +60,8 @@ export interface ClientConfig {
   teamSkills?: string;
   teamSkillsUrl?: string;
   teamSkillsToken?: string;
+  mcpCatalogUrl?: string;
+  mcpCatalogToken?: string;
   systemsUrl?: string;
   systemsToken?: string;
   hubUrl?: string;
@@ -119,6 +125,8 @@ export function loadConfig(): ClientConfig {
     teamSkills: user.teamSkills,
     teamSkillsUrl: user.teamSkillsUrl?.trim() || __DOGENT_BUILD__.skillsUrl,
     teamSkillsToken: user.teamSkillsToken,
+    mcpCatalogUrl: catalogUrlFor(user.teamSkillsUrl?.trim() || __DOGENT_BUILD__.skillsUrl, user.mcpCatalogUrl),
+    mcpCatalogToken: user.mcpCatalogToken || user.teamSkillsToken,
     systemsUrl: user.systemsUrl?.trim() || __DOGENT_BUILD__.systemsUrl,
     systemsToken: user.systemsToken,
     hubUrl: user.hubUrl?.trim() || __DOGENT_BUILD__.hubUrl,
@@ -168,6 +176,7 @@ export function describeConfig(c: ClientConfig): string {
     `담당 부서      ${c.owner ?? '(스킬을 처음 저장할 때 묻습니다)'}`,
     `팀 스킬        ${c.teamSkills ?? '(폴더 없음: dogent config teamSkills <폴더>)'}`,
     `팀 스킬 주소   ${c.teamSkillsUrl ?? '(없음: dogent config teamSkillsUrl <index.json 주소>)'}${c.teamSkillsToken ? ' (토큰 있음)' : ''}`,
+    `MCP 카탈로그   ${c.mcpCatalogUrl ?? '(없음: dogent config mcpCatalogUrl <catalog.json 주소>)'}`,
     `시스템 사전    ${c.systemsUrl ?? '(없음: dogent config systemsUrl http://서버:8787)'}${c.systemsToken ? ' (토큰 있음)' : ''}`,
     `Hub           ${c.hubUrl ?? '(없음: dogent config hubUrl http://서버:8790, 토큰은 hubToken)'}${c.hubToken ? ' (토큰 있음)' : ''}`,
     `결과 저장      ${c.outputDir}${c.saveThroughExcel ? ' (Excel로 저장)' : ''}`,

@@ -22,7 +22,12 @@ export interface Turn {
   files: string[];
   /** 만든 데이터셋 (이름, 행 수, 컬럼) */
   datasets: { name: string; rows: number; columns: string[] }[];
+  /** 이 차례에 쓴 통로. 키워드 없는 다음 요청("거기 있는 거 봐줘")이 같은 통로로 이어가게 한다 */
+  uses?: { office?: boolean; web?: boolean };
 }
+
+/** 이 시간 안의 직전 요청이면 통로를 이어 쓴다 (엑셀 작업 직후의 짧은 후속 요청) */
+export const CHANNEL_CARRY_MS = 30 * 60_000;
 
 /** 모델에 보여 줄 최근 차례 수 */
 const SHOW_TURNS = 5;
@@ -62,6 +67,13 @@ export class Conversation {
   stale(now = Date.now()): boolean {
     const last = this.turns.at(-1);
     return !!last && now - Date.parse(last.at) > STALE_MS;
+  }
+
+  /** 직전 차례가 쓴 통로. 오래되었거나 없으면 undefined */
+  lastUses(now = Date.now()): Turn['uses'] {
+    const last = this.turns.at(-1);
+    if (!last?.uses || now - Date.parse(last.at) > CHANNEL_CARRY_MS) return undefined;
+    return last.uses;
   }
 
   add(turn: Omit<Turn, 'at'> & { at?: string }): void {
