@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Dogent 설치 매뉴얼</title><style>:root{--bg:#f6f7f9;--panel:#fff;--ink:#1b2430;--sub:#5a6676;--line:#dde2e9;--brand:#2457d6;--brand-bg:#e8eefc;--code-bg:#eef1f5;--warn:#a15c00;--warn-bg:#fff1d6}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#12161c;--panel:#1a2029;--ink:#e6ebf2;--sub:#9aa7b8;--line:#2c3644;--brand:#7ea3ff;--brand-bg:#1d2a4a;--code-bg:#232b37;--warn:#f2b45a;--warn-bg:#3a2a0c}}
+*{box-sizing:border-box}html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.7 -apple-system,"Segoe UI","Malgun Gothic",sans-serif}
+a{color:var(--brand)}code,pre{font-family:Consolas,"D2Coding",monospace;font-size:.92em}
+code{background:var(--code-bg);padding:1px 5px;border-radius:4px}
+pre{background:var(--code-bg);padding:12px 14px;border-radius:8px;overflow:auto;line-height:1.5}pre code{background:none;padding:0}
+.layout{display:grid;grid-template-columns:240px minmax(0,1fr);max-width:1240px;margin:0 auto}
+nav{position:sticky;top:0;align-self:start;height:100vh;overflow:auto;padding:22px 14px 22px 20px;border-right:1px solid var(--line);font-size:13.5px}
+nav b{display:block;margin-bottom:10px}nav a{display:block;padding:4px 8px;border-radius:6px;color:var(--sub);text-decoration:none}nav a:hover{background:var(--brand-bg);color:var(--brand)}
+main{padding:28px 28px 80px;min-width:0}
+h1{font-size:26px;margin:0 0 8px}h2{font-size:21px;margin:42px 0 12px;padding-top:8px;border-top:2px solid var(--line)}h3{font-size:17px;margin:26px 0 8px}h4{font-size:15px;margin:18px 0 6px}
+.tw{overflow-x:auto;margin:10px 0}table{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--line);font-size:14px}
+th,td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}th{background:var(--code-bg);white-space:nowrap}
+blockquote{margin:12px 0;border-left:4px solid var(--brand);background:var(--brand-bg);padding:10px 14px;border-radius:6px}blockquote.warn{border-color:var(--warn);background:var(--warn-bg)}
+hr{border:0;border-top:1px solid var(--line);margin:24px 0}li{margin:3px 0}
+@media (max-width:860px){.layout{grid-template-columns:1fr}nav{position:static;height:auto;border-right:0;border-bottom:1px solid var(--line)}main{padding:20px 16px 60px}}
+@media print{nav{display:none}.layout{display:block}}</style></head><body><div class="layout"><nav><b>Dogent 설치 매뉴얼</b><a href="#1-무엇이-설치되나">1. 무엇이 설치되나</a><a href="#2-역할-나누기">2. 역할 나누기</a><a href="#3-배포-담당자-빌드">3. 배포 담당자: 빌드</a><a href="#4-사용자-설치">4. 사용자: 설치</a><a href="#5-처음-한-번-설정-사용자">5. 처음 한 번 설정 (사용자)</a><a href="#6-업데이트와-제거">6. 업데이트와 제거</a><a href="#7-설치-확인-체크리스트">7. 설치 확인 체크리스트</a><a href="#8-자주-막히는-곳">8. 자주 막히는 곳</a><a href="#9-집-ollama-모의-환경에서-시험하기">9. 집(Ollama)·모의 환경에서 시험하기</a></nav><main>
+<h1 id="dogent-설치-매뉴얼">Dogent 설치 매뉴얼</h1>
+<blockquote class="">기준일 2026-11-09 · 저장소 main (훅, MCP 카탈로그, 브라우저 자동 실행 반영)<br>이 문서는 <strong>처음 설치하는 사람</strong>을 위한 한 장짜리 순서입니다. 자세한 문제 해결은 <a href="12-install-guide.html">12-install-guide.html</a>, 회사 PC 재설치는 <a href="15-company-reinstall.html">15-company-reinstall.html</a>, 사내 opencode에 맡기는 요청문은 <a href="16-opencode-install.html">16-opencode-install.md</a>.<br>서버 쪽(스킬 저장소, MCP 카탈로그, 시스템 사전, Hub, LLM 프록시) 준비는 <a href="25-infra-setup.html">25-infra-setup.md</a>.</blockquote>
+<h2 id="1-무엇이-설치되나">1. 무엇이 설치되나</h2>
+<div class="tw"><table><thead><tr><th>구성</th><th>위치</th><th>하는 일</th><th>필요한 것</th></tr></thead><tbody><tr><td>브라우저 확장</td><td><code>extension\</code> (크롬·엣지에 로드)</td><td>업무 화면을 읽고 조작. 승인 창, 사이트 허용, 화면 점검</td><td>크롬 또는 엣지</td></tr><tr><td>데스크탑 앱</td><td><code>app\Dogent.exe</code></td><td>말로 요청하고 스킬을 실행하는 창. 확장과의 연결을 스스로 등록</td><td>없음 (Node 불필요)</td></tr><tr><td>오피스 도구</td><td><code>dogent-office.exe</code></td><td>사용자의 Excel·Word·PowerPoint를 COM으로 부림 (NASCA·EDM 문서)</td><td>Office 설치된 PC</td></tr><tr><td>터미널 클라이언트</td><td><code>dogent.mjs</code>, <code>bin\dogent.cmd</code></td><td>앱과 같은 엔진의 명령줄 판. 예약 실행, MCP·훅 관리</td><td>Node.js 22 이상</td></tr></tbody></table></div>
+<p>설치 위치는 <code>D:\Multimedia\Dogent</code>(없으면 <code>%LOCALAPPDATA%\Dogent</code>). 내 스킬·설정·기록·토큰은 <code>%USERPROFILE%\.dogent</code>에 있고 업데이트·제거해도 남습니다.</p>
+<h2 id="2-역할-나누기">2. 역할 나누기</h2>
+<ul><li><strong>배포 담당자:</strong> 빌드해서 묶음(zip)을 만든다 (3장).</li><li><strong>사용자:</strong> 묶음을 풀고 <code>install.cmd</code>를 누른 뒤 확장을 로드한다 (4장).</li></ul>
+<p>혼자 쓰는 PC라면 두 역할을 모두 한 PC에서 합니다 (<code>-Install</code> 옵션).</p>
+<h2 id="3-배포-담당자-빌드">3. 배포 담당자: 빌드</h2>
+<h3 id="3-1-준비물-확인">3-1. 준비물 확인</h3>
+<pre><code>node -v          :: 22 이상
+pnpm -v          :: 없으면 build.cmd가 corepack으로 켬
+git --version</code></pre>
+<p>.NET Framework 4.x의 <code>csc.exe</code>(윈도우 기본)로 오피스 도구를 컴파일하므로 Visual Studio는 필요 없습니다.</p>
+<h3 id="3-2-빌드-설정-파일-회사-모드">3-2. 빌드 설정 파일 (회사 모드)</h3>
+<pre><code>copy .env.company.example .env.company.local
+notepad .env.company.local</code></pre>
+<p>반드시 채울 값 (API 제공 측에서 받음):</p>
+<div class="tw"><table><thead><tr><th>키</th><th>뜻</th></tr></thead><tbody><tr><td><code>WXT_LLM_BASE_URL</code></td><td><code>api_base_url</code> (<code>/chat/completions</code> 앞까지)</td></tr><tr><td><code>WXT_LLM_API_KEY</code></td><td><code>credential_key</code></td></tr><tr><td><code>WXT_LLM_MODEL</code></td><td><code>model</code></td></tr><tr><td><code>WXT_LLM_USER_TYPE</code></td><td>사용자 유형</td></tr></tbody></table></div>
+<p>선택 값: <code>WXT_LLM_HEADERS</code>(헤더 틀), <code>WXT_LLM_JSON_MODE</code>, <code>WXT_LLM_VISION</code>, <code>WXT_LLM_TIMEOUT_SCALE</code>, <code>WXT_SKILLS_URL</code>, <code>WXT_SYSTEMS_URL</code>, <code>WXT_HUB_URL</code>, <code>WXT_BRIDGE_MODE</code>. 각 키의 뜻은 <code>.env.company.example</code> 주석에 있습니다. 파일에 <code>(…)</code> 자리가 남아 있으면 빌드가 멈춥니다.</p>
+<blockquote class="warn"><strong>주의:</strong> 회사 모드 묶음에는 API 키가 글자 그대로 들어갑니다. 사내 파일 서버로만 나누고 저장소·메일·메신저·개인 GitHub에 올리지 않습니다. <code>release\</code>와 <code>*.local</code>은 Git에서 빠져 있습니다.</blockquote>
+<p>기본 동작은 <strong>모든 http·https 사이트 허용</strong>입니다 (접근하면 안 되는 주소는 사내 방화벽센터가 막음). 보안 검토로 목록 방식이 필요하면 <code>WXT_ALL_SITES=false</code>를 넣고, 그러면 <code>WXT_SITE_PERMISSIONS</code>의 사이트만 처음부터 열리고 나머지는 사용자가 패널의 "이 사이트 허용"으로 더합니다.</p>
+<h3 id="3-3-빌드">3-3. 빌드</h3>
+<pre><code>install\build.cmd -Mode company -Zip</code></pre>
+<p>결과: <code>release\Dogent-company-&lt;판&gt;\</code> 과 <code>release\Dogent-company-&lt;판&gt;.zip</code>.</p>
+<div class="tw"><table><thead><tr><th>옵션</th><th>뜻</th></tr></thead><tbody><tr><td><code>-Mode dev|home|company</code></td><td>빌드 설정. dev=모의 모델, home=<code>.env.home.local</code>(Ollama), company=<code>.env.company.local</code></td></tr><tr><td><code>-Parts extension,client,office,desktop</code></td><td>일부만 빌드</td></tr><tr><td><code>-Zip</code></td><td>zip도 만듦</td></tr><tr><td><code>-Install</code></td><td>만든 뒤 이 PC에 바로 설치</td></tr><tr><td><code>-Test</code></td><td>빌드 전에 타입 검사와 단위 시험</td></tr><tr><td><code>-Reinstall</code></td><td><code>pnpm install</code> 다시</td></tr></tbody></table></div>
+<p>빌드 터미널의 "빌드 설정: company" 요약에서 <strong>주소·모델·헤더 이름</strong>을 눈으로 확인하고 나눕니다.</p>
+<p>한 부분만 고쳤을 때:</p>
+<pre><code>pnpm build:company           :: 확장  → .output\chrome-mv3-company
+pnpm client:build:company    :: 터미널 클라이언트
+pnpm office:build            :: 오피스 도구
+pnpm desktop:pack:company    :: 데스크탑 앱 (오피스 도구를 먼저 빌드)</code></pre>
+<h2 id="4-사용자-설치">4. 사용자: 설치</h2>
+<ol><li>받은 <code>Dogent-company-&lt;판&gt;.zip</code>을 <strong>풉니다</strong> (zip 안에서 바로 실행하면 파일을 못 찾습니다).</li><li><code>install.cmd</code>를 두 번 누릅니다. "Windows의 PC 보호"가 뜨면 추가 정보 → 실행.</li><li>스크립트가 크롬/엣지 확장 관리 화면을 열고 확장 폴더 경로를 클립보드에 넣어 둡니다.<ol><li>개발자 모드 켜기 → <strong>압축해제된 확장 프로그램을 로드합니다</strong> → <code>Ctrl+V</code> → 폴더 선택</li><li>퍼즐 아이콘에서 Dogent 고정(핀)</li><li>크롬과 엣지를 둘 다 쓰면 둘 다 로드</li></ol></li><li>창으로 돌아가 Enter. 스크립트가 앱을 띄웁니다. 앱은 처음 뜰 때 확장을 찾아 연결(Native Messaging)을 스스로 등록합니다.</li><li>앱 위쪽에 <strong>브라우저 이름(크롬/엣지)</strong> 이 보이면 연결된 것입니다.</li></ol>
+<blockquote class="">확장은 반드시 <code>D:\Multimedia\Dogent\extension</code>에서 로드합니다. 저장소의 <code>.output\…</code>이나 <code>release\…</code>에서 로드하면 업데이트 때 경로가 달라집니다.</blockquote>
+<h2 id="5-처음-한-번-설정-사용자">5. 처음 한 번 설정 (사용자)</h2>
+<div class="tw"><table><thead><tr><th>순서</th><th>할 일</th><th>성공 기준</th></tr></thead><tbody><tr><td>1</td><td>사이드 패널 → 설정 → <strong>사용자 ID</strong>에 사내 SSO ID 입력 (앱·<code>dogent</code>는 Windows 계정이 기본값)</td><td>—</td></tr><tr><td>2</td><td>설정 → <strong>연결 시험</strong></td><td>"연결됨". "닿지 못했습니다"+<code>이 주소 접근 허용</code> 버튼이 나오면 누름</td></tr><tr><td>3</td><td>업무 화면을 열고 패널 위 <strong>화면 점검</strong></td><td>읽지 못하는 iframe·canvas 그리드·shadow DOM이 보고서에 나옴</td></tr><tr><td>4</td><td>터미널에서 <code>dogent doctor</code></td><td>토큰·포트·호스트 등록·회사 정책·실시간 연결 모두 OK</td></tr></tbody></table></div>
+<p>확장이 안 붙으면 <code>dogent doctor --fix</code>(호스트 재등록).</p>
+<h3 id="새로-생긴-편의-이번-판">새로 생긴 편의 (이번 판)</h3>
+<ul><li><strong>브라우저 자동 실행:</strong> 브라우저가 꺼져 있으면 <code>dogent</code>가 크롬/엣지를 대신 띄웁니다(이미 떠 있으면 새 창을 더 열지 않음). 어느 브라우저인지는 <code>dogent config browser edge</code>로 정합니다. 사내 PC에서의 동작은 아직 확인하지 못했습니다.</li><li><strong>훅, <code>/명령</code>, <code>계획:</code></strong>: 별도 설치 없이 클라이언트에 들어 있습니다 (사용법은 <a href="26-usecase-guide.html">26-usecase-guide.md</a>).</li><li><strong>MCP 카탈로그:</strong> 팀 저장소 주소만 정해 두면 <code>dogent mcp browse / install</code>을 쓸 수 있습니다 (<a href="25-infra-setup.html">25-infra-setup.md</a> 3장).</li></ul>
+<h2 id="6-업데이트와-제거">6. 업데이트와 제거</h2>
+<div class="tw"><table><thead><tr><th>상황</th><th>방법</th></tr></thead><tbody><tr><td>묶음을 받아 쓰는 PC</td><td>새 묶음을 풀고 <code>install.cmd</code> 다시. 같은 폴더에 덮어쓰고 확장은 1분 안에 스스로 새 판을 읽음</td></tr><tr><td>저장소가 있는 PC</td><td><code>install\update.cmd</code> (git pull → 전부 빌드 → 덮어쓰기 → 앱 재실행). <code>-Mode</code>, <code>-NoPull</code> 옵션</td></tr><tr><td>제거</td><td>시작 메뉴 → Dogent 제거 (<code>uninstall.cmd</code>). 설정·스킬까지 지우려면 <code>uninstall.cmd -Purge</code>. 확장은 브라우저에서 직접 삭제</td></tr></tbody></table></div>
+<h2 id="7-설치-확인-체크리스트">7. 설치 확인 체크리스트</h2>
+<ul><li>☐ <code>D:\Multimedia\Dogent\app\Dogent.exe</code>가 실행된다</li><li>☐ 앱 위쪽에 브라우저 이름이 뜬다</li><li>☐ 패널 → 설정 → 연결 시험이 "연결됨"</li><li>☐ <code>dogent doctor</code>가 모두 통과한다</li><li>☐ 업무 화면에서 <strong>화면 점검</strong> 보고서가 나온다</li><li>☐ <code>dogent "이 화면 요약해줘"</code>가 결과를 낸다</li><li>☐ (Excel 사용 시) <code>dogent excel docs</code>가 열린 문서를 보여 준다</li></ul>
+<h2 id="8-자주-막히는-곳">8. 자주 막히는 곳</h2>
+<div class="tw"><table><thead><tr><th>증상</th><th>확인</th></tr></thead><tbody><tr><td>앱에 브라우저 이름이 안 뜬다</td><td>확장이 <code>D:\Multimedia\Dogent\extension</code>에서 로드됐는지, <code>dogent doctor --fix</code></td></tr><tr><td>연결 시험 실패</td><td><code>WXT_LLM_BASE_URL</code>, 사내망/VPN, "이 주소 접근 허용", 헤더 틀</td></tr><tr><td>포트 39217 충돌</td><td>공용 PC·원격 데스크톱에서 두 번째 사용자는 브리지를 못 띄움 → Native Messaging 방식 사용</td></tr><tr><td>실행 파일이 보안 SW에 차단</td><td><code>Dogent.exe</code>, <code>dogent-office.exe</code> 예외 요청 (사내 확인 목록 C6)</td></tr><tr><td>확장 ID가 바뀜</td><td><code>keys\dogent-extension.pem</code>(저장소 제외)을 분실했거나 로드 경로가 바뀐 경우. 키를 안전한 곳에 백업</td></tr><tr><td><code>dogent</code> 명령을 못 찾음</td><td>새 터미널을 열어 PATH 갱신 확인, 또는 <code>D:\Multimedia\Dogent\bin\dogent.cmd</code></td></tr></tbody></table></div>
+<h2 id="9-집-ollama-모의-환경에서-시험하기">9. 집(Ollama)·모의 환경에서 시험하기</h2>
+<pre><code>pnpm install
+pnpm build:home            # .env.home.local (Ollama 설정)
+pnpm mock:site             # 모의 업무 사이트 http://localhost:4173
+pnpm ollama:proxy          # 또는 pnpm mock:llm (모의 모델)</code></pre>
+<p><code>.output\chrome-mv3-home</code>을 로드해 시험합니다. 자세한 순서는 <a href="../README.html">README.md</a>와 <a href="08-hands-on-guide.html">08-hands-on-guide.html</a>.</p>
+</main></div></body></html>

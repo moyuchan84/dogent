@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Dogent 사용 유즈케이스 가이드</title><style>:root{--bg:#f6f7f9;--panel:#fff;--ink:#1b2430;--sub:#5a6676;--line:#dde2e9;--brand:#2457d6;--brand-bg:#e8eefc;--code-bg:#eef1f5;--warn:#a15c00;--warn-bg:#fff1d6}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#12161c;--panel:#1a2029;--ink:#e6ebf2;--sub:#9aa7b8;--line:#2c3644;--brand:#7ea3ff;--brand-bg:#1d2a4a;--code-bg:#232b37;--warn:#f2b45a;--warn-bg:#3a2a0c}}
+*{box-sizing:border-box}html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.7 -apple-system,"Segoe UI","Malgun Gothic",sans-serif}
+a{color:var(--brand)}code,pre{font-family:Consolas,"D2Coding",monospace;font-size:.92em}
+code{background:var(--code-bg);padding:1px 5px;border-radius:4px}
+pre{background:var(--code-bg);padding:12px 14px;border-radius:8px;overflow:auto;line-height:1.5}pre code{background:none;padding:0}
+.layout{display:grid;grid-template-columns:240px minmax(0,1fr);max-width:1240px;margin:0 auto}
+nav{position:sticky;top:0;align-self:start;height:100vh;overflow:auto;padding:22px 14px 22px 20px;border-right:1px solid var(--line);font-size:13.5px}
+nav b{display:block;margin-bottom:10px}nav a{display:block;padding:4px 8px;border-radius:6px;color:var(--sub);text-decoration:none}nav a:hover{background:var(--brand-bg);color:var(--brand)}
+main{padding:28px 28px 80px;min-width:0}
+h1{font-size:26px;margin:0 0 8px}h2{font-size:21px;margin:42px 0 12px;padding-top:8px;border-top:2px solid var(--line)}h3{font-size:17px;margin:26px 0 8px}h4{font-size:15px;margin:18px 0 6px}
+.tw{overflow-x:auto;margin:10px 0}table{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--line);font-size:14px}
+th,td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}th{background:var(--code-bg);white-space:nowrap}
+blockquote{margin:12px 0;border-left:4px solid var(--brand);background:var(--brand-bg);padding:10px 14px;border-radius:6px}blockquote.warn{border-color:var(--warn);background:var(--warn-bg)}
+hr{border:0;border-top:1px solid var(--line);margin:24px 0}li{margin:3px 0}
+@media (max-width:860px){.layout{grid-template-columns:1fr}nav{position:static;height:auto;border-right:0;border-bottom:1px solid var(--line)}main{padding:20px 16px 60px}}
+@media print{nav{display:none}.layout{display:block}}</style></head><body><div class="layout"><nav><b>Dogent 사용 유즈케이스 가이드</b><a href="#1-먼저-알아둘-것">1. 먼저 알아둘 것</a><a href="#2-시나리오">2. 시나리오</a><a href="#3-상황별-빠른-표">3. 상황별 빠른 표</a><a href="#4-하지-않는-것-지금-범위-밖">4. 하지 않는 것 (지금 범위 밖)</a></nav><main>
+<h1 id="dogent-사용-유즈케이스-가이드">Dogent 사용 유즈케이스 가이드</h1>
+<blockquote class="">기준일 2026-11-09 · "무엇을 어떻게 말하면 어떻게 돌고, 어디서 사람이 개입하는가"를 시나리오별로 정리했습니다.<br>업무 정의서(UC-01~07)는 <a href="01-usecases.html">01-usecases.md</a>, 안전 등급 정의도 거기에 있습니다. 설치는 <a href="24-install-manual.html">24</a>, 서버 준비는 <a href="25-infra-setup.html">25</a>.<br>시나리오의 시스템·화면 이름은 <strong>모의 사이트·예시</strong> 기준입니다. 사내 화면에서의 실제 동작은 아직 확인하지 못했습니다 (<a href="27-gaps-and-improvements.html">27-gaps-and-improvements.md</a>).</blockquote>
+<h2 id="1-먼저-알아둘-것">1. 먼저 알아둘 것</h2>
+<h3 id="1-1-쓰는-방법-세-가지">1-1. 쓰는 방법 세 가지</h3>
+<div class="tw"><table><thead><tr><th>방법</th><th>언제</th><th>예</th></tr></thead><tbody><tr><td>데스크탑 앱</td><td>평소에</td><td>앱 입력창에 "7라인 재공 확인해줘"</td></tr><tr><td>터미널</td><td>예약·자동화, 개발자</td><td><code>dogent "7라인 재공 확인해줘"</code></td></tr><tr><td>크롬 사이드 패널</td><td>클라이언트 없이 확장만으로</td><td>패널의 스킬 목록에서 실행</td></tr></tbody></table></div>
+<h3 id="1-2-위험-등급과-사람의-역할">1-2. 위험 등급과 사람의 역할</h3>
+<div class="tw"><table><thead><tr><th>등급</th><th>하는 일</th><th>통제</th></tr></thead><tbody><tr><td>R0 조회</td><td>화면 읽기, 표 추출, 내려받기</td><td>자동</td></tr><tr><td>R1 파일</td><td>로컬 파일 저장</td><td>자동, 저장 위치 알림</td></tr><tr><td>R2 입력</td><td>양식 채우기 (제출 전)</td><td>입력값 정책 검사 + 입력 후 화면 값 대조</td></tr><tr><td>R3 저장·상신</td><td>신청, 저장, 결재</td><td><strong>승인 창</strong> 필수, 시험 실행 가능, 단계당 1회</td></tr></tbody></table></div>
+<p>로그인은 항상 사람이 합니다. 비밀번호 칸이 보이면 멈추고 알립니다.</p>
+<h3 id="1-3-자주-쓰는-입력-형태">1-3. 자주 쓰는 입력 형태</h3>
+<pre><code>dogent "7라인 재공 확인해줘"                  # 말로 (스킬을 고르고 값을 뽑음)
+dogent run wip-check line=7라인               # 스킬을 직접
+dogent "…" --dry-run                          # 저장·상신 직전에 멈춤
+dogent "…" --allow-write                      # 자유 요청에서 저장·상신 허용 (승인 창은 그대로)
+dogent -c "방금 결과를 라인별로 나눠줘"          # 대화 이어서
+계획: MES에서 7라인 재공 내려받아 엑셀로 정리      # 계획을 먼저 보고 확인 후 실행
+/wip-check 7라인                              # 대화창에서 스킬 바로 부르기</code></pre>
+<h2 id="2-시나리오">2. 시나리오</h2>
+<h3 id="시나리오-1-재공-조회-r0-r1">시나리오 1. 재공 조회 (R0~R1)</h3>
+<ul><li><strong>누가:</strong> 라인 담당 엔지니어 · <strong>언제:</strong> 아침 라인 점검</li><li><strong>말:</strong> "7라인 재공 확인해줘"</li><li><strong>흐름:</strong> 시스템 사전에서 "재공" 시스템을 찾음 → 열린 탭이 없으면 주소를 열지 묻고 새 탭에서 시작 → 조회 조건 입력 → 페이지를 넘기며 추출 → 정체 Lot·공정별 집계 → 엑셀(원본 / 정체Lot / 공정별집계)</li><li><strong>사람이 하는 일:</strong> 로그인(필요할 때), 결과 확인</li><li><strong>결과:</strong> 저장 폴더(기본 내려받기)에 <code>재공확인_7라인.xlsx</code>, 앱에 요약</li><li><strong>변형:</strong> 화면에 "엑셀 다운로드" 버튼이 있으면 <code>wip-download</code>가 페이지를 넘기지 않고 한 번에 받음</li><li><strong>안 될 때:</strong> 0건이면 조건을 그대로 보여 주고 끝냄(임의로 조건을 바꿔 재조회하지 않음). 화면을 못 읽으면 <strong>화면 점검</strong> 먼저.</li></ul>
+<h3 id="시나리오-2-승인이-필요한-신청-ip-방화벽-해제-r3">시나리오 2. 승인이 필요한 신청 — IP 방화벽 해제 (R3)</h3>
+<ul><li><strong>말:</strong> "IP 방화벽 해제 신청해줘, 출발지 10.1.2.3, 목적지 …, 사유 …"</li><li><strong>흐름:</strong> 입력값 정책 검사(허용 대역·금지 포트·사유 길이) → 신청서 채움 → 화면 값과 입력값 대조 → <strong>승인 창</strong> → 상신</li><li><strong>사람이 하는 일:</strong> 승인 창의 내용을 화면과 비교하고 승인. 창을 닫으면 누르지 않음.</li><li><strong>처음에는 반드시</strong> <code>--dry-run</code>(또는 앱의 "시험 실행")으로 상신 직전 멈춤을 확인.</li><li><strong>결과:</strong> 신청 번호가 결과에 기록됨</li></ul>
+<h3 id="시나리오-3-엑셀-웹-일괄-입력-r3">시나리오 3. 엑셀 → 웹 일괄 입력 (R3)</h3>
+<ul><li><strong>말:</strong> "재공 수량 조정 입력" 스킬 선택 + 엑셀 파일 지정 (첫 행: Lot ID, 공정, 조정수량, 사유)</li><li><strong>흐름:</strong> xlsx 읽기(보안 파일이면 Excel을 거쳐 열기) → <strong>전체 행 사전 검사</strong> → 입력 → 저장 전 대조 → 승인</li><li><strong>묶어 실행:</strong> 행마다 같은 스킬을 돌리며 <strong>행마다 승인</strong>, 행별 결과를 엑셀로</li><li><strong>주의:</strong> 단건이 안정된 뒤에 묶음으로 (<a href="22-first-skills-playbook.html">22-first-skills-playbook.md</a> 6장)</li></ul>
+<h3 id="시나리오-4-스킬이-없는-화면을-말로-시키기-자유-요청-스킬-저장">시나리오 4. 스킬이 없는 화면을 말로 시키기 (자유 요청 → 스킬 저장)</h3>
+<ul><li><strong>말:</strong> "이 화면에서 7라인을 조회해서 몇 건인지 알려줘"</li><li><strong>흐름:</strong> 모델이 화면을 읽고 한 단계씩 판단·실행 (정책 검사 → 확장이 실행)</li><li><strong>잘 되면:</strong> 결과 아래 "이 실행을 스킬로 저장" → 요청에 나온 값은 매개변수로, 요청은 마지막 목표 단계로 → 개인 스킬(<code>~/.dogent/skills</code>)</li><li><strong>스킬 만드는 세 가지:</strong> 말로 만들기 / 녹화(업무를 한 번 해 보임) / 잘 된 요청을 저장. 품질 B 이상 + 시험 실행 통과 후 팀 저장소 PR.</li></ul>
+<h3 id="시나리오-5-사내-mcp-도구로-처리-브라우저-없이-새-기능">시나리오 5. 사내 MCP 도구로 처리 (브라우저 없이) — <strong>새 기능</strong></h3>
+<ul><li><strong>준비:</strong> 담당 팀이 MCP 서버를 올리고 카탈로그에 등록 (<a href="25-infra-setup.html">25</a> 3장)</li><li><strong>설치:</strong> <code>dogent mcp browse</code> → <code>dogent mcp install mes-lots</code> (내용을 보고 확인)</li><li><strong>말:</strong> "MES에서 7라인 Lot 목록 보여줘" — 카탈로그의 <code>keywords</code>(MES, Lot, 재공 …)가 요청에 있으면 브라우저를 거치지 않고 서버 도구를 부름</li><li><strong>바꾸는 도구(<code>lot_hold</code> 등):</strong> <code>ask</code>이므로 부르기 전에 사람에게 묻고 승인해야 실행</li><li><strong>권한 조정:</strong> <code>dogent mcp allow|ask|deny &lt;서버&gt; &lt;도구&gt;</code></li></ul>
+<h3 id="시나리오-6-훅으로-감사-기록-정책-검사-새-기능">시나리오 6. 훅으로 감사 기록·정책 검사 — <strong>새 기능</strong></h3>
+<p><code>%USERPROFILE%\.dogent\hooks.json</code>:</p>
+<pre><code>{ "hooks": {
+  "PreToolUse":  [{ "matcher": "excel_write|excel_save", "command": "node D:\\hooks\\check.mjs" }],
+  "PostToolUse": [{ "command": "type con &gt;&gt; %USERPROFILE%\\.dogent\\audit.log" }],
+  "Stop":        [{ "command": "node D:\\hooks\\notify.mjs" }]
+} }</code></pre>
+<div class="tw"><table><thead><tr><th>이벤트</th><th>때</th><th>막을 수 있나</th></tr></thead><tbody><tr><td>SessionStart</td><td>대화의 첫 요청</td><td>아니오</td></tr><tr><td>UserPromptSubmit</td><td>요청을 받은 직후</td><td>예</td></tr><tr><td>PreToolUse</td><td>도구 쓰기 직전 (정책 검사 뒤, 승인 창 앞)</td><td>예</td></tr><tr><td>PostToolUse</td><td>도구를 쓴 직후</td><td>아니오 (stdout이 모델이 보는 결과에 붙음)</td></tr><tr><td>Stop</td><td>요청 하나가 끝났을 때</td><td>아니오</td></tr></tbody></table></div>
+<ul><li>명령은 표준입력으로 JSON(<code>event, tool_name, tool_input, tool_response, prompt, status …</code>)을 받습니다.</li><li><strong>종료 코드 2 = 막기</strong>(이유는 stderr). 0 = 통과. stdout이 <code>{"decision":"block","reason":"…"}</code>여도 막습니다.</li><li>훅이 고장 나면(다른 종료 코드·10초 초과·실행 실패) <strong>막지 않고 알리기만</strong> 합니다.</li><li>대화에서: <code>hooks</code>(목록) · <code>hooks remove 2</code> · <code>hooks test</code> · 말로 "엑셀 저장 전에 기록 남기는 훅 만들어줘" (모델이 만든 명령은 <strong>보여 주고 사람이 확인해야</strong> 저장).</li><li>훅은 이 PC의 권한으로 돕니다. 팀 저장소에서 받은 훅은 읽지 않습니다.</li></ul>
+<h3 id="시나리오-7-계획-먼저-보기-명령-새-기능">시나리오 7. 계획 먼저 보기 + /명령 — <strong>새 기능</strong></h3>
+<ul><li><code>계획: MES에서 7라인 재공 내려받아 엑셀로 정리</code> → 3~7단계 계획이 보이고, 확인하면 그 계획대로 실행. 저장·상신 단계는 "(확인 필요)"로 표시.</li><li><code>/wip-check 7라인</code>, <code>/wip-check line=7라인</code>, <code>/memory</code>, <code>/new</code>, <code>/skills</code>, <code>/hooks</code></li><li>여러 시스템에 걸치는 큰 일일 때 먼저 계획을 보고 싶을 때 씁니다.</li></ul>
+<h3 id="시나리오-8-excel-word-powerpoint-문서-다루기-nasca-edm">시나리오 8. Excel·Word·PowerPoint 문서 다루기 (NASCA·EDM)</h3>
+<ul><li><strong>Excel:</strong> 열린 문서 읽기·쓰기·저장 (<code>dogent excel docs</code>). EDM의 "읽기·편집"으로 Excel이 연 문서는 <code>excel_attach</code>로 잡아 읽고 그 자리에 저장.</li><li><strong>Word/PPT:</strong> <code>word_read/write/save</code>, <code>ppt_read/write/save</code>. 문단·표·슬라이드 글·발표자 메모 읽기, 찾아 바꾸기, 덧붙이기. <strong>쓰기는 R3 + 사용자 허락.</strong></li><li>NASCA 재암호화가 필요하면 <code>dogent config saveThroughExcel true</code>.</li><li>사용자의 문서는 닫지 않고 놓기만 하며, 다른 이름 저장은 사본만 만듭니다.</li></ul>
+<h3 id="시나리오-9-claude-code-opencode와-함께-쓰기">시나리오 9. Claude Code·opencode와 함께 쓰기</h3>
+<div class="tw"><table><thead><tr><th>방향</th><th>방법</th><th>쓸 때</th></tr></thead><tbody><tr><td>Claude Code → 브라우저 (동작 단위)</td><td><code>claude mcp add dogent -- node bridge/hub.mjs</code></td><td>스킬 없는 화면을 한 단계씩 직접 조작</td></tr><tr><td>Claude Code·opencode → Dogent (일 단위)</td><td>앱 MCP <code>http://127.0.0.1:39218/mcp</code> 또는 <code>dogent serve</code></td><td>큰 일을 계획하고 사내 웹 부분만 맡김 (<code>dogent_request</code>)</td></tr><tr><td>Dogent → Claude Code·opencode</td><td><code>dogent agents add claude</code> / <code>opencode</code></td><td>표 분석·코드·파일 정리를 위임 (부를 때마다 사용자에게 묻기)</td></tr></tbody></table></div>
+<p>예: "MES에서 7라인 재공 내려받아 클로드코드로 공정별 분석" → Dogent가 화면에서 내려받고 <code>claude.ask</code>로 분석을 위임.<br>Dogent는 한 번에 한 일만 받습니다(다른 일을 하는 중이면 "끝난 뒤에 다시").</p>
+<h3 id="시나리오-10-정기-실행-예약">시나리오 10. 정기 실행 (예약)</h3>
+<ul><li><code>dogent schedule</code> — Windows 작업 스케줄러에 등록. <strong>저장·상신은 하지 않는</strong> 조회·리포트용.</li><li>예약 실행의 실제 동작은 사내에서 확인하지 못했고, 앱 화면은 아직 없습니다 (CLI만).</li></ul>
+<h3 id="시나리오-11-운영자-문제-스킬-즉시-멈추기-hub">시나리오 11. 운영자: 문제 스킬 즉시 멈추기 (Hub)</h3>
+<ul><li>화면이 바뀌어 스킬이 오작동하면 관리자가 중지 스위치를 겁니다.</li></ul>
+<pre><code>curl -X POST $HUB/v1/admin/killswitch -H "Authorization: Bearer $HUB_ADMIN_TOKEN" \
+  -H 'content-type: application/json' \
+  -d '{"scope":"skill","target":"gsams-request","reason":"화면이 바뀌어 깨짐"}'</code></pre>
+<ul><li>클라이언트는 정책을 ETag로 주기적으로 받아 해당 스킬 실행을 막습니다. <code>scope</code>는 skill / system / all.</li></ul>
+<h3 id="시나리오-12-스킬-작성자-만들기-검토-배포">시나리오 12. 스킬 작성자: 만들기 → 검토 → 배포</h3>
+<ol><li>화면 점검으로 읽을 수 있는 화면인지 확인</li><li>말로 만들기 또는 녹화 → 흐름 편집기에서 단계 카드 편집 → "▶ 여기까지 시험 실행"</li><li><code>dogent check &lt;SKILL.md&gt;</code> 등급 B 이상</li><li>시험 실행 20회 (성공률 90%, 값 일치 100%, 쓰기는 승인 없는 제출 0건)</li><li>팀 저장소 PR → CI → CODEOWNERS 승인 → <code>index.json</code> 갱신 → 사용자 PC에 1시간 안에 반영</li></ol>
+<h2 id="3-상황별-빠른-표">3. 상황별 빠른 표</h2>
+<div class="tw"><table><thead><tr><th>하고 싶은 것</th><th>명령/말</th></tr></thead><tbody><tr><td>스킬 목록·검색</td><td><code>dogent skills</code>, <code>dogent skills search 홀드 해제</code></td></tr><tr><td>스킬 정보·성공률</td><td><code>dogent skills info &lt;id&gt;</code></td></tr><tr><td>안 붙을 때 점검</td><td><code>dogent doctor [--fix]</code></td></tr><tr><td>열린 Excel 문서</td><td><code>dogent excel docs</code></td></tr><tr><td>지침 기억시키기</td><td>"기억해: 결과 엑셀은 항상 D:\보고서에 저장" (<code>DOGENT.md</code>)</td></tr><tr><td>MCP 서버 연결 확인</td><td><code>dogent mcp list</code>, <code>dogent mcp test &lt;이름&gt;</code></td></tr><tr><td>훅 확인</td><td><code>hooks</code>, <code>hooks test</code></td></tr><tr><td>시험 실행</td><td><code>--dry-run</code></td></tr><tr><td>지금 팀 스킬·사전 받기</td><td><code>dogent sync</code></td></tr></tbody></table></div>
+<h2 id="4-하지-않는-것-지금-범위-밖">4. 하지 않는 것 (지금 범위 밖)</h2>
+<ul><li>로그인·비밀번호 입력 (사람이 합니다)</li><li>승인 창 없는 저장·상신</li><li>화면에 없는 값을 추측해 입력</li><li>팀 저장소에서 받은 훅 자동 실행</li><li>구형 엑셀(xls) 내려받기 읽기 (<a href="27-gaps-and-improvements.html">27</a> F3)</li></ul>
+</main></div></body></html>
