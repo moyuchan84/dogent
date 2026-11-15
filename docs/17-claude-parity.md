@@ -36,6 +36,8 @@ Dogent는 처음부터 Claude Code(판단·스킬·도구)와 Claude in Chrome(�
 
 | 기능 | Claude in Chrome | Dogent 지금 | 판정 | 우선 |
 |---|---|---|---|---|
+| 브라우저에 붙는 방식 | 확장 하나 (사람이 쓰는 크롬) | **확장**(기본) 또는 **직접 제어**(확장 없이 전용 창을 CDP 파이프로, 승인은 앱에서). 같은 도구·같은 안전장치(`BrowserTools`)를 씀 | 더 많음 | ✅ |
+| 새 창·팝업·늦은 이동 따라가기 | 탭을 따라감 | 새 탭(noopener 포함)·늦게 뜨는 팝업·늦게 이동하는 메뉴를 따라가고, 옮긴 사실을 다음 화면 읽기에 알림 | 있음 | ✅ |
 | 화면 읽기 (접근성 트리, 찾기) | read_page, find | snapshot(요소 번호, iframe, 표 요약), find, read_text | 있음 | — |
 | 클릭·입력·선택·키·스크롤 | computer, form_input | click, type, select, press_key, scroll, go_back | 있음 | — |
 | 탭·탭 그룹 | 탭 그룹 안에서만 | 탭 목록·열기·고르기, Dogent 탭 그룹, 있는 탭 먼저 쓰기 | 있음 | — |

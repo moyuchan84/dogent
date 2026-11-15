@@ -1,6 +1,7 @@
 import { browser, type Browser } from 'wxt/browser';
 import { allSites } from './sites';
 import type { SiteInspection } from '../core/inspect';
+import { SUBMIT_PATTERN } from '../core/policy';
 import { mergeFrames } from '../core/snapshot';
 import { SHOT_MAX_BASE64, bytesToBase64, fitSize } from '../core/upload';
 import type {
@@ -40,6 +41,27 @@ async function invoke(method: string, args: unknown[]): Promise<Reply<unknown>> 
 const MAX_DOWNLOAD_BYTES = 30 * 1024 * 1024;
 const RUN_TIMEOUT_MS = 30_000;
 const HOOK_SCRIPT_ID = 'dogent-dialog-hook';
+/** 알림 창 처리기 스크립트를 쓰는 탭 담당(ChromeBrowser) 수. 하나가 쉬어도 다른 것이 쓰는 동안에는 등록을 풀지 않는다. */
+let hookUsers = 0;
+/** 누른 뒤 페이지 이동이 시작되기를 지켜보는 최대 시간. 스크립트가 조금 늦게 이동시키는 화면을 놓치지 않게 한다. */
+const NAV_START_MS = 400;
+/** 내려받기가 시작된 뒤 끝나기를 기다리는 최대 시간 */
+const DOWNLOAD_FINISH_MS = 180_000;
+
+/** 브라우저의 새 탭 화면처럼 사람이 직접 연 탭인지. 이런 탭은 따라가지 않는다. */
+const isBlankTab = (tab: Browser.tabs.Tab) => /^(chrome|edge|about:newtab|chrome-search)/.test(tab.pendingUrl || tab.url || '');
+
+/** 내려받는 파일을 사람에게 보여 줄 이름 */
+function downloadLabel(item: Browser.downloads.DownloadItem): string {
+  const fromPath = item.filename?.split(/[\\/]/).pop();
+  if (fromPath) return fromPath;
+  const url = item.finalUrl || item.url;
+  try {
+    return (/^https?:/.test(url) && decodeURIComponent(new URL(url).pathname.split('/').pop() ?? '')) || '파일';
+  } catch {
+    return '파일';
+  }
+}
 /** 알림 창 처리기가 켜져 있다는 표시의 수명. 화면을 읽을 때마다 늘린다. 패널이 갑자기 닫혀도 이 시간이 지나면 풀린다. */
 const HOOK_TTL_MS = 10 * 60_000;
 
@@ -123,15 +145,60 @@ export class ChromeBrowser implements BrowserPort {
   // 새로 열렸지만 아직 옮겨 가지 않은 창
   private opened: number | null = null;
   private clicking = false;
+  /** 창을 옮겼지만 아직 모델에게 알리지 못한 사실. 화면을 읽거나 조작한 결과에 붙여 알린다. */
+  private note = '';
+  /** 누르는 동안 시작된 내려받기 */
+  private started: Browser.downloads.DownloadItem[] = [];
 
   constructor(private tabId: number) {}
 
+  /** 지금 실제로 다루는 탭. 새 창을 따라가면 처음 받은 탭과 달라진다. */
+  currentTab(): number {
+    return this.tabId;
+  }
+
+  get isActive(): boolean {
+    return this.active;
+  }
+
   // 클릭하는 동안 열린 창은 연 탭이 무엇으로 적히든 받는다. 대상 탭이 그 창의 활성 탭이 아니면
   // target=_blank 링크로 열린 탭의 openerTabId가 활성 탭으로 적히기 때문이다.
+  // noopener 링크나 일부 window.open은 openerTabId가 비어 있으므로, 누르는 동안이면 연 탭이 없어도 받는다.
   private onTabCreated = (tab: Browser.tabs.Tab) => {
-    if (tab.id === undefined || tab.openerTabId === undefined) return;
+    if (tab.id === undefined) return;
+    if (tab.openerTabId === undefined) {
+      if (this.clicking && !isBlankTab(tab)) this.opened = tab.id;
+      return;
+    }
     if (tab.openerTabId === this.tabId || this.clicking) this.opened = tab.id;
   };
+
+  // 페이지가 연 창(target=_blank, window.open, noopener 포함)은 openerTabId가 없어도 여기서는 연 탭을 알 수 있다.
+  private onNavigationTarget = (d: { sourceTabId: number; tabId: number }) => {
+    if (d.sourceTabId === this.tabId) this.opened = d.tabId;
+  };
+
+  private onDownload = (item: Browser.downloads.DownloadItem) => {
+    this.started.push(item);
+  };
+
+  private listen(on: boolean): void {
+    const nav = browser.webNavigation?.onCreatedNavigationTarget;
+    if (on) {
+      browser.tabs.onCreated.addListener(this.onTabCreated);
+      nav?.addListener(this.onNavigationTarget);
+    } else {
+      browser.tabs.onCreated.removeListener(this.onTabCreated);
+      nav?.removeListener(this.onNavigationTarget);
+    }
+  }
+
+  /** 창을 옮긴 사실 중 아직 알리지 않은 것을 꺼낸다. */
+  private takeNote(): string {
+    const n = this.note;
+    this.note = '';
+    return n;
+  }
 
   private async exists(tabId: number): Promise<boolean> {
     return browser.tabs.get(tabId).then(
@@ -146,7 +213,7 @@ export class ChromeBrowser implements BrowserPort {
     if (this.opened !== null) {
       const id = this.opened;
       this.opened = null;
-      if (await this.exists(id)) {
+      if (id !== this.tabId && (await this.exists(id))) {
         this.openers.push(this.tabId);
         this.tabId = id;
         await this.waitLoaded();
@@ -156,6 +223,12 @@ export class ChromeBrowser implements BrowserPort {
     while (this.openers.length > 0 && !(await this.exists(this.tabId))) {
       this.tabId = this.openers.pop()!;
       moved = ' 창이 닫혀 원래 창으로 돌아왔습니다';
+    }
+    if (moved) {
+      // 앞 화면의 번호는 새 화면에 맞지 않는다. 다시 읽기 전에는 쓰지 않는다.
+      this.refs = new Map();
+      if (this.active) await this.hookOn();
+      if (!this.note.includes(moved.trim())) this.note += moved;
     }
     return moved;
   }
@@ -208,9 +281,26 @@ export class ChromeBrowser implements BrowserPort {
     }
   }
 
-  /** 동작 뒤 페이지 이동과 화면 갱신이 끝나기를 기다린다. */
+  /**
+   * 동작 뒤 페이지 이동과 화면 갱신이 끝나기를 기다린다.
+   * 누른 뒤 스크립트가 조금 늦게 이동시키는 화면(setTimeout 뒤 submit 등)도 놓치지 않게, 이동이 시작되는지 잠깐 지켜본다.
+   */
   private async settle(): Promise<void> {
-    await sleep(120);
+    const tabId = this.tabId;
+    let onUpdated!: (id: number, info: { status?: string; url?: string }) => void;
+    const navStarted = new Promise<void>((resolve) => {
+      onUpdated = (id, info) => {
+        if (id === tabId && (info.status === 'loading' || info.url)) resolve();
+      };
+      browser.tabs.onUpdated.addListener(onUpdated);
+    });
+    try {
+      await sleep(120);
+      const tab = await browser.tabs.get(tabId).catch(() => null);
+      if (tab && tab.status !== 'loading') await Promise.race([navStarted, sleep(NAV_START_MS)]);
+    } finally {
+      browser.tabs.onUpdated.removeListener(onUpdated);
+    }
     await this.waitLoaded();
     await this.run('settle', []).catch(() => {});
   }
@@ -222,11 +312,14 @@ export class ChromeBrowser implements BrowserPort {
   }
 
   async setActive(on: boolean): Promise<void> {
+    const was = this.active;
     this.active = on;
     if (on) {
-      browser.tabs.onCreated.addListener(this.onTabCreated);
+      this.listen(true);
+      if (!was) hookUsers++;
       // 이동하거나 새로 열린 화면이 뜨자마자 알림 창을 띄워도 받을 수 있게, 실행 중에만 등록해 둔다.
-      await browser.scripting
+      if (!was && hookUsers === 1)
+        await browser.scripting
         .registerContentScripts([
           {
             id: HOOK_SCRIPT_ID,
@@ -241,9 +334,11 @@ export class ChromeBrowser implements BrowserPort {
         .catch(() => {});
       await this.hookOn();
     } else {
-      browser.tabs.onCreated.removeListener(this.onTabCreated);
+      this.listen(false);
       await this.dialogs({ do: 'off' });
-      await browser.scripting.unregisterContentScripts({ ids: [HOOK_SCRIPT_ID] }).catch(() => {});
+      if (was) hookUsers = Math.max(0, hookUsers - 1);
+      // 다른 탭 담당이 아직 쓰고 있으면 등록을 풀지 않는다.
+      if (was && hookUsers === 0) await browser.scripting.unregisterContentScripts({ ids: [HOOK_SCRIPT_ID] }).catch(() => {});
     }
     for (const tabId of [...this.openers, this.tabId]) {
       await browser.scripting
@@ -255,8 +350,7 @@ export class ChromeBrowser implements BrowserPort {
   /** 사람의 조작 녹화를 켜거나 끈다. 새로 열린 화면에도 걸리도록 녹화 중에는 주기적으로 다시 부른다. */
   async record(on: boolean): Promise<void> {
     // 사람이 연 새 창도 따라가며 녹화한다. 알림·확인 창은 그대로 뜨게 두고 내용과 답만 적는다.
-    if (on) browser.tabs.onCreated.addListener(this.onTabCreated);
-    else browser.tabs.onCreated.removeListener(this.onTabCreated);
+    this.listen(on || this.active);
     await this.follow();
     await this.run('record', [on]).catch(() => {});
     await this.dialogs({ do: on ? 'watch' : 'off' });
@@ -296,17 +390,20 @@ export class ChromeBrowser implements BrowserPort {
       if (frames.length === 0) throw new Error('읽을 수 있는 프레임이 없습니다');
       const merged = mergeFrames(frames);
       this.refs = merged.refs;
-      return { ...merged.snapshot, dialogs };
+      const moved = this.takeNote().trim();
+      return { ...merged.snapshot, dialogs, ...(moved ? { moved } : {}) };
     } catch {
       // 권한이 없는 페이지(새 탭, 허용 목록 밖 사이트 등)는 주소만 알려준다.
       this.refs = new Map();
       const tab = await browser.tabs.get(this.tabId);
+      const moved = this.takeNote().trim();
       return {
         url: tab.url ?? '',
         title: tab.title ?? '',
         hasPassword: false,
         items: [{ kind: 'text', text: '(이 페이지는 Dogent가 읽을 수 없습니다)' }],
         dialogs,
+        ...(moved ? { moved } : {}),
       };
     }
   }
@@ -345,6 +442,8 @@ export class ChromeBrowser implements BrowserPort {
     await this.point(target, POINT_LABEL[method]);
     if (confirm) await this.dialogs({ do: 'policy', confirm });
     this.clicking = method === 'click';
+    this.started = [];
+    if (this.clicking) browser.downloads.onCreated.addListener(this.onDownload);
     try {
       const acted = this.tabId;
       const [res] = await this.run<ActResult>(method, [target.localRef, ...extra], target.frame).catch(async (e) => {
@@ -354,18 +453,28 @@ export class ChromeBrowser implements BrowserPort {
       });
       if (!res) {
         if (await this.exists(acted)) return { ok: false, message: '프레임이 사라졌습니다' };
-        return { ok: true, message: `클릭함.${await this.follow()}`, dialogs: await this.dialogs({ do: 'drain' }) };
+        await this.follow();
+        return { ok: true, message: `클릭함.${this.takeNote()}${this.downloadNote()}`, dialogs: await this.dialogs({ do: 'drain' }) };
       }
       if (!res.reply.ok) return { ok: false, message: res.reply.error };
       await this.settle();
-      const moved = await this.follow();
-      if (moved && this.active) await this.hookOn();
+      await this.follow();
+      const moved = this.takeNote();
       const dialogs = this.active ? await this.dialogs({ do: 'drain' }) : undefined;
-      return { ...res.reply.value, message: moved ? `${res.reply.value.message}.${moved}` : res.reply.value.message, dialogs };
+      return { ...res.reply.value, message: `${res.reply.value.message}${moved ? `.${moved}` : ''}${this.downloadNote()}`, dialogs };
     } finally {
       this.clicking = false;
+      browser.downloads.onCreated.removeListener(this.onDownload);
       if (confirm) await this.dialogs({ do: 'policy', confirm: null });
     }
+  }
+
+  /** 누른 결과로 내려받기가 시작됐으면 알린다. 클릭으로는 파일 내용을 읽지 않으므로 다음에 할 일을 함께 적는다. */
+  private downloadNote(): string {
+    if (this.started.length === 0) return '';
+    const names = this.started.map(downloadLabel).join(', ');
+    this.started = [];
+    return `. 파일 내려받기가 시작됨: ${names} (클릭으로는 파일 내용을 읽지 않습니다. 내용이 필요하면 같은 버튼을 download_table로 누르세요)`;
   }
 
   click(ref: number, confirm?: ConfirmPolicy) {
@@ -410,56 +519,133 @@ export class ChromeBrowser implements BrowserPort {
    * 확장은 PC에 저장된 파일을 읽을 수 없으므로, 서버에서 오는 파일은 같은 주소를 사용자의 세션으로 한 번 더 받고
    * 페이지가 직접 만든 파일(blob:)은 만들어지는 순간의 내용을 페이지 안에서 잡아 둔다.
    */
-  async download(ref: number, timeoutMs: number, allowed: (url: string) => boolean): Promise<DownloadedFile> {
+  async download(
+    ref: number,
+    timeoutMs: number,
+    allowed: (url: string) => boolean,
+    how: { localPath?: boolean } = {},
+  ): Promise<DownloadedFile> {
     const target = this.refs.get(ref);
     if (!target) throw new Error(`ref ${ref} 이(가) 현재 화면에 없습니다`);
     await this.point(target, '내려받기');
+    // 버튼이 새 창(팝업)을 열고 그 창에서 파일을 만들 수 있으므로, 이 탭과 그 바깥 창 모두에서 잡는다.
+    const tabs = [...this.openers, this.tabId];
     const main = (on: boolean) =>
-      browser.scripting
-        .executeScript({ target: { tabId: this.tabId, allFrames: true }, world: 'MAIN', func: keepBlobs, args: [on] })
-        .catch(() => {});
+      Promise.all(
+        tabs.map((tabId) =>
+          browser.scripting.executeScript({ target: { tabId, allFrames: true }, world: 'MAIN', func: keepBlobs, args: [on] }).catch(() => {}),
+        ),
+      );
+    // 다른 창(팝업)에서 시작된 내려받기도 받는다. 시작 이벤트는 탭을 가리지 않는다.
     let onCreated!: (item: Browser.downloads.DownloadItem) => void;
     const created = new Promise<Browser.downloads.DownloadItem>((resolve) => {
       onCreated = resolve;
       browser.downloads.onCreated.addListener(onCreated);
     });
     await main(true);
+    // "엑셀로 내려받으시겠습니까?" 같은 확인 창은 확인한다. 저장·상신을 묻는 창은 승인 없이 확인하지 않는다.
+    await this.dialogs({ do: 'policy', confirm: { accept: true, unless: SUBMIT_PATTERN.source } });
+    this.clicking = true;
     try {
-      const [res] = await this.run<ActResult>('click', [target.localRef], target.frame);
+      const acted = this.tabId;
+      const [res] = await this.run<ActResult>('click', [target.localRef], target.frame).catch(async (e) => {
+        // 누르자마자 창이 닫히며 내려받는 화면(팝업)이면 결과를 받지 못한다. 눌린 것으로 본다.
+        if (await this.exists(acted)) throw e;
+        return [{ frameId: target.frame, reply: { ok: true as const, value: { ok: true, message: '클릭함' } } }];
+      });
       if (!res) throw new Error('프레임이 사라졌습니다');
       if (!res.reply.ok) throw new Error(res.reply.error);
       if (!res.reply.value.ok) throw new Error(res.reply.value.message);
       const item = await Promise.race([created, sleep(timeoutMs).then(() => null)]);
-      if (!item) throw new Error(`버튼을 눌렀지만 ${timeoutMs / 1000}초 안에 내려받기가 시작되지 않았습니다`);
+      if (!item) {
+        throw new Error(
+          `버튼을 눌렀지만 ${timeoutMs / 1000}초 안에 내려받기가 시작되지 않았습니다. 확인 창이 떴다면 accept_dialog로 누르거나, 파일이 새 창에 바로 열렸으면 그 화면의 표를 extract_table로 읽으세요`,
+        );
+      }
       const url = item.finalUrl || item.url;
       if (!allowed(url)) throw new Error(`내려받는 파일의 주소(${url.slice(0, 120)})가 허용 도메인 밖이라 읽지 않았습니다`);
+
+      // 클라이언트(앱·터미널)는 PC에 저장된 파일을 직접 읽는다. 폼 전송(POST)이나 한 번만 쓰는 주소로 받는 파일도 그대로 읽을 수 있다.
+      if (how.localPath) {
+        const done = await this.finished(item.id, timeoutMs);
+        return { filename: done.filename.split(/[\\/]/).pop() || downloadLabel(item), url, data: new ArrayBuffer(0), path: done.filename };
+      }
 
       let data: ArrayBuffer;
       let named: string | undefined;
       if (url.startsWith('blob:')) {
-        const results = await browser.scripting.executeScript({
-          target: { tabId: this.tabId, allFrames: true },
-          world: 'MAIN',
-          func: readBlob,
-          args: [url, MAX_DOWNLOAD_BYTES],
-        });
-        const hit = results.map((r) => r.result).find((r) => r);
-        if (!hit) throw new Error('화면이 만든 파일의 내용을 읽지 못했습니다');
-        if ('error' in hit) throw new Error(hit.error);
-        data = Uint8Array.from(atob(hit.base64), (c) => c.charCodeAt(0)).buffer;
+        data = await this.readBlobAnywhere(url);
       } else {
         const response = await fetch(url, { credentials: 'include' }).catch(() => null);
         if (!response) throw new Error(`파일을 다시 받지 못했습니다 (${new URL(url).host}). dogent.config.ts의 sitePermissions에 있는 주소인지 확인하세요`);
-        if (!response.ok) throw new Error(`파일을 다시 받지 못했습니다 (HTTP ${response.status})`);
+        if (!response.ok) {
+          throw new Error(
+            `파일을 다시 받지 못했습니다 (HTTP ${response.status}). 폼 전송(POST)이나 한 번만 쓰는 주소로 받는 파일이면 Dogent 앱(또는 터미널 dogent)에서 실행하세요. 앱은 PC에 저장된 파일을 직접 읽습니다`,
+          );
+        }
         data = await response.arrayBuffer();
         named = dispositionName(response.headers.get('Content-Disposition'));
       }
       if (data.byteLength > MAX_DOWNLOAD_BYTES) throw new Error(`파일이 너무 큽니다 (${Math.round(data.byteLength / 1e6)}MB)`);
       return { filename: named ?? (await this.downloadName(item.id, url)), url, data };
     } finally {
+      this.clicking = false;
       browser.downloads.onCreated.removeListener(onCreated);
+      await this.dialogs({ do: 'policy', confirm: null });
       await main(false);
       await this.settle();
+    }
+  }
+
+  /** 페이지가 만든 파일(blob:)을 만든 화면에서 읽는다. 그 주소의 출처와 같은 탭을 모두 찾아본다 (팝업이 만든 파일 포함). */
+  private async readBlobAnywhere(url: string): Promise<ArrayBuffer> {
+    let origin = '';
+    try {
+      origin = new URL(url.slice('blob:'.length)).origin;
+    } catch {
+      /* 출처를 모르면 아래에서 아는 탭만 본다 */
+    }
+    const all = await browser.tabs.query({});
+    const candidates = [
+      ...new Set([
+        this.tabId,
+        ...this.openers,
+        ...all.flatMap((t) => (t.id !== undefined && origin && t.url?.startsWith(origin) ? [t.id] : [])),
+      ]),
+    ];
+    for (const tabId of candidates) {
+      const results = await browser.scripting
+        .executeScript({ target: { tabId, allFrames: true }, world: 'MAIN', func: readBlob, args: [url, MAX_DOWNLOAD_BYTES] })
+        .catch(() => []);
+      const hit = results.map((r) => r.result).find((r) => r);
+      if (!hit) continue;
+      if ('error' in hit) throw new Error(hit.error);
+      return Uint8Array.from(atob(hit.base64), (c) => c.charCodeAt(0)).buffer;
+    }
+    throw new Error('화면이 만든 파일의 내용을 읽지 못했습니다');
+  }
+
+  /** 내려받기가 끝나기를 기다린다. 끝나지 않으면 이유를 알려 준다. */
+  private async finished(id: number, startMs: number): Promise<Browser.downloads.DownloadItem> {
+    const limit = Math.max(startMs, DOWNLOAD_FINISH_MS);
+    const deadline = Date.now() + limit;
+    // 저장 위치를 묻는 창이 떠 있으면 파일 이름이 정해지지 않는다. 오래 기다리지 않고 알린다.
+    const askLimit = Date.now() + 20_000;
+    for (;;) {
+      const [item] = await browser.downloads.search({ id });
+      if (!item) throw new Error('내려받기 기록이 사라졌습니다 (사람이 지웠거나 취소함)');
+      if (item.state === 'complete' && item.filename) {
+        if ((item.fileSize ?? item.bytesReceived ?? 0) > MAX_DOWNLOAD_BYTES) throw new Error(`파일이 너무 큽니다 (${Math.round((item.fileSize ?? 0) / 1e6)}MB)`);
+        return item;
+      }
+      if (item.state === 'interrupted') throw new Error(`내려받기가 중단되었습니다 (${item.error ?? '이유 모름'})`);
+      if (!item.filename && Date.now() >= askLimit) {
+        throw new Error(
+          '내려받기가 저장 위치를 묻는 창에서 멈춰 있습니다. 브라우저 설정 → 다운로드 → "다운로드 전에 각 파일의 저장 위치 확인"을 끄거나, 창에서 저장을 누른 뒤 다시 시도하세요',
+        );
+      }
+      if (Date.now() >= deadline) throw new Error(`내려받기가 ${Math.round(limit / 1000)}초 안에 끝나지 않았습니다`);
+      await sleep(300);
     }
   }
 
@@ -484,7 +670,8 @@ export class ChromeBrowser implements BrowserPort {
     if (!res) return { ok: false, message: '프레임이 사라졌습니다' };
     if (!res.reply.ok) return { ok: false, message: res.reply.error };
     await this.settle();
-    const moved = await this.follow();
+    await this.follow();
+    const moved = this.takeNote();
     return moved ? { ...res.reply.value, message: `${res.reply.value.message}.${moved}` } : res.reply.value;
   }
 

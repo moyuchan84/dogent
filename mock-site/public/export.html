@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>재공 내보내기</title>
+<style>
+  body { font: 14px "Malgun Gothic", sans-serif; margin: 24px; }
+</style>
+</head>
+<body>
+<!-- 사내 시스템에 흔한 엑셀 내려받기: 확인 창을 띄운 뒤 폼을 POST로 보내 파일을 받는다. 같은 주소를 GET으로 다시 받으면 실패한다. -->
+<h1>재공 내보내기</h1>
+<form id="export" method="post" action="/api/export.xlsx">
+  <label>라인 <select name="line"><option>7라인</option><option>8라인</option></select></label>
+  <input type="hidden" name="token" value="once-123">
+</form>
+<button type="button" id="excel">엑셀 내려받기</button>
+<script>
+  document.getElementById('excel').addEventListener('click', () => {
+    if (confirm('엑셀로 내려받으시겠습니까?')) document.getElementById('export').submit();
+  });
+</script>
+</body>
+</html>

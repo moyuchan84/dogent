@@ -28,7 +28,7 @@ export interface Hub {
 export interface BrowserLink {
   id: number;
   browser: string;
-  via: 'WebSocket' | 'Native Messaging';
+  via: 'WebSocket' | 'Native Messaging' | '직접 제어';
   since: number;
   selected: boolean;
 }

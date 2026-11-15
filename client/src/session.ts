@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { basename } from 'node:path';
+import { homedir } from 'node:os';
+import { basename, join } from 'node:path';
 import {
   DatasetStore,
   FREE_SKILL_ID,
@@ -43,6 +44,7 @@ import {
 } from '../../src/core';
 import type { BrowserLink } from '../../bridge/hub.mjs';
 import { openBridge, type Bridge } from './bridge';
+import { openDirect } from './direct';
 import { composeFlow, editSkill } from './compose-skill';
 import { launchBrowser } from './launch-browser';
 import { describeHookEntries, loadHookEntries, loadHooks, saveHookEntries } from './hooks';
@@ -603,11 +605,48 @@ export class Session {
     return true;
   }
 
-  /** 확장과 이어지기를 기다린다. */
+  /** 브라우저 연결 방식이 직접 제어인지 (확장 없이 Dogent 전용 브라우저 창) */
+  private get direct(): boolean {
+    return this.cfg.browserMode === 'direct';
+  }
+
+  /** 설정의 브라우저 연결 방식에 맞는 연결을 연다. 직접 제어는 브라우저를 아직 띄우지 않는다 (처음 쓸 때 띄운다). */
+  private async openLink(): Promise<Bridge> {
+    const upload = this.cfg.uploadDirs ? { dirs: this.cfg.uploadDirs, maxBytes: this.cfg.uploadMaxBytes } : undefined;
+    if (!this.direct) return openBridge({ port: this.cfg.bridgePort, upload });
+    return openDirect({
+      home: this.cfg.home,
+      downloadsDir: join(homedir(), 'Downloads'),
+      want: this.flags.browser ?? this.cfg.browser,
+      executable: this.cfg.browserPath,
+      // 목록 방식 빌드면 확장과 같은 사이트 목록을 지킨다 (확장을 거치지 않으므로 여기서 넘긴다)
+      sites: this.cfg.directSites?.sites,
+      upload,
+      // 직접 제어에는 확장의 승인 창이 없으므로 이 앱(터미널)에서 묻는다. 무엇을 승인하는지 먼저 보여 준다.
+      approve: async (request) => {
+        if (this.term.approval) this.term.approval(request);
+        else this.term.print(describeApproval(request));
+        return (await this.until(this.term.confirm('\n  위 내용으로 진행할까요?', false))) === true;
+      },
+    });
+  }
+
+  /** 확장과 이어지기를 기다린다. 직접 제어면 Dogent 브라우저를 띄운다. */
   async connect(): Promise<Bridge> {
     if (this.bridge?.connected() && this.chosen) return this.bridge;
-    this.bridge ??= await openBridge({ port: this.cfg.bridgePort, upload: this.cfg.uploadDirs ? { dirs: this.cfg.uploadDirs, maxBytes: this.cfg.uploadMaxBytes } : undefined });
+    this.bridge ??= await this.openLink();
     const bridge = this.bridge;
+    if (this.direct) {
+      if (!bridge.connected()) this.term.print('Dogent 전용 브라우저 창을 띄웁니다 (확장 없이 직접 제어). 처음이면 그 창에서 업무 사이트에 한 번 로그인해 주세요.');
+      if (!(await this.until(bridge.waitForExtension(0)))) {
+        throw new Error((bridge as Bridge & { error?(): string | undefined }).error?.() ?? 'Dogent 브라우저를 띄우지 못했습니다');
+      }
+      const all = bridge.browsers();
+      if (!this.chosen) this.term.print(`브라우저 직접 제어 · ${all[0]?.browser ?? '브라우저'}`);
+      this.chosen = true;
+      this.term.connected?.(all, bridge.connected());
+      return bridge;
+    }
     // 확장은 보통 1초 안에 붙는다. 그보다 오래 걸릴 때만 무엇을 할지 알려 준다.
     if (!(await this.until(bridge.waitForExtension(2000)))) {
       if (this.flags.launchBrowser) {
@@ -822,8 +861,11 @@ export class Session {
           // 승인은 확장의 승인 창에서 받는다. 어떤 클라이언트가 붙어도 확장이 지키는 통제다 (docs/09 D6).
           approve: async (request) => {
             if (!bridge) return false;
-            if (this.term.approval) this.term.approval(request);
-            else this.term.print(describeApproval(request));
+            // 직접 제어면 승인 함수(openLink)가 내용을 보여 주고 묻는다. 확장이면 확장의 승인 창이 묻는다.
+            if (!this.direct) {
+              if (this.term.approval) this.term.approval(request);
+              else this.term.print(describeApproval(request));
+            }
             return this.until(bridge.browser.approve(request));
           },
           // 엑셀 문서를 바꾸거나 저장하기 전에 사용자에게 묻는다. --yes로도 건너뛰지 않는다.
@@ -1241,7 +1283,7 @@ export class Session {
 
   /** 브리지를 띄워 두어 확장이 미리 붙게 한다. 화면을 열 때 부른다. */
   async listen(): Promise<void> {
-    this.bridge ??= await openBridge({ port: this.cfg.bridgePort, upload: this.cfg.uploadDirs ? { dirs: this.cfg.uploadDirs, maxBytes: this.cfg.uploadMaxBytes } : undefined });
+    this.bridge ??= await this.openLink();
   }
 
   /** 실행 중인지 */

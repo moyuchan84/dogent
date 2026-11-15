@@ -25,10 +25,14 @@ export class McpBrowser implements BrowserPort {
   /**
    * readUpload는 올릴 파일을 읽는다. 올릴 수 있는 폴더 안인지, 크기, 숨김·키 파일인지를 여기서 검사하고 어기면 던진다.
    * 주지 않으면 파일 올리기를 쓸 수 없다 (확장은 PC의 파일을 읽을 수 없다).
+   *
+   * readDownload는 브라우저가 PC에 저장한 내려받은 파일을 읽는다. 주면 확장이 같은 주소를 다시 받지 않고 저장된 파일을 그대로 읽으므로
+   * 폼 전송(POST)이나 한 번만 쓰는 주소로 받는 파일, 다른 창(팝업)에서 받은 파일도 읽힌다.
    */
   constructor(
     private call: McpCall,
     private readUpload?: (path: string) => Promise<UploadSource>,
+    private readDownload?: (path: string) => Promise<Uint8Array>,
   ) {}
 
   private async port<T>(method: string, ...args: unknown[]): Promise<T> {
@@ -96,9 +100,19 @@ export class McpBrowser implements BrowserPort {
   }
 
   async download(ref: number, timeoutMs: number, allowed: (url: string) => boolean): Promise<DownloadedFile> {
-    const file = await this.port<{ filename: string; url: string; base64: string }>('download', ref, timeoutMs);
+    const file = await this.port<{ filename: string; url: string; base64?: string; path?: string }>(
+      'download',
+      ref,
+      timeoutMs,
+      this.readDownload ? { localPath: true } : null,
+    );
     // 확장이 조작할 사이트 밖의 파일은 읽지 않는다. 스킬의 domains로 한 번 더 거른다.
     if (!allowed(file.url)) throw new Error(`허용되지 않은 주소에서 받은 파일입니다: ${file.url}`);
+    if (file.path && this.readDownload) {
+      const bytes = await this.readDownload(file.path);
+      return { filename: file.filename, url: file.url, data: bytes.slice().buffer as ArrayBuffer, path: file.path };
+    }
+    if (typeof file.base64 !== 'string') throw new Error('확장이 파일 내용을 보내지 않았습니다');
     const bin = atob(file.base64);
     const bytes = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);

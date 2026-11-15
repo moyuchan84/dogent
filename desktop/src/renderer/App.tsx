@@ -416,7 +416,7 @@ ${x.url}`}>
             <div className="browser-pick" id="browser-pick">
               <span className={`dot ${current ? 'on' : ''}`} />
               {browsers.length === 0 ? (
-                <span id="browser-none">브라우저 연결을 기다리는 중</span>
+                <span id="browser-none">{info?.browserMode === 'direct' ? '직접 제어 · 요청하면 Dogent 브라우저 창이 뜹니다' : '브라우저 연결을 기다리는 중'}</span>
               ) : (
                 <select id="browser-select" value={current?.id ?? ''} disabled={busy} onChange={(e) => void api.selectBrowser(e.target.value)}>
                   {browsers.map((b) => (
@@ -544,7 +544,14 @@ ${x.url}`}>
 
       {showConnect && <ConnectDialog onClose={() => setShowConnect(false)} onDone={setServers} />}
       {showManage && <ManageSkills skills={skills} samplesShown={samplesShown} onPref={(p) => void skillPref(p)} onClose={() => setShowManage(false)} />}
-      {showSettings && <Settings onClose={() => setShowSettings(false)} onChanged={(c) => setInfo((i) => i && { ...i, config: c })} config={info?.config ?? ''} />}
+      {showSettings && (
+        <Settings
+          onClose={() => setShowSettings(false)}
+          onChanged={(c, mode) => setInfo((i) => i && { ...i, config: c, ...(mode ? { browserMode: mode } : {}) })}
+          config={info?.config ?? ''}
+          browserMode={info?.browserMode ?? 'extension'}
+        />
+      )}
     </div>
   );
 }
@@ -937,7 +944,17 @@ function ExcelDocs() {
   );
 }
 
-function Settings({ onClose, onChanged, config }: { onClose: () => void; onChanged: (config: string) => void; config: string }) {
+function Settings({
+  onClose,
+  onChanged,
+  config,
+  browserMode,
+}: {
+  onClose: () => void;
+  onChanged: (config: string, mode?: 'extension' | 'direct') => void;
+  config: string;
+  browserMode: 'extension' | 'direct';
+}) {
   const [token, setToken] = useState('');
   const [copied, setCopied] = useState(false);
   const [link, setLink] = useState<ExtensionStatus | null>(null);
@@ -956,10 +973,26 @@ function Settings({ onClose, onChanged, config }: { onClose: () => void; onChang
       setMessage((e as Error).message);
     }
   };
+  const setMode = async (mode: 'extension' | 'direct') => {
+    if (mode === browserMode) return;
+    try {
+      onChanged(await api.setConfig('browserMode', mode), mode);
+      setMessage(mode === 'direct' ? '직접 제어로 바꿨습니다. 다음 요청에서 Dogent 전용 브라우저 창이 뜹니다' : '확장 연결로 바꿨습니다');
+    } catch (e) {
+      setMessage((e as Error).message);
+    }
+  };
   type Field = { key: keyof typeof form; config: string; label: string; hint: string };
   const fields: Record<'account' | 'browser' | 'storage', Field[]> = {
     account: [{ key: 'userId', config: 'llm.userId', label: '사용자 ID (사내 SSO ID)', hint: '사내 모델 게이트웨이의 user-id 헤더' }],
-    browser: [{ key: 'browser', config: 'browser', label: '쓸 브라우저', hint: '확장이 든 브라우저가 여럿일 때 이름 일부 (예: edge, chrome)' }],
+    browser: [
+      {
+        key: 'browser',
+        config: 'browser',
+        label: '쓸 브라우저',
+        hint: browserMode === 'direct' ? '띄울 브라우저 (chrome 또는 edge, 비우면 크롬)' : '확장이 든 브라우저가 여럿일 때 이름 일부 (예: edge, chrome)',
+      },
+    ],
     storage: [
       { key: 'outputDir', config: 'outputDir', label: '결과 엑셀 저장 폴더', hint: '비우면 내려받기 폴더' },
       { key: 'teamSkills', config: 'teamSkills', label: '팀 스킬 저장소 폴더', hint: '사내 GitHub의 dogent-skills를 받아 둔 폴더' },
@@ -987,6 +1020,29 @@ function Settings({ onClose, onChanged, config }: { onClose: () => void; onChang
         </div>
         {message && <div className="toast">{message}</div>}
 
+        <section className="set-section" id="browser-mode">
+          <h3>브라우저 연결 방식</h3>
+          <div className="mode-pick">
+            <label className={browserMode === 'extension' ? 'on' : ''}>
+              <input type="radio" name="browser-mode" id="mode-extension" checked={browserMode === 'extension'} onChange={() => void setMode('extension')} />
+              <span>
+                <b>확장</b> (기본)
+                <span className="hint">설치한 Dogent 확장으로 평소 쓰는 크롬·엣지 창을 다룹니다. 이미 로그인한 사이트를 그대로 씁니다.</span>
+              </span>
+            </label>
+            <label className={browserMode === 'direct' ? 'on' : ''}>
+              <input type="radio" name="browser-mode" id="mode-direct" checked={browserMode === 'direct'} onChange={() => void setMode('direct')} />
+              <span>
+                <b>직접 제어</b> (확장 없이)
+                <span className="hint">
+                  Dogent 전용 브라우저 창을 띄워 직접 다룹니다. 확장 설치가 필요 없고 새 창·팝업·내려받기·알림 창을 브라우저에서 바로 받습니다. 평소 창과 로그인이 따로라, 전용 창에서 업무 사이트에 한 번 로그인해 두어야 합니다 (로그인은 남습니다).
+                </span>
+              </span>
+            </label>
+          </div>
+        </section>
+
+        {browserMode === 'extension' && (
         <section className="set-section" id="extension-link">
           <h3>브라우저 확장 연결</h3>
           {link?.ids.length ? (
@@ -1022,6 +1078,13 @@ function Settings({ onClose, onChanged, config }: { onClose: () => void; onChang
           </label>
           {fields.browser.map(fieldRow)}
         </section>
+        )}
+        {browserMode === 'direct' && (
+          <section className="set-section" id="direct-browser">
+            <h3>직접 제어할 브라우저</h3>
+            {fields.browser.map(fieldRow)}
+          </section>
+        )}
 
         <section className="set-section">
           <h3>계정</h3>

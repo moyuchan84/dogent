@@ -5,6 +5,7 @@ import { catalogUrlFor, type LlmSettings } from '../../src/core';
 import { dogentConfig } from '../../dogent.config';
 import { findOfficeExe } from './office';
 import { defaultUploadDirs } from './upload';
+import { directSites } from './direct/sites';
 
 /**
  * 클라이언트 설정.
@@ -41,8 +42,20 @@ export interface UserConfig {
   uploadMaxMb?: number;
   /** 확장과 잇는 WebSocket 포트 */
   bridgePort?: number;
-  /** 확장이 든 브라우저가 여럿일 때 쓸 브라우저 이름 일부 (예: edge, chrome) */
+  /** 확장이 든 브라우저가 여럿일 때 쓸 브라우저 이름 일부 (예: edge, chrome). 직접 제어에서는 띄울 브라우저 */
   browser?: string;
+  /**
+   * 브라우저 연결 방식. extension = 설치한 Dogent 확장으로 (기본, 평소 쓰는 창과 로그인을 그대로 씀),
+   * direct = 확장 없이 Dogent 전용 브라우저 창을 띄워 직접 다룸 (전용 창에서 한 번 로그인해 두어야 함)
+   */
+  browserMode?: string;
+  /** 직접 제어로 띄울 브라우저의 실행 파일. 비우면 크롬·엣지를 찾는다 */
+  browserPath?: string;
+  /**
+   * 직접 제어에서 더 조작할 사이트 (쉼표로 여러 개, 예: mes.corp.com, *.erp.corp.com).
+   * 목록 방식 빌드(WXT_ALL_SITES=false)에서만 쓰며, 빌드의 범위(WXT_SITE_SCOPE) 안인 것만 받는다. 확장 패널의 "이 사이트 허용"과 같은 일
+   */
+  directSites?: string | string[];
   /** 오피스 도구(dogent-office.exe) 경로. 없으면 클라이언트 옆이나 저장소의 office/dist에서 찾는다 */
   officeExe?: string;
   /** 결과 엑셀을 Excel로 다시 저장한다. 문서 보안(NASCA) 규정상 Excel로 저장해야 할 때 켠다 */
@@ -75,6 +88,11 @@ export interface ClientConfig {
   officeExe?: string;
   saveThroughExcel: boolean;
   browser?: string;
+  /** 브라우저 연결 방식 (없으면 extension) */
+  browserMode?: 'extension' | 'direct';
+  browserPath?: string;
+  /** 직접 제어가 조작할 수 있는 사이트 (client/src/direct/sites.ts). 모든 사이트 빌드면 모든 http·https */
+  directSites?: { sites: string[]; rejected: string[]; listed: boolean };
   owner?: string;
   mcpServePort?: number;
   /** 사용자 설정 파일 경로 */
@@ -137,11 +155,20 @@ export function loadConfig(): ClientConfig {
     bridgePort: user.bridgePort,
     officeExe: user.officeExe,
     browser: user.browser,
+    browserMode: browserModeOf(user.browserMode),
+    browserPath: user.browserPath?.trim() || undefined,
+    directSites: directSites(__DOGENT_BUILD__, user.directSites),
     saveThroughExcel: user.saveThroughExcel === true,
     owner: user.owner,
     mcpServePort: Number(user.mcpServePort) > 0 ? Number(user.mcpServePort) : undefined,
     file,
   };
+}
+
+/** 설정의 browserMode 글을 방식으로. direct·직접이면 직접 제어, 나머지는 확장 */
+export function browserModeOf(value: unknown): 'extension' | 'direct' {
+  const v = String(value ?? '').trim().toLowerCase();
+  return v === 'direct' || v === 'cdp' || v.includes('직접') ? 'direct' : 'extension';
 }
 
 /** 사용자 설정 파일의 값 하나를 바꾼다. llm.userId처럼 점으로 적는다. */
@@ -171,8 +198,15 @@ export function describeConfig(c: ClientConfig): string {
     `헤더 틀        ${c.llm.headers ? Object.keys(c.llm.headers).join(', ') : '(없음, Authorization)'}`,
     `시스템 이름    ${c.llm.systemName ?? ''}`,
     `사용자 ID      ${c.llm.userId ?? ''}${c.llm.userId && c.llm.userId === windowsAccount() ? ' (Windows 계정)' : ''}`,
-    `브라우저       ${c.browser ?? '(여럿이면 가장 나중에 연결된 것)'}`,
-    `개인 스킬      ${c.personalSkills}`,
+    `브라우저 연결  ${c.browserMode === 'direct' ? '직접 제어 (Dogent 전용 브라우저 창, 확장 없이)' : '확장 (설치한 Dogent 확장)'}`,
+    `브라우저       ${c.browser ?? (c.browserMode === 'direct' ? '(크롬, 없으면 엣지)' : '(여럿이면 가장 나중에 연결된 것)')}${c.browserPath ? ` · ${c.browserPath}` : ''}`,
+    ...(c.browserMode === 'direct'
+      ? [
+          `직접 제어 사이트 ${c.directSites?.listed ? c.directSites.sites.join(', ') : '모든 http·https (빌드가 모든 사이트)'}`,
+          ...(c.directSites?.rejected ?? []).map((r) => `  (받지 않음) ${r}`),
+        ]
+      : []),
+    `개인 스킬     ${c.personalSkills}`,
     `담당 부서      ${c.owner ?? '(스킬을 처음 저장할 때 묻습니다)'}`,
     `팀 스킬        ${c.teamSkills ?? '(폴더 없음: dogent config teamSkills <폴더>)'}`,
     `팀 스킬 주소   ${c.teamSkillsUrl ?? '(없음: dogent config teamSkillsUrl <index.json 주소>)'}${c.teamSkillsToken ? ' (토큰 있음)' : ''}`,

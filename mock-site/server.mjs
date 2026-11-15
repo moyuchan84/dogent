@@ -88,6 +88,24 @@ export function createMockSite() {
       res.end(Buffer.from(body));
       return;
     }
+    // 폼 전송(POST)으로만 받는 엑셀. 같은 주소를 GET으로 다시 받으면 405다 (확장이 주소를 다시 받는 방식으로는 읽지 못하는 경우).
+    if (url.pathname === '/api/export.xlsx') {
+      if (req.method !== 'POST') {
+        res.writeHead(405, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end('<h1>잘못된 접근입니다</h1>');
+        return;
+      }
+      let body = '';
+      for await (const chunk of req) body += chunk;
+      const line = new URLSearchParams(body).get('line') ?? '';
+      const xlsx = await wipXlsx(line, '', '');
+      res.writeHead(200, {
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(`내보내기_${line}.xlsx`)}`,
+      });
+      res.end(Buffer.from(xlsx));
+      return;
+    }
     if (url.pathname === '/api/wip') {
       const rows = generateWip(url.searchParams.get('line') ?? '', url.searchParams.get('step') ?? '');
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });

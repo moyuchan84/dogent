@@ -1472,3 +1472,28 @@ label.switch input:focus-visible + span {
   padding: 0 7px;
   line-height: 16px;
 }
+
+/* 설정: 브라우저 연결 방식 고르기 */
+.mode-pick {
+  display: grid;
+  gap: 8px;
+}
+.mode-pick label {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border: 1px solid var(--line, #d9dde3);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.mode-pick label.on {
+  border-color: var(--accent, #2f6fed);
+}
+.mode-pick input {
+  margin-top: 3px;
+}
+.mode-pick .hint {
+  display: block;
+  margin-top: 2px;
+}

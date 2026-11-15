@@ -8,10 +8,12 @@
 import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { build } from 'rolldown';
-import { ROOT, buildDefines, maskedLlm, modeFromArgs } from '../client/build-env.mjs';
+import { ROOT, buildDefines, maskedLlm, modeFromArgs, pageAgentSource } from '../client/build-env.mjs';
 
 const mode = modeFromArgs();
 const { llm, define } = buildDefines(mode);
+// 브라우저 연결 방식 "직접 제어"가 프레임마다 넣는 페이지 에이전트
+define.__DOGENT_PAGE_AGENT__ = JSON.stringify(await pageAgentSource());
 const SRC = join(ROOT, 'desktop/src');
 const OUT = join(ROOT, 'desktop/dist');
 mkdirSync(join(OUT, 'renderer'), { recursive: true });

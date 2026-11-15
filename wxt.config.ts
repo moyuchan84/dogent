@@ -39,7 +39,7 @@ export default defineConfig({
       // 확장 ID를 고정한다. 어느 폴더에서 로드해도 같은 ID라 클라이언트가 Native Messaging에 미리 허용해 둔다 (bridge/extension-key.mjs)
       key: EXTENSION_KEY,
       description: '스킬(업무 절차서)을 따라 사내 웹 시스템을 조작하는 업무 에이전트',
-      permissions: ['sidePanel', 'scripting', 'storage', 'tabs', 'downloads', 'alarms', 'nativeMessaging', 'tabGroups'],
+      permissions: ['sidePanel', 'scripting', 'storage', 'tabs', 'downloads', 'alarms', 'nativeMessaging', 'tabGroups', 'webNavigation'],
       // 화면 그림(captureVisibleTab)은 <all_urls>나 activeTab이 있어야 찍힌다 (http·https 와일드카드로는 안 된다).
       // 모든 사이트 빌드는 처음부터 선언하고, 목록 방식(회사) 빌드는 사용자가 설정의 "화면 그림 권한 허용"으로 그때 요청한다.
       host_permissions: [...new Set([...sites, ...(sites.includes('https://*/*') ? ['<all_urls>'] : []), ...dogentConfig.llmPermissions, ...llmHost, ...skillsHost])],

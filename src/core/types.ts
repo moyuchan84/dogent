@@ -48,6 +48,8 @@ export interface PageSnapshot {
   items: SnapshotItem[];
   /** 직전에 읽은 뒤로 페이지가 띄운 창 (동작 결과로 이미 돌려준 것은 빠진다) */
   dialogs?: PageDialog[];
+  /** 직전에 읽은 뒤로 대상이 다른 창으로 옮겨 갔으면 그 사실 (예: 새 창이 열려 그 창으로 옮겼습니다) */
+  moved?: string;
 }
 
 /** 화면 점검에서 본 표 하나. 칸의 값은 담지 않는다. */
@@ -121,6 +123,8 @@ export interface DownloadedFile {
   filename: string;
   url: string;
   data: ArrayBuffer;
+  /** 브라우저가 PC에 저장한 파일의 경로. 있으면 data 대신 이 파일을 읽는다 (Dogent 앱·터미널만 읽을 수 있다) */
+  path?: string;
 }
 
 /** 브라우저 탭 하나. allowed는 Dogent가 조작할 수 있는 사이트인지다. */
@@ -158,7 +162,9 @@ export interface BrowserPort {
    * 요소를 눌러 시작된 내려받기의 파일 내용을 돌려준다. timeoutMs 안에 시작되지 않으면 실패한다.
    * allowed가 false를 돌려주는 주소의 파일은 읽지 않는다.
    */
-  download?(ref: number, timeoutMs: number, allowed: (url: string) => boolean): Promise<DownloadedFile>;
+  download?(ref: number, timeoutMs: number, allowed: (url: string) => boolean, how?: { localPath?: boolean }): Promise<DownloadedFile>;
+  /** 지금 실제로 다루는 탭 번호. 새 창을 따라가면 바뀐다 (확장의 탭 담당만 있다) */
+  currentTab?(): number;
   /** 에이전트가 화면을 조작 중임을 사용자에게 표시하거나 지운다. */
   setActive?(on: boolean): Promise<void>;
   /** 화면(ref를 주면 그 요소)에 보이는 글. 입력 칸의 값과 비밀번호는 담지 않는다. */
