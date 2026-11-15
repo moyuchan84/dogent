@@ -90,7 +90,37 @@ export class BrowserTools {
    */
   private staged = new Map<string, { name: string; mime: string; size: number; chunks: string[]; at: number }>();
 
+  /** 이번 호출에서 쓴 탭 담당. 호출이 끝나면 그 담당이 새 창으로 옮겨 갔는지 보고 대상을 맞춘다. */
+  private used: { tab: number; port: ReturnType<ToolHost['port']> } | null = null;
+
   constructor(private host: ToolHost) {}
+
+  private portOf(tab: number): ReturnType<ToolHost['port']> {
+    const port = this.host.port(tab);
+    this.used = { tab, port };
+    return port;
+  }
+
+  /**
+   * 탭 담당이 새 창을 따라갔거나 원래 창으로 돌아왔으면 대상 탭을 그쪽으로 맞춘다.
+   * 맞추지 않으면 탭 목록이 처음 탭을 대상으로 보여 주고, 사이트 검사도 처음 탭의 주소로 하게 된다.
+   */
+  private sync(): void {
+    const u = this.used;
+    this.used = null;
+    const now = u?.port.currentTab?.();
+    if (!u || now === undefined || now === u.tab) return;
+    if (this.current === u.tab || this.current === null) this.current = now;
+    const snap = this.snaps.get(u.tab);
+    this.snaps.delete(u.tab);
+    if (snap) this.snaps.set(now, snap);
+  }
+
+  /** 다음 호출이 다룰 탭 (정해 둔 탭이 없으면 사용자가 보고 있는 탭). 대상을 바꾸지 않는다. */
+  async peekTarget(): Promise<number | null> {
+    if (this.current !== null && (await this.host.tabs()).some((t) => t.id === this.current)) return this.current;
+    return this.host.activeTab();
+  }
 
   /** 오래된 올릴 파일 조각을 버린다 (승인 창이 닫혔거나 클라이언트가 중간에 끊긴 경우) */
   private pruneStaged(): void {
@@ -156,7 +186,7 @@ export class BrowserTools {
       return { ok: true, message: `탭 [${id}] "${found.title || found.url}"을(를) 조작 대상으로 정했습니다` };
     }
     const tab = await this.target();
-    const port = this.host.port(tab);
+    const port = this.portOf(tab);
     const t = (await this.host.tabs()).find((x) => x.id === tab);
     const allowed = !!t && siteAllowed(t.url, await this.host.sites());
     if (method === 'target') return { id: tab, url: t?.url ?? '', title: t?.title ?? '', allowed };
@@ -233,8 +263,15 @@ export class BrowserTools {
         this.lastSnap(tab);
         if (!port.download) throw new Error('이 환경에서는 내려받기를 쓸 수 없습니다');
         const sites = await this.host.sites();
-        const file = await port.download(n(0), Math.min(120_000, n(1)), (url) => url.startsWith('data:') || siteAllowed(url.replace(/^blob:/, ''), sites));
-        return { filename: file.filename, url: file.url, base64: toBase64(file.data) };
+        // 클라이언트가 PC의 파일을 읽을 수 있다고 알리면(localPath) 저장된 파일의 경로만 돌려준다. 폼 전송(POST)으로 받는 파일도 그대로 읽힌다.
+        const how = args[2] as { localPath?: boolean } | null | undefined;
+        const file = await port.download(
+          n(0),
+          Math.min(120_000, n(1)),
+          (url) => url.startsWith('data:') || siteAllowed(url.replace(/^blob:/, ''), sites),
+          how?.localPath ? { localPath: true } : undefined,
+        );
+        return file.path ? { filename: file.filename, url: file.url, path: file.path } : { filename: file.filename, url: file.url, base64: toBase64(file.data) };
       }
       case 'screenshot': {
         if (!port.screenshot) throw new Error('이 환경에서는 화면을 찍을 수 없습니다');
@@ -364,6 +401,14 @@ export class BrowserTools {
 
   /** 도구 하나를 실행하고 클라이언트에게 돌려줄 글을 만든다. 실패는 던진다. */
   async call(name: string, args: Args = {}): Promise<string> {
+    try {
+      return await this.callTool(name, args);
+    } finally {
+      this.sync();
+    }
+  }
+
+  private async callTool(name: string, args: Args): Promise<string> {
     switch (name) {
       case 'dogent_port':
         return JSON.stringify((await this.port(str(args, 'method'), Array.isArray(args.args) ? args.args : [])) ?? null);
@@ -390,7 +435,7 @@ export class BrowserTools {
       }
       case 'snapshot': {
         const tab = await this.target(args.tab_id);
-        const snap = await this.host.port(tab).snapshot();
+        const snap = await this.portOf(tab).snapshot();
         this.snaps.set(tab, snap);
         const head = snap.hasPassword
           ? '[login_required] 로그인 화면입니다. 비밀번호는 입력할 수 없습니다. 사용자에게 이 탭에서 직접 로그인해 달라고 알리고 wait_for_login을 부르세요.\n'
@@ -403,7 +448,7 @@ export class BrowserTools {
         await this.allowed(url);
         const tab = await this.target();
         this.snaps.delete(tab);
-        return (await this.host.port(tab).navigate(url)).message;
+        return (await this.portOf(tab).navigate(url)).message;
       }
       case 'click': {
         const tab = await this.target();
@@ -411,7 +456,7 @@ export class BrowserTools {
         const ref = num(args, 'ref');
         const el = findElement(snap, ref);
         if (!el) throw new Error(`[${ref}] 요소가 마지막 화면에 없습니다. snapshot을 다시 읽으세요`);
-        const port = this.host.port(tab);
+        const port = this.portOf(tab);
         let confirm: ConfirmPolicy | undefined = args.accept_dialog === true ? { accept: true, unless: SUBMIT_PATTERN.source } : undefined;
         if (SUBMIT_PATTERN.test(el.name)) {
           const request = this.approvalOf(snap, el.name, '외부 클라이언트의 요청');
@@ -428,7 +473,7 @@ export class BrowserTools {
       case 'select': {
         const tab = await this.target();
         this.lastSnap(tab);
-        const port = this.host.port(tab);
+        const port = this.portOf(tab);
         const r = name === 'type' ? await port.type(num(args, 'ref'), String(args.text ?? '')) : await port.select(num(args, 'ref'), str(args, 'value'));
         if (!r.ok) throw new Error(r.message);
         return r.message;
@@ -437,7 +482,7 @@ export class BrowserTools {
         const tab = await this.target();
         const text = str(args, 'text');
         const sec = Math.min(60, num(args, 'timeout_sec', 10));
-        if (!(await this.host.port(tab).waitFor(text, sec * 1000))) throw new Error(`${sec}초 안에 "${text}"이(가) 나타나지 않았습니다`);
+        if (!(await this.portOf(tab).waitFor(text, sec * 1000))) throw new Error(`${sec}초 안에 "${text}"이(가) 나타나지 않았습니다`);
         return `"${text}"이(가) 나타났습니다`;
       }
       case 'extract_table': {
@@ -445,7 +490,7 @@ export class BrowserTools {
         const snap = this.lastSnap(tab);
         const nextRef = args.next_ref === undefined || args.next_ref === null ? undefined : num(args, 'next_ref');
         const all: TableData = { columns: [], rows: [] };
-        const pages = await extractPages(this.host.port(tab), snap, num(args, 'ref'), nextRef, (t, first) => {
+        const pages = await extractPages(this.portOf(tab), snap, num(args, 'ref'), nextRef, (t, first) => {
           if (first) all.columns = t.columns;
           all.rows.push(...t.rows);
         });
@@ -455,7 +500,7 @@ export class BrowserTools {
       case 'download_table': {
         const tab = await this.target();
         this.lastSnap(tab);
-        const port = this.host.port(tab);
+        const port = this.portOf(tab);
         if (!port.download) throw new Error('이 환경에서는 내려받기를 쓸 수 없습니다');
         const sites = await this.host.sites();
         const file = await port.download(num(args, 'ref'), num(args, 'timeout_sec', 30) * 1000, (url) =>
@@ -476,7 +521,7 @@ export class BrowserTools {
         const table = findElement(snap, ref);
         if (!table || table.role !== 'table') throw new Error(`[${ref}]은(는) 표가 아닙니다`);
         const cells = rows.map((r) => (r as unknown[]).map((c) => String(c ?? '')));
-        const port = this.host.port(tab);
+        const port = this.portOf(tab);
         const addRef = args.add_ref === undefined || args.add_ref === null ? undefined : num(args, 'add_ref');
         const r = await port.fillTable(ref, columns.map(String), cells, addRef);
         if (!r.ok) throw new Error(r.message);
@@ -505,7 +550,7 @@ export class BrowserTools {
       case 'scroll':
       case 'go_back': {
         const tab = await this.target();
-        const port = this.host.port(tab);
+        const port = this.portOf(tab);
         const t = (await this.host.tabs()).find((x) => x.id === tab);
         await this.allowed(t?.url ?? '');
         const ref = args.ref === undefined || args.ref === null ? undefined : num(args, 'ref');
@@ -529,7 +574,7 @@ export class BrowserTools {
       }
       case 'read_text': {
         const tab = await this.target();
-        const port = this.host.port(tab);
+        const port = this.portOf(tab);
         if (!port.readText) throw new Error('이 환경에서는 화면 글을 읽을 수 없습니다');
         const ref = args.ref === undefined || args.ref === null ? undefined : num(args, 'ref');
         if (ref !== undefined) this.lastSnap(tab);
@@ -549,13 +594,13 @@ export class BrowserTools {
       }
       case 'inspect': {
         const tab = await this.target();
-        const port = this.host.port(tab);
+        const port = this.portOf(tab);
         if (!port.inspect) throw new Error('이 환경에서는 화면 점검을 쓸 수 없습니다');
         return renderInspection(await port.inspect(), { hide: false });
       }
       case 'wait_for_login': {
         const tab = await this.target();
-        const port = this.host.port(tab);
+        const port = this.portOf(tab);
         const limit = Math.min(900, num(args, 'timeout_sec', 300)) * 1000;
         const started = Date.now();
         await this.host.focus(tab);

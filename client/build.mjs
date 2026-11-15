@@ -7,10 +7,12 @@
 // 모델 설정은 확장과 같은 환경 파일(WXT_LLM_*)을 읽는다. 키가 들어가므로 결과 파일은 사내에서만 나눈다 (저장소에는 올리지 않음).
 import { join } from 'node:path';
 import { build } from 'rolldown';
-import { ROOT, buildDefines, maskedLlm, modeFromArgs } from './build-env.mjs';
+import { ROOT, buildDefines, maskedLlm, modeFromArgs, pageAgentSource } from './build-env.mjs';
 
 const mode = modeFromArgs();
 const { llm, skills, define } = buildDefines(mode);
+// 브라우저 연결 방식 "직접 제어"가 프레임마다 넣는 페이지 에이전트
+define.__DOGENT_PAGE_AGENT__ = JSON.stringify(await pageAgentSource());
 
 await build({
   input: join(ROOT, 'client/src/main.ts'),

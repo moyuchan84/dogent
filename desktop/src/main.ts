@@ -9,6 +9,7 @@ import { BrowserWindow, app, ipcMain, shell } from 'electron';
 import { docOfSkill, skillCoversUrl, type RunEvent } from '../../src/core';
 import { loadToken } from '../../client/src/bridge';
 import { describeConfig, loadConfig, setConfig } from '../../client/src/config';
+import { closeDirectBrowser } from '../../client/src/direct';
 import { addServers, parsePasted, patchServer, probeServer, removeServer, serverRows, serverRow } from '../../client/src/connectors';
 import { loadMcpConfig } from '../../client/src/mcp-hub';
 import { Collector, DogentMcp, serveHttp, sessionRunner, type DogentRunner, type RunReport } from '../../client/src/mcp-serve';
@@ -182,6 +183,7 @@ ipcMain.handle('dogent:init', () => ({
   mode: __DOGENT_BUILD__.mode,
   version: __DOGENT_BUILD__.version,
   config: describeConfig(loadConfig()),
+  browserMode: loadConfig().browserMode ?? 'extension',
   skills: skillSummaries(),
   samplesShown: session.showSamples(),
   browsers: session.browsersNow(),
@@ -335,6 +337,8 @@ else {
   });
   app.on('window-all-closed', async () => {
     await session.close();
+    // 직접 제어로 띄운 Dogent 브라우저도 닫는다 (확장 방식이면 아무 일도 없다)
+    closeDirectBrowser();
     app.quit();
   });
 }

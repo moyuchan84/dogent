@@ -45,7 +45,8 @@
     "desktop": "node desktop/build.mjs && electron desktop/dist/main.mjs",
     "desktop:pack": "node desktop/build.mjs && electron-builder --projectDir desktop/dist --config ../electron-builder.yml",
     "desktop:pack:company": "node desktop/build.mjs --mode company && electron-builder --projectDir desktop/dist --config ../electron-builder.yml",
-    "e2e:desktop": "node tests/e2e/desktop.e2e.mjs"
+    "e2e:desktop": "node tests/e2e/desktop.e2e.mjs",
+    "e2e:direct": "vitest run tests/direct-browser.test.ts --mode direct"
   },
   "dependencies": {
     "exceljs": "^4.4.0",

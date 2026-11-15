@@ -13,6 +13,10 @@ declare const __DOGENT_BUILD__: {
   hubUrl?: string;
   /** 목업 사이트용 예시 스킬(samples/skills)을 넣어 빌드했는지 (WXT_SAMPLE_SKILLS=true). 그러면 예시 스킬을 처음부터 보인다 */
   samples?: boolean;
+  /** 목록 방식 빌드(WXT_ALL_SITES=false)의 처음부터 허용한 사이트. 모든 사이트 빌드면 없다. 직접 제어가 이 목록을 지킨다 */
+  sites?: string[];
+  /** 목록 방식 빌드에서 사용자가 더할 수 있는 사이트 범위 (WXT_SITE_SCOPE) */
+  siteScope?: string[];
 };
 
 /** 클라이언트에 넣은 기본 스킬. 경로(예: wip-check/SKILL.md) → 내용 */

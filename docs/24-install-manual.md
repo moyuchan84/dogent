@@ -1,6 +1,6 @@
 # Dogent 설치 매뉴얼
 
-> 기준일 2026-11-09 · 저장소 main (훅, MCP 카탈로그, 브라우저 자동 실행 반영)
+> 기준일 2026-11-16 · 저장소 main (훅, MCP 카탈로그, 브라우저 자동 실행) + 확장 없이 쓰는 직접 제어(5-1)
 > 이 문서는 **처음 설치하는 사람**을 위한 한 장짜리 순서입니다. 자세한 문제 해결은 [12-install-guide.html](12-install-guide.html), 회사 PC 재설치는 [15-company-reinstall.html](15-company-reinstall.html), 사내 opencode에 맡기는 요청문은 [16-opencode-install.md](16-opencode-install.md).
 > 서버 쪽(스킬 저장소, MCP 카탈로그, 시스템 사전, Hub, LLM 프록시) 준비는 [25-infra-setup.md](25-infra-setup.md).
 
@@ -112,7 +112,27 @@ pnpm desktop:pack:company    :: 데스크탑 앱 (오피스 도구를 먼저 빌
 
 - **브라우저 자동 실행:** 브라우저가 꺼져 있으면 `dogent`가 크롬/엣지를 대신 띄웁니다(이미 떠 있으면 새 창을 더 열지 않음). 어느 브라우저인지는 `dogent config browser edge`로 정합니다. 사내 PC에서의 동작은 아직 확인하지 못했습니다.
 - **훅, `/명령`, `계획:`**: 별도 설치 없이 클라이언트에 들어 있습니다 (사용법은 [26-usecase-guide.md](26-usecase-guide.md)).
+- **브라우저 자동 실행 끄기:** 원격 데스크톱처럼 창을 띄우면 안 되는 곳은 `dogent --no-launch …` 또는 환경 변수 `DOGENT_NO_LAUNCH=1`.
+- **확장 없이 쓰기 (직접 제어):** 확장을 올릴 수 없는 PC는 아래 5-1을 보세요.
 - **MCP 카탈로그:** 팀 저장소 주소만 정해 두면 `dogent mcp browse / install`을 쓸 수 있습니다 ([25-infra-setup.md](25-infra-setup.md) 3장).
+
+### 5-1. 확장을 올릴 수 없을 때: 직접 제어
+
+크롬 정책으로 개발자 모드 확장을 올릴 수 없으면, 확장 없이 Dogent가 **전용 브라우저 창**을 띄워 직접 다룰 수 있습니다. 스킬·자유 요청·저장·상신 승인·결과 저장은 확장 방식과 같습니다.
+
+| 순서 | 할 일 | 성공 기준 |
+|---|---|---|
+| 1 | 앱 → 설정 → **브라우저 연결 방식 → 직접 제어** (터미널: `dogent config browserMode direct`) | 앱 위쪽에 "직접 제어 · 요청하면 Dogent 브라우저 창이 뜹니다" |
+| 2 | 아무 요청을 한 번 (예: "MES 열어줘") | Dogent 전용 크롬(없으면 엣지) 창이 뜸 |
+| 3 | 그 창에서 업무 사이트에 **한 번 로그인** | 다음부터는 로그인이 남음 (전용 프로필 `%USERPROFILE%\.dogent\browser`) |
+| 4 | `dogent config` | `브라우저 연결  직접 제어`, `직접 제어 사이트 …` |
+
+- 엣지로 띄우려면 `dogent config browser edge`. 실행 파일이 표준 위치가 아니면 `dogent config browserPath "C:\…\chrome.exe"`.
+- 저장·상신 승인은 브라우저 창이 아니라 **앱(터미널)에서** 묻습니다.
+- 개발자 도구 포트를 열지 않고 파이프로만 주고받으므로 이 PC의 다른 프로그램은 그 창에 붙지 못합니다.
+- 빌드가 목록 방식(`WXT_ALL_SITES=false`)이면 확장과 같은 사이트 목록을 지킵니다. 사이트를 더하려면 `dogent config directSites "mes.corp.com, erp.corp.com"` (빌드의 `WXT_SITE_SCOPE` 안만 받음).
+- 녹화(사람의 조작을 스킬로)는 확장 패널에만 있습니다. 직접 제어에서는 말로 스킬 만들기, "이 실행을 스킬로 저장"을 씁니다.
+- **사내에서 아직 확인하지 못했습니다.** 크롬 정책 `RemoteDebuggingAllowed`가 꺼져 있거나 `DeveloperToolsAvailability`가 2이면 직접 제어도 막힙니다 (`chrome://policy`에서 확인).
 
 ## 6. 업데이트와 제거
 
@@ -136,7 +156,8 @@ pnpm desktop:pack:company    :: 데스크탑 앱 (오피스 도구를 먼저 빌
 
 | 증상 | 확인 |
 |---|---|
-| 앱에 브라우저 이름이 안 뜬다 | 확장이 `D:\Multimedia\Dogent\extension`에서 로드됐는지, `dogent doctor --fix` |
+| 앱에 브라우저 이름이 안 뜬다 | 확장이 `D:\Multimedia\Dogent\extension`에서 로드됐는지, `dogent doctor --fix`. 확장을 못 올리면 5-1 직접 제어 |
+| 직접 제어에서 "Dogent 브라우저를 띄우지 못했습니다" | 크롬·엣지 설치 위치(`dogent config browserPath`), 크롬 정책의 원격 디버깅 차단 |
 | 연결 시험 실패 | `WXT_LLM_BASE_URL`, 사내망/VPN, "이 주소 접근 허용", 헤더 틀 |
 | 포트 39217 충돌 | 공용 PC·원격 데스크톱에서 두 번째 사용자는 브리지를 못 띄움 → Native Messaging 방식 사용 |
 | 실행 파일이 보안 SW에 차단 | `Dogent.exe`, `dogent-office.exe` 예외 요청 (사내 확인 목록 C6) |

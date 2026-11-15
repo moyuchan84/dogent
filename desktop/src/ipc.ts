@@ -45,6 +45,8 @@ export interface InitInfo {
   mode: string;
   version: string;
   config: string;
+  /** 브라우저 연결 방식: extension = 설치한 확장, direct = 확장 없이 Dogent 전용 창을 직접 제어 */
+  browserMode: 'extension' | 'direct';
   skills: SkillSummary[];
   browsers: BrowserLink[];
   options: { allowWrite: boolean; dryRun: boolean };

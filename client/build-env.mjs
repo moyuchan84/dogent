@@ -88,6 +88,22 @@ export function bundledSkills(samples = false) {
   return samples ? skillsIn(join(ROOT, 'samples', 'skills'), skills) : skills;
 }
 
+const listOf = (raw) => (raw ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+
+/**
+ * 확장 빌드와 같은 조작할 사이트 규칙 (dogent.config.ts의 allSitesFor, src/ext/sites.ts의 SITE_SCOPE).
+ * 직접 제어(확장 없이)는 확장의 사이트 목록을 볼 수 없으므로 같은 값을 빌드에 넣어 둔다.
+ * 모든 사이트 빌드(기본)는 아무것도 넣지 않는다. 목록 방식(WXT_ALL_SITES=false)이면 sites(처음부터 허용)와 siteScope(사용자가 더할 수 있는 범위)를 넣는다.
+ */
+export function siteRules(mode) {
+  const env = loadEnv(mode);
+  const raw = (env.WXT_ALL_SITES ?? '').trim();
+  const all = raw ? !/^(0|false|no|off)$/i.test(raw) : true;
+  if (all) return {};
+  const scope = listOf(env.WXT_SITE_SCOPE);
+  return { sites: [...new Set(['http://localhost:4173/*', ...listOf(env.WXT_SITE_PERMISSIONS)])], ...(scope.length ? { siteScope: scope } : {}) };
+}
+
 /** rolldown의 define에 넣을 값 */
 export function buildDefines(mode) {
   const version = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).version;
@@ -98,16 +114,27 @@ export function buildDefines(mode) {
   const systemsUrl = loadEnv(mode).WXT_SYSTEMS_URL?.trim() || undefined;
   // Hub 서버의 주소 (사용자가 dogent config hubUrl로 바꿀 수 있다)
   const hubUrl = loadEnv(mode).WXT_HUB_URL?.trim() || undefined;
+  const sites = siteRules(mode);
   return {
     llm,
     skills: bundledSkills(samplesWanted(mode)),
     define: {
       // samples: 예시 스킬을 넣었는지. 앱은 개발용 빌드(모드 없음)에서만 예시를 처음부터 보이고, 집·회사 빌드는 숨겨 둔다
-      __DOGENT_BUILD__: JSON.stringify({ mode, version, llm, ...(skillsUrl ? { skillsUrl } : {}), ...(systemsUrl ? { systemsUrl } : {}), ...(hubUrl ? { hubUrl } : {}),...(samplesWanted(mode) ? { samples: true } : {}) }),
+      __DOGENT_BUILD__: JSON.stringify({ mode, version, llm, ...(skillsUrl ? { skillsUrl } : {}), ...(systemsUrl ? { systemsUrl } : {}), ...(hubUrl ? { hubUrl } : {}), ...sites, ...(samplesWanted(mode) ? { samples: true } : {}) }),
       __DOGENT_SKILLS__: JSON.stringify(bundledSkills(samplesWanted(mode))),
       __DOGENT_HOST__: JSON.stringify(Object.fromEntries(['native-host.mjs', 'protocol.mjs'].map((f) => [f, readFileSync(join(ROOT, 'bridge', f), 'utf8')]))),
     },
   };
+}
+
+/**
+ * 확장 없이 브라우저를 직접 다룰 때(client/src/direct) 프레임마다 넣는 페이지 에이전트를 한 덩어리 스크립트로 묶는다.
+ * 확장의 page-agent와 같은 코드(src/page/agent.ts)다. define의 __DOGENT_PAGE_AGENT__로 넣는다.
+ */
+export async function pageAgentSource() {
+  const { build } = await import('rolldown');
+  const out = await build({ input: join(ROOT, 'src/page/standalone.ts'), platform: 'browser', write: false, output: { format: 'iife', minify: true } });
+  return out.output[0].code;
 }
 
 /** 빌드 요약에 찍을 모델 설정. 키는 앞 세 글자만, 헤더는 이름만 */

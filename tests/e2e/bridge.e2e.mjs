@@ -6,6 +6,7 @@
 // MCP 클라이언트 자리에는 이 스크립트가 서서 브리지의 handleMcp를 직접 부른다.
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir, userInfo } from 'node:os';
 import { join } from 'node:path';
@@ -115,7 +116,10 @@ try {
   });
 
   await scenario('조작할 사이트 밖으로는 가지 않음', async () => {
-    const r = await call('navigate', { url: 'http://127.0.0.1:4173/wip.html' });
+    // 목록 방식 빌드(WXT_ALL_SITES=false)는 목록에 없는 주소를 막는다.
+    // 모든 사이트 빌드(기본)는 http·https 전체가 허용이라, 웹이 아닌 주소(file:)로 막히는지를 본다.
+    const url = process.env.WXT_ALL_SITES === 'false' ? 'http://127.0.0.1:4173/wip.html' : 'file:///C:/Windows/win.ini';
+    const r = await call('navigate', { url });
     assert.equal(r.error, true);
     assert.match(r.text, /조작할 사이트 목록에 없습니다/);
   });
@@ -237,6 +241,60 @@ try {
     assert.equal(r.error, false, r.text);
     await page.waitForFunction(() => /첨부됨/.test(document.getElementById('result').textContent), null, { timeout: 5000 });
     assert.equal(await page.locator('#result').innerText(), `첨부됨: 신청서.csv (${size}바이트) 첫 줄: 로트,수량 [이벤트: input,change]`);
+  });
+
+  // ---- 메뉴 → (새 탭 / 같은 창 / 늦게 뜨는 팝업) → 확인 창 + 폼 전송(POST) 엑셀 내려받기 ----
+  // Dogent 앱·터미널이 쓰는 길(dogent_port)로 부른다. localPath면 확장이 저장된 파일의 경로를 돌려준다.
+  const port = async (method, ...args) => JSON.parse(await ok('dogent_port', { method, args }));
+  const isXlsx = (path) => readFileSync(path).subarray(0, 2).toString('latin1') === 'PK';
+  const exportByPort = async () => {
+    const snap = await port('snapshot');
+    assert.match(snap.title, /재공 내보내기/, `내보내기 화면이 아님: ${snap.title} ${snap.url}`);
+    const button = snap.items.find((i) => i.kind === 'el' && i.name === '엑셀 내려받기');
+    assert.ok(button, '엑셀 내려받기 버튼 없음');
+    const file = await port('download', button.ref, 15_000, { localPath: true });
+    assert.ok(file.path, `경로를 돌려주지 않음: ${JSON.stringify(file)}`);
+    assert.ok(isXlsx(file.path), `엑셀 파일이 아님: ${file.path}`);
+    return { snap, file };
+  };
+
+  await scenario('메뉴의 새 탭(noopener) 링크 → 새 탭을 따라가 POST 엑셀을 저장된 파일로 읽음', async () => {
+    await ok('tab_open', { url: `${SITE}/menu.html` });
+    const menu = await port('snapshot');
+    const link = menu.items.find((i) => i.kind === 'el' && /새 탭/.test(i.name));
+    const r = await port('click', link.ref, null);
+    assert.match(r.message, /새 창이 열려 그 창으로 옮겼습니다/, r.message);
+    await exportByPort();
+    // 대상 표시가 옮겨 간 탭을 가리킨다
+    assert.match(await ok('tabs_list'), /\(대상\) 재공 내보내기/);
+  });
+
+  await scenario('경로를 읽지 못하는 클라이언트(외부 MCP)는 POST 파일을 다시 받지 못한다고 알림', async () => {
+    const snap = await ok('snapshot');
+    const r = await call('download_table', { ref: refOf(snap, /button "엑셀 내려받기"/), timeout_sec: 15 });
+    assert.equal(r.error, true, r.text);
+    assert.match(r.text, /폼 전송\(POST\)/);
+  });
+
+  await scenario('같은 창에서 조금 늦게 이동하는 메뉴 → 이동한 화면을 읽음', async () => {
+    await ok('tab_open', { url: `${SITE}/menu.html?same` });
+    const menu = await port('snapshot');
+    const button = menu.items.find((i) => i.kind === 'el' && /같은 창/.test(i.name));
+    await port('click', button.ref, null);
+    await exportByPort();
+  });
+
+  await scenario('누른 뒤 늦게 뜨는 팝업 창 → 다음 화면 읽기에서 옮긴 사실을 알리고 팝업에서 내려받음', async () => {
+    await ok('tab_open', { url: `${SITE}/menu.html?popup` });
+    const menu = await port('snapshot');
+    const button = menu.items.find((i) => i.kind === 'el' && /팝업/.test(i.name));
+    const r = await port('click', button.ref, null);
+    assert.doesNotMatch(r.message, /새 창/, '팝업은 누른 동작이 끝난 뒤에 떠야 시험이 됨');
+    await new Promise((res) => setTimeout(res, 2500));
+    const text = await ok('snapshot');
+    assert.match(text, /새 창이 열려 그 창으로 옮겼습니다/, text.slice(0, 300));
+    const { snap } = await exportByPort();
+    assert.match(snap.url, /export\.html/);
   });
 
   await scenario('로그인 화면은 알리고, 사람이 로그인하면 이어 감', async () => {

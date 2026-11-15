@@ -57,6 +57,7 @@ export function findInSnapshot(snap: PageSnapshot, query: string, limit = 20): s
 
 export function renderSnapshot(snap: PageSnapshot, maxChars = 12000): string {
   const lines = [`[page] ${snap.title} — ${snap.url}`];
+  if (snap.moved) lines.unshift(`(${snap.moved}. 아래는 지금 대상 창의 화면입니다)`);
   for (const item of snap.items) {
     if (item.kind === 'frame') lines.push(`--- frame: ${item.url} ---`);
     else if (item.kind === 'heading') lines.push(`# ${item.text}`);

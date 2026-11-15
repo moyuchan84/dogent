@@ -47,7 +47,7 @@ const tally = { pass: 0, fail: 0 };
 function client(args, { answers = [], onOutput } = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [CLIENT, ...args, '--wait', '45'], {
-      env: { ...process.env, DOGENT_HOME: home, DOGENT_BRIDGE_TOKEN: TOKEN, DOGENT_BRIDGE_PORT: String(PORT), DOGENT_BRIDGE_PIPE: `\\\\.\\pipe\\dogent-client-e2e-${process.pid}` },
+      env: { ...process.env, DOGENT_NO_LAUNCH: '1', DOGENT_HOME: home, DOGENT_BRIDGE_TOKEN: TOKEN, DOGENT_BRIDGE_PORT: String(PORT), DOGENT_BRIDGE_PIPE: `\\\\.\\pipe\\dogent-client-e2e-${process.pid}` },
     });
     let text = '';
     const timer = setTimeout(() => {
@@ -362,7 +362,7 @@ try {
     await wb.xlsx.writeFile(file);
     const r = await client([`${file} 파일을 엑셀로 열어서 정리해줘`, '--yes']);
     assert.equal(r.code, 0, r.text);
-    assert.match(r.text, /엑셀 도구로 자유 요청을 합니다 \(브라우저는 쓰지 않습니다\)/);
+    assert.match(r.text, /오피스 도구\(엑셀·워드·파워포인트\)로 자유 요청을 합니다 \(브라우저는 쓰지 않습니다\)/);
     assert.match(r.text, /엑셀에서 3행을 읽었습니다/);
     assert.doesNotMatch(r.text, /확장 연결됨/);
     return '브라우저 연결 없이 완료';
@@ -411,7 +411,7 @@ try {
   await scenario('dogent serve: Claude Code처럼 MCP로 사내 웹 업무를 맡기면 스킬로 처리하고 결과를 돌려줌', async () => {
     await open('/wip.html');
     const child = spawn(process.execPath, [CLIENT, 'serve', '--wait', '45'], {
-      env: { ...process.env, DOGENT_HOME: home, DOGENT_BRIDGE_TOKEN: TOKEN, DOGENT_BRIDGE_PORT: String(PORT), DOGENT_BRIDGE_PIPE: `\\\\.\\pipe\\dogent-client-e2e-${process.pid}` },
+      env: { ...process.env, DOGENT_NO_LAUNCH: '1', DOGENT_HOME: home, DOGENT_BRIDGE_TOKEN: TOKEN, DOGENT_BRIDGE_PORT: String(PORT), DOGENT_BRIDGE_PIPE: `\\\\.\\pipe\\dogent-client-e2e-${process.pid}` },
     });
     let buf = '';
     let errText = '';
@@ -505,6 +505,8 @@ try {
   });
 
   await scenario('조작할 사이트 밖의 탭에서는 자유 요청이 막힘', async () => {
+    // 모든 사이트 빌드(기본)는 http·https 전체가 허용이라 막을 웹 주소가 없다. 웹이 아닌 주소는 bridge e2e가 본다.
+    if (process.env.WXT_ALL_SITES !== 'false') return '건너뜀: 모든 사이트 빌드 (목록 방식은 WXT_ALL_SITES=false로 빌드해 시험)';
     await target.goto('http://127.0.0.1:4173/wip.html');
     await target.bringToFront();
     const r = await client(['8라인을 선택하고 조회해서 총 몇 건인지 알려줘', '--yes'], { answers: ['n'] });

@@ -61,6 +61,7 @@ const HELP = `Dogent 클라이언트 ${__DOGENT_BUILD__.version} (${__DOGENT_BUI
   --dry-run      저장·상신 직전에 멈춘다 (시험 실행)
   --wait <초>    확장이 연결되기를 기다리는 시간 (기본 60)
   --browser <이름>  브라우저가 여럿일 때 쓸 브라우저 (edge, chrome 또는 번호). 늘 쓰려면 dogent config browser edge
+  --no-launch    확장이 안 붙어도 브라우저를 띄우지 않는다 (DOGENT_NO_LAUNCH=1과 같음)
 
 브라우저 쪽: Dogent 확장의 사이드 패널 → 설정 → 클라이언트 연결에서 WebSocket(또는 Native Messaging)을 켜고 토큰을 넣으세요.`;
 
@@ -315,11 +316,13 @@ async function runAgentsCommand(rest: string[], workdir: string): Promise<number
 }
 
 function parseArgs(argv: string[]): { args: string[]; flags: SessionOptions } {
-  const flags: SessionOptions = { yes: false, allowWrite: false, dryRun: false, waitSec: 60, launchBrowser: true };
+  // 브라우저 자동 실행은 --no-launch 또는 DOGENT_NO_LAUNCH=1로 끈다 (시험, 원격 데스크톱처럼 창을 띄우면 안 되는 곳)
+  const flags: SessionOptions = { yes: false, allowWrite: false, dryRun: false, waitSec: 60, launchBrowser: process.env.DOGENT_NO_LAUNCH !== '1' };
   const args: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--yes' || a === '-y') flags.yes = true;
+    else if (a === '--no-launch') flags.launchBrowser = false;
     else if (a === '--allow-write') flags.allowWrite = true;
     else if (a === '--dry-run') flags.dryRun = true;
     else if (a === '--wait') flags.waitSec = Number(argv[++i]) || 60;
@@ -403,7 +406,7 @@ async function main(): Promise<number> {
       const mine: string[] = [];
       for (let i = raw.indexOf('mcp') + 1; i < raw.length; i++) {
         if (raw[i] === '--wait' || raw[i] === '--browser') i++;
-        else if (raw[i] !== '--allow-write' && raw[i] !== '--dry-run') mine.push(raw[i]);
+        else if (raw[i] !== '--allow-write' && raw[i] !== '--dry-run' && raw[i] !== '--no-launch') mine.push(raw[i]);
       }
       return await runMcpCommand(mine);
     } catch (e) {

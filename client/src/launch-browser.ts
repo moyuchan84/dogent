@@ -25,8 +25,10 @@ const isRunning = (image: string): boolean => {
 };
 
 const startWindows = (name: string): void => {
-  // start는 App Paths에 등록된 chrome, msedge를 경로 없이 찾는다
-  const child = spawn('cmd.exe', ['/c', 'start', '""', name], { detached: true, stdio: 'ignore', windowsHide: true });
+  // start는 App Paths에 등록된 chrome, msedge를 경로 없이 찾는다.
+  // cmd.exe를 못 찾는 등 실행 실패는 비동기 'error'로 온다. 받지 않으면 클라이언트 전체가 죽으므로 받아서 버린다 (확장 연결 안내는 그대로 나간다).
+  const child = spawn(process.env.ComSpec || 'cmd.exe', ['/c', 'start', '""', name], { detached: true, stdio: 'ignore', windowsHide: true });
+  child.on('error', () => {});
   child.unref();
 };
 

@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>업무 메뉴</title>
+<style>
+  body { font: 14px "Malgun Gothic", sans-serif; margin: 24px; }
+  li { margin: 8px 0; }
+</style>
+</head>
+<body>
+<!-- 메뉴에서 업무 화면으로 들어가는 여러 방식을 시험한다: 새 탭(noopener), 같은 탭(스크립트가 늦게 이동), 늦게 뜨는 팝업 창. -->
+<h1>업무 메뉴</h1>
+<ul>
+  <li><a href="export.html" target="_blank" rel="noopener noreferrer">재공 내보내기 (새 탭)</a></li>
+  <li><button type="button" id="same">재공 내보내기 (같은 창)</button></li>
+  <li><button type="button" id="popup">재공 내보내기 (팝업)</button></li>
+</ul>
+<script>
+  // 사내 시스템처럼 누른 뒤 잠깐 있다가 이동한다.
+  document.getElementById('same').addEventListener('click', () => {
+    setTimeout(() => { location.href = 'export.html'; }, 300);
+  });
+  // 서버에 한 번 물어본 뒤 팝업 창을 연다. 누른 동작이 끝난 뒤에 창이 뜬다.
+  document.getElementById('popup').addEventListener('click', () => {
+    setTimeout(() => { window.open('export.html', 'dogent-export', 'width=900,height=700'); }, 1500);
+  });
+</script>
+</body>
+</html>

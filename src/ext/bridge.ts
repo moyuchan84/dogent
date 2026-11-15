@@ -95,18 +95,49 @@ function onApprovalMessage(msg: unknown): Promise<unknown> | undefined {
 
 // ---- 브라우저 쪽 기능 ----
 
+/** 탭 번호 → 그 탭을 다루는 담당. 담당이 새 창을 따라가면 새 창의 번호로도 같은 담당을 찾는다 (ref와 바깥 창 기록을 잃지 않게). */
 const ports = new Map<number, ChromeBrowser>();
-const idle = new Map<number, ReturnType<typeof setTimeout>>();
-/** 마지막 호출 뒤 이 시간이 지나면 화면의 "조작 중" 표시를 끈다. */
-const IDLE_MS = 20_000;
+/** 담당마다의 "조작 중" 끄기 타이머. 탭 번호가 아니라 담당에 거는 이유: 담당이 새 창으로 옮겨 가도 같은 타이머를 이어 쓴다. */
+const idle = new Map<ChromeBrowser, ReturnType<typeof setTimeout>>();
+/**
+ * 마지막 호출 뒤 이 시간이 지나면 화면의 "조작 중" 표시와 새 창·알림 창 감시를 끈다.
+ * 모델이 오래 생각하거나 사람의 승인을 기다리는 동안에도 늦게 뜨는 팝업을 놓치지 않을 만큼 길게 둔다.
+ */
+const IDLE_MS = 90_000;
 
 function portFor(tabId: number): ChromeBrowser {
-  let p = ports.get(tabId);
-  if (!p) {
-    p = new ChromeBrowser(tabId);
-    ports.set(tabId, p);
+  const direct = ports.get(tabId);
+  if (direct && direct.currentTab() === tabId) return direct;
+  // 새 창을 따라간 담당이 있으면 그것을 쓴다.
+  for (const p of new Set(ports.values())) {
+    if (p.currentTab() === tabId) {
+      ports.set(tabId, p);
+      return p;
+    }
   }
+  // 이 번호의 담당이 다른 창으로 옮겨 갔는데 이 탭을 다시 고른 경우다. 이 탭을 다룰 담당을 새로 둔다.
+  const p = new ChromeBrowser(tabId);
+  ports.set(tabId, p);
   return p;
+}
+
+/** 담당을 "조작 중"으로 켜고 끄기 타이머를 멈춘다. */
+async function wake(p: ChromeBrowser): Promise<void> {
+  clearTimeout(idle.get(p));
+  idle.delete(p);
+  if (!p.isActive) await p.setActive(true).catch(() => {});
+}
+
+/** 한동안 호출이 없으면 담당의 "조작 중"을 끈다. */
+function rest(p: ChromeBrowser): void {
+  clearTimeout(idle.get(p));
+  idle.set(
+    p,
+    setTimeout(() => {
+      idle.delete(p);
+      void p.setActive(false).catch(() => {});
+    }, IDLE_MS),
+  );
 }
 
 const isWeb = (url?: string) => !!url && /^https?:\/\//.test(url);
@@ -164,23 +195,30 @@ let lastCall = 0;
 /** 클라이언트가 마지막으로 도구를 부른 때. 실행 중에 확장을 다시 읽지 않으려고 본다 (self-update.ts) */
 export const lastCallAt = () => lastCall;
 
-/** 도구를 실행하는 동안 그 탭에 "조작 중" 표시를 하고, 한동안 호출이 없으면 끈다. */
+/** 이 호출이 "조작 중" 표시를 켜야 하는지. 탭 목록·로그인 기다리기·표시 자체를 바꾸는 호출은 켜지 않는다. */
+function marks(tool: string, args: Record<string, unknown>): boolean {
+  if (tool === 'tabs_list' || tool === 'wait_for_login') return false;
+  if (tool === 'dogent_port') return !['setActive', 'followActive', 'tabs', 'target'].includes(String(args.method));
+  return true;
+}
+
+/**
+ * 도구를 실행하는 동안 실제로 다루는 탭의 담당에 "조작 중" 표시를 하고, 한동안 호출이 없으면 끈다.
+ * 사용자가 앞에 둔 탭이 아니라 BrowserTools가 다루는 탭을 본다. 팝업 창이 앞으로 와도 일하던 담당의 새 창·알림 창 감시가 꺼지지 않게 한다.
+ */
 async function runTool(tool: string, args: Record<string, unknown>): Promise<string> {
-  const tabId = await host.activeTab();
-  const marked = tabId !== null && tool !== 'tabs_list' && tool !== 'wait_for_login';
-  if (marked && !idle.has(tabId)) await portFor(tabId).setActive(true).catch(() => {});
+  const marked = marks(tool, args);
+  const before = marked ? await tools.peekTarget() : null;
+  const first = before === null ? null : portFor(before);
+  if (first) await wake(first);
   try {
     return await tools.call(tool, args);
   } finally {
     if (marked) {
-      clearTimeout(idle.get(tabId));
-      idle.set(
-        tabId,
-        setTimeout(() => {
-          idle.delete(tabId);
-          void portFor(tabId).setActive(false).catch(() => {});
-        }, IDLE_MS),
-      );
+      const after = await tools.peekTarget().catch(() => null);
+      const last = after === null ? null : portFor(after);
+      if (last && last !== first) await wake(last);
+      for (const p of new Set([first, last])) if (p) rest(p);
     }
   }
 }
@@ -396,9 +434,14 @@ export function startBridge(): void {
     for (const a of approvals.values()) if (a.windowId === windowId) a.resolve(false);
   });
   browser.tabs.onRemoved.addListener((tabId) => {
+    const p = ports.get(tabId);
     ports.delete(tabId);
-    clearTimeout(idle.get(tabId));
-    idle.delete(tabId);
+    // 담당이 아직 다른 번호로 남아 있으면(새 창을 따라간 담당) 타이머는 그대로 둔다.
+    if (p && ![...ports.values()].includes(p)) {
+      clearTimeout(idle.get(p));
+      idle.delete(p);
+      if (p.isActive) void p.setActive(false).catch(() => {});
+    }
   });
   browser.storage.onChanged.addListener((changes, area) => {
     if (area !== 'local' || !changes[BRIDGE_SETTINGS_KEY]) return;
