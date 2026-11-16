@@ -8,7 +8,8 @@ import { FREE_SKILL_ID } from './free';
 import { PathMemo } from './paths';
 import type { HookPort } from './hooks';
 import { SUBMIT_PATTERN, checkAction, findElement, hostAllowed, optionsOf } from './policy';
-import { buildSummarizeMessages, buildTurnMessages } from './prompt';
+import { buildSummarizeMessages, buildTurnMessages, retryPrompt, type TurnInput } from './prompt';
+import { actionSchema, toolsNamedIn } from './action-schema';
 import { checkInputRules, extractSteps, fillTemplate, fillValue, type Skill, type SkillInputs } from './skill';
 import { buildHtmlReport, checkReport } from './html-report';
 import { tableMarkdown } from './markdown';
@@ -86,12 +87,17 @@ export interface RunDeps {
    * 꺼져 있으면 그림을 찍지도 붙이지도 않으며, 모델에 가는 프롬프트는 이 기능이 없던 때와 같다.
    */
   vision?: boolean;
+  /**
+   * 모델이 동작을 정할 때마다 그 차례에 모델이 본 것과 고른 동작을 알린다. 평가 케이스 모으기(tool-eval.ts captureCase)에 쓴다.
+   * turn.history는 실행이 계속되며 늘어나는 배열이므로, 받는 쪽은 그 자리에서 복사(직렬화)해야 한다.
+   */
+  onTurn?: (turn: TurnInput, snap: PageSnapshot, action: Action) => void;
 }
 
 /** 요소가 이만큼 이하이면 요소 목록만으로는 화면을 읽을 수 없다고 보고 그림을 붙인다 (canvas 그리드 등) */
 const SPARSE_ELEMENTS = 2;
 
-const MAX_FORMAT_RETRIES = 2;
+export const MAX_FORMAT_RETRIES = 2;
 const MAX_STRIKES = 3;
 /** read_text 결과를 모델에 보여 줄 때의 최대 글자 수 */
 const READ_TEXT_MAX = 4000;
@@ -339,7 +345,7 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps, memo: PathM
     const fresh = seenLines && lines.filter((l) => !seenLines!.has(l)).slice(0, MAX_CHANGES);
     const changes = fresh || late.length > 0 ? [...late, ...(fresh ?? [])] : null;
     seenLines = new Set(lines);
-    let messages = buildTurnMessages({
+    const turn: TurnInput = {
       skill,
       body: withOutputs(promptBody),
       inputs,
@@ -353,14 +359,28 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps, memo: PathM
       step: { n: current, total: steps.length, text: withOutputs(promptSteps[current - 1]), unmet: unmetNow(snap) },
       vision,
       image: await imageFor(snap),
+    };
+    let messages = buildTurnMessages(turn);
+    // 제약 디코딩용 스키마. 모델 설정 jsonSchema가 꺼져 있으면 클라이언트가 보내지 않는다.
+    const schema = actionSchema({
+      snap,
+      office: officeNote !== undefined,
+      external: toolNames,
+      skills: callableSkills.map((s) => s.id),
+      scripts: (skill.scripts ?? []).map((s) => s.name),
+      vision,
+      extra: toolsNamedIn(turn.step.text),
     });
     for (let attempt = 0; ; attempt++) {
       const sent = Date.now();
-      const text = await llm.complete(messages, signal);
+      const text = await llm.complete(messages, signal, { schema });
       const sizeOf = (role: string) => messages.filter((m) => m.role === role).reduce((sum, m) => sum + m.content.length, 0);
       emit({ type: 'llm_usage', n, systemChars: sizeOf('system'), userChars: sizeOf('user'), replyChars: text.length, ms: Date.now() - sent });
       const parsed = parseAction(text, snap, toolNames, { vision });
-      if (parsed.ok) return parsed.action;
+      if (parsed.ok) {
+        deps.onTurn?.(turn, snap, parsed.action);
+        return parsed.action;
+      }
       if (attempt >= MAX_FORMAT_RETRIES) {
         throw new Error(`모델이 형식에 맞는 응답을 내지 못했습니다: ${parsed.error}`);
       }
@@ -370,7 +390,7 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps, memo: PathM
         { role: 'assistant', content: text },
         {
           role: 'user',
-          content: `응답 형식이 잘못됐습니다.\n${parsed.error}\nJSON 객체 하나로만 다시 답하세요.`,
+          content: retryPrompt(parsed.error),
         },
       ];
     }

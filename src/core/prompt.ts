@@ -122,7 +122,15 @@ function compact(value: unknown, max = 240): string {
   return s.length <= max ? s : `${s.slice(0, max)}…`;
 }
 
-export function buildTurnMessages(p: {
+/** 모델의 답이 형식에 맞지 않을 때 다시 묻는 말. 실행(loop.ts)과 평가(tool-eval.ts)가 같은 말을 쓴다. */
+export function retryPrompt(error: string): string {
+  return `응답 형식이 잘못됐습니다.
+${error}
+JSON 객체 하나로만 다시 답하세요.`;
+}
+
+/** 한 차례의 판단에 모델에 보이는 것 전부. 평가 케이스(tool-eval.ts)는 이것을 저장해 두었다가 지금의 프롬프트로 다시 그린다. */
+export interface TurnInput {
   skill: Skill;
   body: string;
   inputs: SkillInputs;
@@ -143,7 +151,9 @@ export function buildTurnMessages(p: {
   vision?: boolean;
   /** 이번 차례에 함께 보낼 화면 그림 (data URL). vision이 켜진 경우에만 준다 */
   image?: string;
-}): ChatMessage[] {
+}
+
+export function buildTurnMessages(p: TurnInput): ChatMessage[] {
   const recent = p.history.slice(-15);
   const omitted = p.history.length - recent.length;
   const historyText =

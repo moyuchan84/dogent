@@ -89,7 +89,7 @@
 
 | # | 내용 | 조치 |
 |---|---|---|
-| Q1 | **시험이 모두 모의 환경.** 사내 Gemma의 JSON 출력·다단계 판단·말로 고치기 품질을 모름 | 사내 Gemma로 같은 시나리오 20회 반복 (`pnpm e2e:ollama` 방식), 실패 시 동작 기록 수집 |
+| Q1 | **시험이 모두 모의 환경.** 사내 Gemma의 JSON 출력·다단계 판단·말로 고치기 품질을 모름 | 사내 Gemma로 같은 시나리오 20회 반복 (`pnpm e2e:ollama` 방식), 실패 시 동작 기록 수집. 차례 단위 정답률은 `dogent eval tools --modes plain,json,schema`로 재고, 실제 실행에서 케이스를 모은다 (`dogent eval capture on`, [28](28-tool-eval-and-constrained-decoding.md)) |
 | Q2 | **[19](19-project-status-and-checklist.html)가 11-03 기준.** 시험 수(589→652), 훅·계획·`/명령`·카탈로그가 "미구현"/"낮음"으로 남아 있음 | 이 문서를 근거로 19의 8장·10장·부록 갱신 |
 | Q3 | [17-claude-parity.md](17-claude-parity.md)의 P1-3(끌어다 놓기), P2-1(대화 목록), P2-3(`delegate`)이 남아 있음 | 우선순위 재평가 (사내 확인 후) |
 | Q7 | e2e를 돌리려면 **`WXT_SAMPLE_SKILLS=true`로 확장·클라이언트·앱을 빌드**해야 함 (모의 사이트용 예시 스킬). 안 하면 스킬이 없다며 무더기로 실패 | 각 e2e 파일 머리말의 빌드 명령을 따름. 클라이언트 e2e는 브라우저 자동 실행을 끔(`DOGENT_NO_LAUNCH=1`) |

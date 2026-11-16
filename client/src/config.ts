@@ -64,6 +64,11 @@ export interface UserConfig {
   owner?: string;
   /** 앱이 Claude Code·opencode에 내놓는 MCP 주소의 포트 (http://127.0.0.1:<포트>/mcp). 없으면 열지 않는다 */
   mcpServePort?: number;
+  /**
+   * 도구 호출 평가 케이스 모으기. 폴더(또는 on = ~/.dogent/evals/captured)를 적으면 모델이 동작을 정한 차례마다 케이스 파일을 남긴다.
+   * 사내 화면의 글이 그대로 들어가므로 사내에만 둔다. 검토는 dogent eval review
+   */
+  evalCapture?: string;
 }
 
 export interface ClientConfig {
@@ -95,6 +100,8 @@ export interface ClientConfig {
   directSites?: { sites: string[]; rejected: string[]; listed: boolean };
   owner?: string;
   mcpServePort?: number;
+  /** 평가 케이스를 모을 폴더. 없으면 모으지 않는다 */
+  evalCapture?: string;
   /** 사용자 설정 파일 경로 */
   file: string;
 }
@@ -161,8 +168,16 @@ export function loadConfig(): ClientConfig {
     saveThroughExcel: user.saveThroughExcel === true,
     owner: user.owner,
     mcpServePort: Number(user.mcpServePort) > 0 ? Number(user.mcpServePort) : undefined,
+    evalCapture: evalCaptureDir(user.evalCapture, home),
     file,
   };
+}
+
+/** 설정의 evalCapture 글을 폴더로. 비었거나 off·false면 모으지 않는다, on·true면 기본 폴더 */
+export function evalCaptureDir(value: unknown, home: string): string | undefined {
+  const v = String(value ?? '').trim();
+  if (!v || /^(off|false|0|끔)$/i.test(v)) return undefined;
+  return /^(on|true|1|켬)$/i.test(v) ? join(home, 'evals', 'captured') : v;
 }
 
 /** 설정의 browserMode 글을 방식으로. direct·직접이면 직접 제어, 나머지는 확장 */
@@ -194,6 +209,7 @@ export function describeConfig(c: ClientConfig): string {
     `빌드 모드      ${__DOGENT_BUILD__.mode}`,
     `모델 API       ${c.llm.baseUrl}`,
     `모델           ${c.llm.model}`,
+    `답 형식        ${c.llm.jsonSchema ? '제약 디코딩 (json_schema)' : c.llm.jsonMode ? 'JSON 모드 (json_object)' : '글 (형식 지정 없음)'}  · 바꾸기: dogent config llm.jsonSchema true`,
     `API 키         ${key}`,
     `헤더 틀        ${c.llm.headers ? Object.keys(c.llm.headers).join(', ') : '(없음, Authorization)'}`,
     `시스템 이름    ${c.llm.systemName ?? ''}`,
@@ -216,6 +232,7 @@ export function describeConfig(c: ClientConfig): string {
     `결과 저장      ${c.outputDir}${c.saveThroughExcel ? ' (Excel로 저장)' : ''}`,
     `올릴 수 있는 폴더  ${(c.uploadDirs ?? []).join('; ')} (최대 ${Math.round((c.uploadMaxBytes ?? 0) / 1024 / 1024)}MB)`,
     `오피스 도구    ${findOfficeExe(c.officeExe) ?? '(없음: pnpm office:build)'}`,
+    `평가 케이스 모으기 ${c.evalCapture ?? '(꺼짐: dogent eval capture on)'}`,
     `MCP 주소(앱)   ${c.mcpServePort ? `http://127.0.0.1:${c.mcpServePort}/mcp` : '(꺼짐: dogent config mcpServePort 39218)'}`,
     `설정 파일      ${c.file}`,
   ].join('\n');

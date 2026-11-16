@@ -1,4 +1,4 @@
-import type { ChatMessage, LlmPort } from './types';
+import type { ChatMessage, CompleteOptions, LlmPort } from './types';
 
 export interface LlmSettings {
   baseUrl: string;
@@ -6,6 +6,13 @@ export interface LlmSettings {
   model: string;
   /** API가 response_format: json_object 를 지원하면 켠다. */
   jsonMode: boolean;
+  /**
+   * 제약 디코딩. 켜면 동작을 정할 때 response_format: json_schema 로 동작 스키마(action-schema.ts)를 보내,
+   * 모델이 스키마에 맞는 JSON만 내게 한다 (vLLM·SGLang·TGI·Ollama 등). 기본 꺼짐.
+   * 서버가 json_schema를 거절하면(400·422) 이 클라이언트에서는 끄고 jsonMode 방식으로 다시 보낸다.
+   * 켤지는 `dogent eval tools --modes json,schema`로 사내 모델에서 재 보고 정한다.
+   */
+  jsonSchema?: boolean;
   /**
    * 모델에 화면 그림(image_url)을 함께 보낸다. 기본 꺼짐.
    * 켜기 전에 사내 게이트웨이의 모델이 이미지 입력을 지원하는지 먼저 확인할 것: 지원하지 않는 모델에 그림을 보내면 요청이 오류로 끝난다.
@@ -119,8 +126,14 @@ async function retryBusy(send: () => Promise<Response>, signal?: AbortSignal): P
   }
 }
 
+/** 서버가 json_schema를 받지 못한다는 뜻으로 보이는 오류 본문 */
+const SCHEMA_REJECTED = /response_format|json_schema|guided|grammar|schema|structured/i;
+
 /** OpenAI 호환 /chat/completions 엔드포인트용 클라이언트. */
 export class OpenAiCompatClient implements LlmPort {
+  /** 서버가 json_schema를 거절한 이유. 한 번 거절되면 이 클라이언트에서는 다시 보내지 않는다 */
+  schemaRejected: string | null = null;
+
   constructor(
     private settings: LlmSettings,
     private fetchImpl: typeof fetch = (...a) => fetch(...a),
@@ -128,8 +141,29 @@ export class OpenAiCompatClient implements LlmPort {
     private maxTokens = 1024,
   ) {}
 
-  async complete(messages: ChatMessage[], signal?: AbortSignal): Promise<string> {
-    const { baseUrl, model, jsonMode } = this.settings;
+  /** 이번 요청의 response_format. 스키마가 있고 jsonSchema가 켜져 있으면 json_schema, 아니면 jsonMode에 따라 */
+  private format(opts?: CompleteOptions): Record<string, unknown> | undefined {
+    if (opts?.schema && this.settings.jsonSchema && !this.schemaRejected) {
+      return { type: 'json_schema', json_schema: { name: opts.schema.name, schema: opts.schema.schema } };
+    }
+    return this.settings.jsonMode ? { type: 'json_object' } : undefined;
+  }
+
+  async complete(messages: ChatMessage[], signal?: AbortSignal, opts?: CompleteOptions): Promise<string> {
+    const format = this.format(opts);
+    try {
+      return await this.call(messages, format, signal);
+    } catch (e) {
+      // json_schema를 모르는 서버는 400·422로 답한다. 이 클라이언트에서는 끄고 예전 방식으로 한 번 다시 보낸다.
+      const status = (e as { status?: number }).status;
+      if (format?.type !== 'json_schema' || (status !== 400 && status !== 422) || !SCHEMA_REJECTED.test((e as Error).message)) throw e;
+      this.schemaRejected = (e as Error).message.slice(0, 300);
+      return this.call(messages, this.format(), signal);
+    }
+  }
+
+  private async call(messages: ChatMessage[], format: Record<string, unknown> | undefined, signal?: AbortSignal): Promise<string> {
+    const { baseUrl, model } = this.settings;
     const headers = buildHeaders(this.settings);
     const timeout = AbortSignal.timeout(CALL_TIMEOUT_MS * Math.max(1, this.settings.timeoutScale || 1));
     const url = `${baseUrl.replace(/\/+$/, '')}/chat/completions`;
@@ -138,7 +172,7 @@ export class OpenAiCompatClient implements LlmPort {
       messages: messages.map((m) => wireMessage(m, this.settings.vision === true)),
       temperature: 0,
       max_tokens: this.maxTokens,
-      ...(jsonMode ? { response_format: { type: 'json_object' } } : {}),
+      ...(format ? { response_format: format } : {}),
     });
     const send = () =>
       this.fetchImpl(url, { method: 'POST', headers, body, signal: signal ? AbortSignal.any([signal, timeout]) : timeout });
@@ -152,7 +186,7 @@ export class OpenAiCompatClient implements LlmPort {
     });
     if (!res.ok) {
       const detail = (await res.text().catch(() => '')).slice(0, 300);
-      throw new Error(`모델 API 오류 ${res.status}: ${detail}`);
+      throw Object.assign(new Error(`모델 API 오류 ${res.status}: ${detail}`), { status: res.status });
     }
     const data = (await res.json()) as { choices?: { message?: { content?: unknown } }[] };
     const content = data.choices?.[0]?.message?.content;

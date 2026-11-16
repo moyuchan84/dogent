@@ -156,7 +156,7 @@ $env:MOCK_LLM_REQUIRE_HEADERS='x-dep-ticket,send-system-name,user-id,user-type,p
 
 공용 키는 빌드된 확장 파일 안에 글자 그대로 들어갑니다. 확장을 받은 사람은 누구나 꺼내 볼 수 있으므로, 빌드 결과물은 사내에서만 배포하고 저장소에 올리지 않습니다. 사용자별 사용량 구분이나 키 교체가 필요해지면 키를 확장에 넣지 않고 사내 중계 서버(Hub)가 대신 붙이는 구조로 옮깁니다 (Phase 3).
 
-API는 OpenAI 호환 `/chat/completions` 형식을 가정합니다. 형식이 다르면 `src/core/llm.ts`만 고치면 됩니다. 툴 호출 기능은 쓰지 않고, 모델이 JSON 객체 하나를 답하면 스키마로 검증해 어긋날 때 다시 요청합니다.
+API는 OpenAI 호환 `/chat/completions` 형식을 가정합니다. 형식이 다르면 `src/core/llm.ts`만 고치면 됩니다. 툴 호출 기능은 쓰지 않고, 모델이 JSON 객체 하나를 답하면 스키마로 검증해 어긋날 때 다시 요청합니다. 서빙이 `response_format: json_schema`를 받으면 **제약 디코딩**(`WXT_LLM_JSON_SCHEMA=true`, `dogent config llm.jsonSchema true`)으로 화면에 없는 ref나 없는 도구를 처음부터 막을 수 있습니다. 켜기 전후의 정답률은 **도구 호출 평가**(`dogent eval tools --modes json,schema`)로 잽니다. 실제 실행에서 케이스를 모으려면 `dogent eval capture on` → `dogent eval review` ([docs/28](docs/28-tool-eval-and-constrained-decoding.md)).
 
 ## 검증
 

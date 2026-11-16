@@ -42,6 +42,8 @@ export const dogentConfig = {
     apiKey: '',
     model: 'gemma',
     jsonMode: false,
+    // 제약 디코딩(response_format json_schema). 모델 서버가 지원하는지 dogent eval tools로 확인한 뒤 켠다.
+    jsonSchema: false,
     // 모델이 화면 그림(이미지)을 받을 때만 켠다. 사내 게이트웨이의 모델이 이미지 입력을 지원하는지 먼저 확인할 것.
     vision: false,
     timeoutScale: 1,

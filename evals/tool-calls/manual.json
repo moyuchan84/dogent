@@ -1,0 +1,977 @@
+[
+ {
+  "id": "m-answer-on-screen",
+  "tags": [
+   "free",
+   "manual",
+   "answer"
+  ],
+  "reviewed": true,
+  "source": "manual",
+  "turn": {
+   "skill": {
+    "id": "free",
+    "name": "자유 요청",
+    "version": "0.1.0",
+    "domains": [
+     "localhost:4173"
+    ],
+    "scripts": []
+   },
+   "body": "## 단계\n\n1. 현재 화면에서 다음 요청을 수행한다: 지금 화면에 재공이 총 몇 건이야?\n   - 화면을 보고 필요한 동작을 한 번에 하나씩 한다. 이미 되어 있는 일은 다시 하지 않는다.\n   - 요청한 일을 모두 했으면 finish로 끝낸다. summary에는 무엇을 했는지와, 요청이 물어본 내용에 대해 화면에 보이는 답을 적는다.\n   - summary는 마크다운으로 읽기 좋게 쓴다. 첫 줄에 답(결론) 한 문장, 이어서 근거와 핵심을 \"- \" 항목으로 쓴다. 여러 행의 값을 보여 줄 때는 데이터셋에 담은 표를 {table.이름}으로 넣는다.\n   - 요청이 HTML·웹 페이지·인터랙티브·대시보드로 정리해 달라고 하면, 필요한 표를 데이터셋에 담고(집계는 transform) write_html로 보고서 파일을 만든 뒤 finish로 끝낸다. 비교할 숫자가 있으면 charts로 차트를 넣는다.\n   - 화면에 이미 답이 보이는 질문이면 아무것도 조작하지 않고 finish로 답한다.\n\n## 예외\n\n- 요청이 모호해서 무엇을 할지 정할 수 없으면 ask_user로 묻는다.\n- 요청한 일을 이 화면에서 할 수 없으면 abort로 이유를 알린다.\n- 요청에 없는 저장, 삭제, 상신은 하지 않는다.\n\n## 결과\n\n한 일과, 요청이 물어본 내용에 대한 답.",
+   "inputs": {
+    "request": "지금 화면에 재공이 총 몇 건이야?"
+   },
+   "history": [],
+   "datasets": "(없음)",
+   "tools": [],
+   "skills": [],
+   "snapshot": {
+    "url": "http://localhost:4173/wip.html",
+    "title": "재공 현황 조회 - 모의 MES",
+    "hasPassword": false,
+    "items": [
+     {
+      "kind": "heading",
+      "text": "재공 현황 조회"
+     },
+     {
+      "kind": "el",
+      "ref": 1,
+      "role": "combobox",
+      "name": "라인",
+      "value": "8라인",
+      "detail": "options=[선택, 6라인, 7라인, 8라인]"
+     },
+     {
+      "kind": "el",
+      "ref": 2,
+      "role": "combobox",
+      "name": "공정",
+      "value": "전체",
+      "detail": "options=[전체, PHOTO, ETCH, DIFF, CMP, IMP]"
+     },
+     {
+      "kind": "el",
+      "ref": 3,
+      "role": "textbox",
+      "name": "제품코드",
+      "value": ""
+     },
+     {
+      "kind": "el",
+      "ref": 4,
+      "role": "button",
+      "name": "조회"
+     },
+     {
+      "kind": "el",
+      "ref": 5,
+      "role": "button",
+      "name": "조건 저장"
+     },
+     {
+      "kind": "text",
+      "text": "총 173건"
+     },
+     {
+      "kind": "el",
+      "ref": 6,
+      "role": "button",
+      "name": "엑셀 다운로드"
+     },
+     {
+      "kind": "el",
+      "ref": 7,
+      "role": "button",
+      "name": "CSV 내려받기"
+     },
+     {
+      "kind": "el",
+      "ref": 8,
+      "role": "button",
+      "name": "이전",
+      "disabled": true
+     },
+     {
+      "kind": "text",
+      "text": "1 / 4 페이지"
+     },
+     {
+      "kind": "el",
+      "ref": 9,
+      "role": "button",
+      "name": "다음"
+     },
+     {
+      "kind": "el",
+      "ref": 10,
+      "role": "table",
+      "name": "재공 목록",
+      "detail": "rows=50 cols=[Lot ID, 제품, 공정, 수량, 상태, 정체시간]"
+     }
+    ]
+   },
+   "changes": null,
+   "step": {
+    "n": 1,
+    "total": 1,
+    "text": "현재 화면에서 다음 요청을 수행한다: 지금 화면에 재공이 총 몇 건이야?\n   - 화면을 보고 필요한 동작을 한 번에 하나씩 한다. 이미 되어 있는 일은 다시 하지 않는다.\n   - 요청한 일을 모두 했으면 finish로 끝낸다. summary에는 무엇을 했는지와, 요청이 물어본 내용에 대해 화면에 보이는 답을 적는다.\n   - summary는 마크다운으로 읽기 좋게 쓴다. 첫 줄에 답(결론) 한 문장, 이어서 근거와 핵심을 \"- \" 항목으로 쓴다. 여러 행의 값을 보여 줄 때는 데이터셋에 담은 표를 {table.이름}으로 넣는다.\n   - 요청이 HTML·웹 페이지·인터랙티브·대시보드로 정리해 달라고 하면, 필요한 표를 데이터셋에 담고(집계는 transform) write_html로 보고서 파일을 만든 뒤 finish로 끝낸다. 비교할 숫자가 있으면 charts로 차트를 넣는다.\n   - 화면에 이미 답이 보이는 질문이면 아무것도 조작하지 않고 finish로 답한다.",
+    "unmet": null
+   },
+   "vision": false
+  },
+  "expect": {
+   "tool": "finish",
+   "args": {
+    "summary": {
+     "$contains": "173"
+    }
+   }
+  },
+  "note": "화면에 이미 답이 보이면 조작하지 않고 답한다"
+ },
+ {
+  "id": "m-ask-missing",
+  "tags": [
+   "free",
+   "manual",
+   "ask"
+  ],
+  "reviewed": true,
+  "source": "manual",
+  "turn": {
+   "skill": {
+    "id": "free",
+    "name": "자유 요청",
+    "version": "0.1.0",
+    "domains": [
+     "localhost:4173"
+    ],
+    "scripts": []
+   },
+   "body": "## 단계\n\n1. 현재 화면에서 다음 요청을 수행한다: 라인 골라서 재공 조회해줘\n   - 화면을 보고 필요한 동작을 한 번에 하나씩 한다. 이미 되어 있는 일은 다시 하지 않는다.\n   - 요청한 일을 모두 했으면 finish로 끝낸다. summary에는 무엇을 했는지와, 요청이 물어본 내용에 대해 화면에 보이는 답을 적는다.\n   - summary는 마크다운으로 읽기 좋게 쓴다. 첫 줄에 답(결론) 한 문장, 이어서 근거와 핵심을 \"- \" 항목으로 쓴다. 여러 행의 값을 보여 줄 때는 데이터셋에 담은 표를 {table.이름}으로 넣는다.\n   - 요청이 HTML·웹 페이지·인터랙티브·대시보드로 정리해 달라고 하면, 필요한 표를 데이터셋에 담고(집계는 transform) write_html로 보고서 파일을 만든 뒤 finish로 끝낸다. 비교할 숫자가 있으면 charts로 차트를 넣는다.\n   - 화면에 이미 답이 보이는 질문이면 아무것도 조작하지 않고 finish로 답한다.\n\n## 예외\n\n- 요청이 모호해서 무엇을 할지 정할 수 없으면 ask_user로 묻는다.\n- 요청한 일을 이 화면에서 할 수 없으면 abort로 이유를 알린다.\n- 요청에 없는 저장, 삭제, 상신은 하지 않는다.\n\n## 결과\n\n한 일과, 요청이 물어본 내용에 대한 답.",
+   "inputs": {
+    "request": "라인 골라서 재공 조회해줘"
+   },
+   "history": [],
+   "datasets": "(없음)",
+   "tools": [],
+   "skills": [],
+   "snapshot": {
+    "url": "http://localhost:4173/wip.html",
+    "title": "재공 현황 조회 - 모의 MES",
+    "hasPassword": false,
+    "items": [
+     {
+      "kind": "heading",
+      "text": "재공 현황 조회"
+     },
+     {
+      "kind": "el",
+      "ref": 1,
+      "role": "combobox",
+      "name": "라인",
+      "value": "선택",
+      "detail": "options=[선택, 6라인, 7라인, 8라인]"
+     },
+     {
+      "kind": "el",
+      "ref": 2,
+      "role": "combobox",
+      "name": "공정",
+      "value": "전체",
+      "detail": "options=[전체, PHOTO, ETCH, DIFF, CMP, IMP]"
+     },
+     {
+      "kind": "el",
+      "ref": 3,
+      "role": "textbox",
+      "name": "제품코드",
+      "value": ""
+     },
+     {
+      "kind": "el",
+      "ref": 4,
+      "role": "button",
+      "name": "조회"
+     },
+     {
+      "kind": "el",
+      "ref": 5,
+      "role": "button",
+      "name": "조건 저장"
+     },
+     {
+      "kind": "el",
+      "ref": 6,
+      "role": "button",
+      "name": "엑셀 다운로드",
+      "disabled": true
+     },
+     {
+      "kind": "el",
+      "ref": 7,
+      "role": "button",
+      "name": "CSV 내려받기",
+      "disabled": true
+     },
+     {
+      "kind": "el",
+      "ref": 8,
+      "role": "button",
+      "name": "이전",
+      "disabled": true
+     },
+     {
+      "kind": "el",
+      "ref": 9,
+      "role": "button",
+      "name": "다음",
+      "disabled": true
+     },
+     {
+      "kind": "el",
+      "ref": 10,
+      "role": "table",
+      "name": "재공 목록",
+      "detail": "rows=0 cols=[Lot ID, 제품, 공정, 수량, 상태, 정체시간]"
+     }
+    ]
+   },
+   "changes": null,
+   "step": {
+    "n": 1,
+    "total": 1,
+    "text": "현재 화면에서 다음 요청을 수행한다: 라인 골라서 재공 조회해줘\n   - 화면을 보고 필요한 동작을 한 번에 하나씩 한다. 이미 되어 있는 일은 다시 하지 않는다.\n   - 요청한 일을 모두 했으면 finish로 끝낸다. summary에는 무엇을 했는지와, 요청이 물어본 내용에 대해 화면에 보이는 답을 적는다.\n   - summary는 마크다운으로 읽기 좋게 쓴다. 첫 줄에 답(결론) 한 문장, 이어서 근거와 핵심을 \"- \" 항목으로 쓴다. 여러 행의 값을 보여 줄 때는 데이터셋에 담은 표를 {table.이름}으로 넣는다.\n   - 요청이 HTML·웹 페이지·인터랙티브·대시보드로 정리해 달라고 하면, 필요한 표를 데이터셋에 담고(집계는 transform) write_html로 보고서 파일을 만든 뒤 finish로 끝낸다. 비교할 숫자가 있으면 charts로 차트를 넣는다.\n   - 화면에 이미 답이 보이는 질문이면 아무것도 조작하지 않고 finish로 답한다.",
+    "unmet": null
+   },
+   "vision": false
+  },
+  "expect": {
+   "tool": "ask_user",
+   "args": {}
+  },
+  "note": "어느 라인인지 없으면 추측하지 않고 묻는다"
+ },
+ {
+  "id": "m-abort-impossible",
+  "tags": [
+   "free",
+   "manual",
+   "abort"
+  ],
+  "reviewed": true,
+  "source": "manual",
+  "turn": {
+   "skill": {
+    "id": "free",
+    "name": "자유 요청",
+    "version": "0.1.0",
+    "domains": [
+     "localhost:4173"
+    ],
+    "scripts": []
+   },
+   "body": "## 단계\n\n1. 현재 화면에서 다음 요청을 수행한다: 이 화면에서 휴가 신청서를 상신해줘\n   - 화면을 보고 필요한 동작을 한 번에 하나씩 한다. 이미 되어 있는 일은 다시 하지 않는다.\n   - 요청한 일을 모두 했으면 finish로 끝낸다. summary에는 무엇을 했는지와, 요청이 물어본 내용에 대해 화면에 보이는 답을 적는다.\n   - summary는 마크다운으로 읽기 좋게 쓴다. 첫 줄에 답(결론) 한 문장, 이어서 근거와 핵심을 \"- \" 항목으로 쓴다. 여러 행의 값을 보여 줄 때는 데이터셋에 담은 표를 {table.이름}으로 넣는다.\n   - 요청이 HTML·웹 페이지·인터랙티브·대시보드로 정리해 달라고 하면, 필요한 표를 데이터셋에 담고(집계는 transform) write_html로 보고서 파일을 만든 뒤 finish로 끝낸다. 비교할 숫자가 있으면 charts로 차트를 넣는다.\n   - 화면에 이미 답이 보이는 질문이면 아무것도 조작하지 않고 finish로 답한다.\n\n## 예외\n\n- 요청이 모호해서 무엇을 할지 정할 수 없으면 ask_user로 묻는다.\n- 요청한 일을 이 화면에서 할 수 없으면 abort로 이유를 알린다.\n- 요청에 없는 저장, 삭제, 상신은 하지 않는다.\n\n## 결과\n\n한 일과, 요청이 물어본 내용에 대한 답.",
+   "inputs": {
+    "request": "이 화면에서 휴가 신청서를 상신해줘"
+   },
+   "history": [],
+   "datasets": "(없음)",
+   "tools": [],
+   "skills": [],
+   "snapshot": {
+    "url": "http://localhost:4173/wip.html",
+    "title": "재공 현황 조회 - 모의 MES",
+    "hasPassword": false,
+    "items": [
+     {
+      "kind": "heading",
+      "text": "재공 현황 조회"
+     },
+     {
+      "kind": "el",
+      "ref": 1,
+      "role": "combobox",
+      "name": "라인",
+      "value": "선택",
+      "detail": "options=[선택, 6라인, 7라인, 8라인]"
+     },
+     {
+      "kind": "el",
+      "ref": 2,
+      "role": "combobox",
+      "name": "공정",
+      "value": "전체",
+      "detail": "options=[전체, PHOTO, ETCH, DIFF, CMP, IMP]"
+     },
+     {
+      "kind": "el",
+      "ref": 3,
+      "role": "textbox",
+      "name": "제품코드",
+      "value": ""
+     },
+     {
+      "kind": "el",
+      "ref": 4,
+      "role": "button",
+      "name": "조회"
+     },
+     {
+      "kind": "el",
+      "ref": 5,
+      "role": "button",
+      "name": "조건 저장"
+     },
+     {
+      "kind": "el",
+      "ref": 6,
+      "role": "button",
+      "name": "엑셀 다운로드",
+      "disabled": true
+     },
+     {
+      "kind": "el",
+      "ref": 7,
+      "role": "button",
+      "name": "CSV 내려받기",
+      "disabled": true
+     },
+     {
+      "kind": "el",
+      "ref": 8,
+      "role": "button",
+      "name": "이전",
+      "disabled": true
+     },
+     {
+      "kind": "el",
+      "ref": 9,
+      "role": "button",
+      "name": "다음",
+      "disabled": true
+     },
+     {
+      "kind": "el",
+      "ref": 10,
+      "role": "table",
+      "name": "재공 목록",
+      "detail": "rows=0 cols=[Lot ID, 제품, 공정, 수량, 상태, 정체시간]"
+     }
+    ]
+   },
+   "changes": null,
+   "step": {
+    "n": 1,
+    "total": 1,
+    "text": "현재 화면에서 다음 요청을 수행한다: 이 화면에서 휴가 신청서를 상신해줘\n   - 화면을 보고 필요한 동작을 한 번에 하나씩 한다. 이미 되어 있는 일은 다시 하지 않는다.\n   - 요청한 일을 모두 했으면 finish로 끝낸다. summary에는 무엇을 했는지와, 요청이 물어본 내용에 대해 화면에 보이는 답을 적는다.\n   - summary는 마크다운으로 읽기 좋게 쓴다. 첫 줄에 답(결론) 한 문장, 이어서 근거와 핵심을 \"- \" 항목으로 쓴다. 여러 행의 값을 보여 줄 때는 데이터셋에 담은 표를 {table.이름}으로 넣는다.\n   - 요청이 HTML·웹 페이지·인터랙티브·대시보드로 정리해 달라고 하면, 필요한 표를 데이터셋에 담고(집계는 transform) write_html로 보고서 파일을 만든 뒤 finish로 끝낸다. 비교할 숫자가 있으면 charts로 차트를 넣는다.\n   - 화면에 이미 답이 보이는 질문이면 아무것도 조작하지 않고 finish로 답한다.",
+    "unmet": null
+   },
+   "vision": false
+  },
+  "expect": [
+   {
+    "tool": "abort",
+    "args": {}
+   },
+   {
+    "tool": "ask_user",
+    "args": {}
+   }
+  ],
+  "note": "화면에 없는 일은 중단하거나 묻는다"
+ },
+ {
+  "id": "m-type-product",
+  "tags": [
+   "free",
+   "manual",
+   "type"
+  ],
+  "reviewed": true,
+  "source": "manual",
+  "turn": {
+   "skill": {
+    "id": "free",
+    "name": "자유 요청",
+    "version": "0.1.0",
+    "domains": [
+     "localhost:4173"
+    ],
+    "scripts": []
+   },
+   "body": "## 단계\n\n1. 현재 화면에서 다음 요청을 수행한다: 제품코드 DR5로 재공 조회해줘\n   - 화면을 보고 필요한 동작을 한 번에 하나씩 한다. 이미 되어 있는 일은 다시 하지 않는다.\n   - 요청한 일을 모두 했으면 finish로 끝낸다. summary에는 무엇을 했는지와, 요청이 물어본 내용에 대해 화면에 보이는 답을 적는다.\n   - summary는 마크다운으로 읽기 좋게 쓴다. 첫 줄에 답(결론) 한 문장, 이어서 근거와 핵심을 \"- \" 항목으로 쓴다. 여러 행의 값을 보여 줄 때는 데이터셋에 담은 표를 {table.이름}으로 넣는다.\n   - 요청이 HTML·웹 페이지·인터랙티브·대시보드로 정리해 달라고 하면, 필요한 표를 데이터셋에 담고(집계는 transform) write_html로 보고서 파일을 만든 뒤 finish로 끝낸다. 비교할 숫자가 있으면 charts로 차트를 넣는다.\n   - 화면에 이미 답이 보이는 질문이면 아무것도 조작하지 않고 finish로 답한다.\n\n## 예외\n\n- 요청이 모호해서 무엇을 할지 정할 수 없으면 ask_user로 묻는다.\n- 요청한 일을 이 화면에서 할 수 없으면 abort로 이유를 알린다.\n- 요청에 없는 저장, 삭제, 상신은 하지 않는다.\n\n## 결과\n\n한 일과, 요청이 물어본 내용에 대한 답.",
+   "inputs": {
+    "request": "제품코드 DR5로 재공 조회해줘"
+   },
+   "history": [],
+   "datasets": "(없음)",
+   "tools": [],
+   "skills": [],
+   "snapshot": {
+    "url": "http://localhost:4173/wip.html",
+    "title": "재공 현황 조회 - 모의 MES",
+    "hasPassword": false,
+    "items": [
+     {
+      "kind": "heading",
+      "text": "재공 현황 조회"
+     },
+     {
+      "kind": "el",
+      "ref": 1,
+      "role": "combobox",
+      "name": "라인",
+      "value": "선택",
+      "detail": "options=[선택, 6라인, 7라인, 8라인]"
+     },
+     {
+      "kind": "el",
+      "ref": 2,
+      "role": "combobox",
+      "name": "공정",
+      "value": "전체",
+      "detail": "options=[전체, PHOTO, ETCH, DIFF, CMP, IMP]"
+     },
+     {
+      "kind": "el",
+      "ref": 3,
+      "role": "textbox",
+      "name": "제품코드",
+      "value": ""
+     },
+     {
+      "kind": "el",
+      "ref": 4,
+      "role": "button",
+      "name": "조회"
+     },
+     {
+      "kind": "el",
+      "ref": 5,
+      "role": "button",
+      "name": "조건 저장"
+     },
+     {
+      "kind": "el",
+      "ref": 6,
+      "role": "button",
+      "name": "엑셀 다운로드",
+      "disabled": true
+     },
+     {
+      "kind": "el",
+      "ref": 7,
+      "role": "button",
+      "name": "CSV 내려받기",
+      "disabled": true
+     },
+     {
+      "kind": "el",
+      "ref": 8,
+      "role": "button",
+      "name": "이전",
+      "disabled": true
+     },
+     {
+      "kind": "el",
+      "ref": 9,
+      "role": "button",
+      "name": "다음",
+      "disabled": true
+     },
+     {
+      "kind": "el",
+      "ref": 10,
+      "role": "table",
+      "name": "재공 목록",
+      "detail": "rows=0 cols=[Lot ID, 제품, 공정, 수량, 상태, 정체시간]"
+     }
+    ]
+   },
+   "changes": null,
+   "step": {
+    "n": 1,
+    "total": 1,
+    "text": "현재 화면에서 다음 요청을 수행한다: 제품코드 DR5로 재공 조회해줘\n   - 화면을 보고 필요한 동작을 한 번에 하나씩 한다. 이미 되어 있는 일은 다시 하지 않는다.\n   - 요청한 일을 모두 했으면 finish로 끝낸다. summary에는 무엇을 했는지와, 요청이 물어본 내용에 대해 화면에 보이는 답을 적는다.\n   - summary는 마크다운으로 읽기 좋게 쓴다. 첫 줄에 답(결론) 한 문장, 이어서 근거와 핵심을 \"- \" 항목으로 쓴다. 여러 행의 값을 보여 줄 때는 데이터셋에 담은 표를 {table.이름}으로 넣는다.\n   - 요청이 HTML·웹 페이지·인터랙티브·대시보드로 정리해 달라고 하면, 필요한 표를 데이터셋에 담고(집계는 transform) write_html로 보고서 파일을 만든 뒤 finish로 끝낸다. 비교할 숫자가 있으면 charts로 차트를 넣는다.\n   - 화면에 이미 답이 보이는 질문이면 아무것도 조작하지 않고 finish로 답한다.",
+    "unmet": null
+   },
+   "vision": false
+  },
+  "expect": {
+   "tool": "type",
+   "args": {
+    "ref": 3,
+    "text": "DR5"
+   }
+  },
+  "note": "요청의 값을 맞는 입력란에 넣는다"
+ },
+ {
+  "id": "m-download-excel",
+  "tags": [
+   "free",
+   "manual",
+   "table"
+  ],
+  "reviewed": true,
+  "source": "manual",
+  "turn": {
+   "skill": {
+    "id": "free",
+    "name": "자유 요청",
+    "version": "0.1.0",
+    "domains": [
+     "localhost:4173"
+    ],
+    "scripts": []
+   },
+   "body": "## 단계\n\n1. 현재 화면에서 다음 요청을 수행한다: 이 재공 목록 전체를 엑셀로 정리해줘\n   - 화면을 보고 필요한 동작을 한 번에 하나씩 한다. 이미 되어 있는 일은 다시 하지 않는다.\n   - 요청한 일을 모두 했으면 finish로 끝낸다. summary에는 무엇을 했는지와, 요청이 물어본 내용에 대해 화면에 보이는 답을 적는다.\n   - summary는 마크다운으로 읽기 좋게 쓴다. 첫 줄에 답(결론) 한 문장, 이어서 근거와 핵심을 \"- \" 항목으로 쓴다. 여러 행의 값을 보여 줄 때는 데이터셋에 담은 표를 {table.이름}으로 넣는다.\n   - 요청이 HTML·웹 페이지·인터랙티브·대시보드로 정리해 달라고 하면, 필요한 표를 데이터셋에 담고(집계는 transform) write_html로 보고서 파일을 만든 뒤 finish로 끝낸다. 비교할 숫자가 있으면 charts로 차트를 넣는다.\n   - 화면에 이미 답이 보이는 질문이면 아무것도 조작하지 않고 finish로 답한다.\n\n## 예외\n\n- 요청이 모호해서 무엇을 할지 정할 수 없으면 ask_user로 묻는다.\n- 요청한 일을 이 화면에서 할 수 없으면 abort로 이유를 알린다.\n- 요청에 없는 저장, 삭제, 상신은 하지 않는다.\n\n## 결과\n\n한 일과, 요청이 물어본 내용에 대한 답.",
+   "inputs": {
+    "request": "이 재공 목록 전체를 엑셀로 정리해줘"
+   },
+   "history": [
+    {
+     "n": 1,
+     "step": 1,
+     "tool": "select",
+     "args": {
+      "ref": 1,
+      "value": "8라인"
+     },
+     "thought": "라인 선택",
+     "ok": true,
+     "result": "\"8라인\" 선택함",
+     "by": "model",
+     "targets": {
+      "ref": {
+       "role": "combobox",
+       "name": "라인",
+       "dup": false,
+       "options": [
+        "선택",
+        "6라인",
+        "7라인",
+        "8라인"
+       ]
+      }
+     }
+    },
+    {
+     "n": 2,
+     "step": 1,
+     "tool": "click",
+     "args": {
+      "ref": 4
+     },
+     "thought": "조회",
+     "ok": true,
+     "result": "클릭함",
+     "by": "model",
+     "targets": {
+      "ref": {
+       "role": "button",
+       "name": "조회",
+       "dup": false
+      }
+     }
+    }
+   ],
+   "datasets": "(없음)",
+   "tools": [],
+   "skills": [],
+   "snapshot": {
+    "url": "http://localhost:4173/wip.html",
+    "title": "재공 현황 조회 - 모의 MES",
+    "hasPassword": false,
+    "items": [
+     {
+      "kind": "heading",
+      "text": "재공 현황 조회"
+     },
+     {
+      "kind": "el",
+      "ref": 1,
+      "role": "combobox",
+      "name": "라인",
+      "value": "8라인",
+      "detail": "options=[선택, 6라인, 7라인, 8라인]"
+     },
+     {
+      "kind": "el",
+      "ref": 2,
+      "role": "combobox",
+      "name": "공정",
+      "value": "전체",
+      "detail": "options=[전체, PHOTO, ETCH, DIFF, CMP, IMP]"
+     },
+     {
+      "kind": "el",
+      "ref": 3,
+      "role": "textbox",
+      "name": "제품코드",
+      "value": ""
+     },
+     {
+      "kind": "el",
+      "ref": 4,
+      "role": "button",
+      "name": "조회"
+     },
+     {
+      "kind": "el",
+      "ref": 5,
+      "role": "button",
+      "name": "조건 저장"
+     },
+     {
+      "kind": "text",
+      "text": "총 173건"
+     },
+     {
+      "kind": "el",
+      "ref": 6,
+      "role": "button",
+      "name": "엑셀 다운로드"
+     },
+     {
+      "kind": "el",
+      "ref": 7,
+      "role": "button",
+      "name": "CSV 내려받기"
+     },
+     {
+      "kind": "el",
+      "ref": 8,
+      "role": "button",
+      "name": "이전",
+      "disabled": true
+     },
+     {
+      "kind": "text",
+      "text": "1 / 4 페이지"
+     },
+     {
+      "kind": "el",
+      "ref": 9,
+      "role": "button",
+      "name": "다음"
+     },
+     {
+      "kind": "el",
+      "ref": 10,
+      "role": "table",
+      "name": "재공 목록",
+      "detail": "rows=50 cols=[Lot ID, 제품, 공정, 수량, 상태, 정체시간]"
+     }
+    ]
+   },
+   "changes": [
+    "총 173건",
+    "button \"엑셀 다운로드\"",
+    "button \"CSV 내려받기\"",
+    "1 / 4 페이지",
+    "button \"다음\"",
+    "table \"재공 목록\" rows=50 cols=[Lot ID, 제품, 공정, 수량, 상태, 정체시간]"
+   ],
+   "step": {
+    "n": 1,
+    "total": 1,
+    "text": "현재 화면에서 다음 요청을 수행한다: 이 재공 목록 전체를 엑셀로 정리해줘\n   - 화면을 보고 필요한 동작을 한 번에 하나씩 한다. 이미 되어 있는 일은 다시 하지 않는다.\n   - 요청한 일을 모두 했으면 finish로 끝낸다. summary에는 무엇을 했는지와, 요청이 물어본 내용에 대해 화면에 보이는 답을 적는다.\n   - summary는 마크다운으로 읽기 좋게 쓴다. 첫 줄에 답(결론) 한 문장, 이어서 근거와 핵심을 \"- \" 항목으로 쓴다. 여러 행의 값을 보여 줄 때는 데이터셋에 담은 표를 {table.이름}으로 넣는다.\n   - 요청이 HTML·웹 페이지·인터랙티브·대시보드로 정리해 달라고 하면, 필요한 표를 데이터셋에 담고(집계는 transform) write_html로 보고서 파일을 만든 뒤 finish로 끝낸다. 비교할 숫자가 있으면 charts로 차트를 넣는다.\n   - 화면에 이미 답이 보이는 질문이면 아무것도 조작하지 않고 finish로 답한다.",
+    "unmet": null
+   },
+   "vision": false
+  },
+  "expect": [
+   {
+    "tool": "download_table",
+    "args": {
+     "ref": {
+      "$oneOf": [
+       6,
+       7
+      ]
+     }
+    }
+   },
+   {
+    "tool": "extract_table",
+    "args": {
+     "ref": 10,
+     "next_ref": 9
+    }
+   }
+  ],
+  "note": "내려받기 버튼을 쓰거나 모든 페이지를 추출한다 (한 페이지만 추출하면 틀림)"
+ },
+ {
+  "id": "m-next-page",
+  "tags": [
+   "free",
+   "manual",
+   "click"
+  ],
+  "reviewed": true,
+  "source": "manual",
+  "turn": {
+   "skill": {
+    "id": "free",
+    "name": "자유 요청",
+    "version": "0.1.0",
+    "domains": [
+     "localhost:4173"
+    ],
+    "scripts": []
+   },
+   "body": "## 단계\n\n1. 현재 화면에서 다음 요청을 수행한다: 다음 페이지 보여줘\n   - 화면을 보고 필요한 동작을 한 번에 하나씩 한다. 이미 되어 있는 일은 다시 하지 않는다.\n   - 요청한 일을 모두 했으면 finish로 끝낸다. summary에는 무엇을 했는지와, 요청이 물어본 내용에 대해 화면에 보이는 답을 적는다.\n   - summary는 마크다운으로 읽기 좋게 쓴다. 첫 줄에 답(결론) 한 문장, 이어서 근거와 핵심을 \"- \" 항목으로 쓴다. 여러 행의 값을 보여 줄 때는 데이터셋에 담은 표를 {table.이름}으로 넣는다.\n   - 요청이 HTML·웹 페이지·인터랙티브·대시보드로 정리해 달라고 하면, 필요한 표를 데이터셋에 담고(집계는 transform) write_html로 보고서 파일을 만든 뒤 finish로 끝낸다. 비교할 숫자가 있으면 charts로 차트를 넣는다.\n   - 화면에 이미 답이 보이는 질문이면 아무것도 조작하지 않고 finish로 답한다.\n\n## 예외\n\n- 요청이 모호해서 무엇을 할지 정할 수 없으면 ask_user로 묻는다.\n- 요청한 일을 이 화면에서 할 수 없으면 abort로 이유를 알린다.\n- 요청에 없는 저장, 삭제, 상신은 하지 않는다.\n\n## 결과\n\n한 일과, 요청이 물어본 내용에 대한 답.",
+   "inputs": {
+    "request": "다음 페이지 보여줘"
+   },
+   "history": [],
+   "datasets": "(없음)",
+   "tools": [],
+   "skills": [],
+   "snapshot": {
+    "url": "http://localhost:4173/wip.html",
+    "title": "재공 현황 조회 - 모의 MES",
+    "hasPassword": false,
+    "items": [
+     {
+      "kind": "heading",
+      "text": "재공 현황 조회"
+     },
+     {
+      "kind": "el",
+      "ref": 1,
+      "role": "combobox",
+      "name": "라인",
+      "value": "8라인",
+      "detail": "options=[선택, 6라인, 7라인, 8라인]"
+     },
+     {
+      "kind": "el",
+      "ref": 2,
+      "role": "combobox",
+      "name": "공정",
+      "value": "전체",
+      "detail": "options=[전체, PHOTO, ETCH, DIFF, CMP, IMP]"
+     },
+     {
+      "kind": "el",
+      "ref": 3,
+      "role": "textbox",
+      "name": "제품코드",
+      "value": ""
+     },
+     {
+      "kind": "el",
+      "ref": 4,
+      "role": "button",
+      "name": "조회"
+     },
+     {
+      "kind": "el",
+      "ref": 5,
+      "role": "button",
+      "name": "조건 저장"
+     },
+     {
+      "kind": "text",
+      "text": "총 173건"
+     },
+     {
+      "kind": "el",
+      "ref": 6,
+      "role": "button",
+      "name": "엑셀 다운로드"
+     },
+     {
+      "kind": "el",
+      "ref": 7,
+      "role": "button",
+      "name": "CSV 내려받기"
+     },
+     {
+      "kind": "el",
+      "ref": 8,
+      "role": "button",
+      "name": "이전",
+      "disabled": true
+     },
+     {
+      "kind": "text",
+      "text": "1 / 4 페이지"
+     },
+     {
+      "kind": "el",
+      "ref": 9,
+      "role": "button",
+      "name": "다음"
+     },
+     {
+      "kind": "el",
+      "ref": 10,
+      "role": "table",
+      "name": "재공 목록",
+      "detail": "rows=50 cols=[Lot ID, 제품, 공정, 수량, 상태, 정체시간]"
+     }
+    ]
+   },
+   "changes": null,
+   "step": {
+    "n": 1,
+    "total": 1,
+    "text": "현재 화면에서 다음 요청을 수행한다: 다음 페이지 보여줘\n   - 화면을 보고 필요한 동작을 한 번에 하나씩 한다. 이미 되어 있는 일은 다시 하지 않는다.\n   - 요청한 일을 모두 했으면 finish로 끝낸다. summary에는 무엇을 했는지와, 요청이 물어본 내용에 대해 화면에 보이는 답을 적는다.\n   - summary는 마크다운으로 읽기 좋게 쓴다. 첫 줄에 답(결론) 한 문장, 이어서 근거와 핵심을 \"- \" 항목으로 쓴다. 여러 행의 값을 보여 줄 때는 데이터셋에 담은 표를 {table.이름}으로 넣는다.\n   - 요청이 HTML·웹 페이지·인터랙티브·대시보드로 정리해 달라고 하면, 필요한 표를 데이터셋에 담고(집계는 transform) write_html로 보고서 파일을 만든 뒤 finish로 끝낸다. 비교할 숫자가 있으면 charts로 차트를 넣는다.\n   - 화면에 이미 답이 보이는 질문이면 아무것도 조작하지 않고 finish로 답한다.",
+    "unmet": null
+   },
+   "vision": false
+  },
+  "expect": {
+   "tool": "click",
+   "args": {
+    "ref": 9
+   }
+  },
+  "note": "다음 버튼을 누른다"
+ },
+ {
+  "id": "m-csv",
+  "tags": [
+   "free",
+   "manual",
+   "click"
+  ],
+  "reviewed": true,
+  "source": "manual",
+  "turn": {
+   "skill": {
+    "id": "free",
+    "name": "자유 요청",
+    "version": "0.1.0",
+    "domains": [
+     "localhost:4173"
+    ],
+    "scripts": []
+   },
+   "body": "## 단계\n\n1. 현재 화면에서 다음 요청을 수행한다: CSV 파일로 내려받아줘\n   - 화면을 보고 필요한 동작을 한 번에 하나씩 한다. 이미 되어 있는 일은 다시 하지 않는다.\n   - 요청한 일을 모두 했으면 finish로 끝낸다. summary에는 무엇을 했는지와, 요청이 물어본 내용에 대해 화면에 보이는 답을 적는다.\n   - summary는 마크다운으로 읽기 좋게 쓴다. 첫 줄에 답(결론) 한 문장, 이어서 근거와 핵심을 \"- \" 항목으로 쓴다. 여러 행의 값을 보여 줄 때는 데이터셋에 담은 표를 {table.이름}으로 넣는다.\n   - 요청이 HTML·웹 페이지·인터랙티브·대시보드로 정리해 달라고 하면, 필요한 표를 데이터셋에 담고(집계는 transform) write_html로 보고서 파일을 만든 뒤 finish로 끝낸다. 비교할 숫자가 있으면 charts로 차트를 넣는다.\n   - 화면에 이미 답이 보이는 질문이면 아무것도 조작하지 않고 finish로 답한다.\n\n## 예외\n\n- 요청이 모호해서 무엇을 할지 정할 수 없으면 ask_user로 묻는다.\n- 요청한 일을 이 화면에서 할 수 없으면 abort로 이유를 알린다.\n- 요청에 없는 저장, 삭제, 상신은 하지 않는다.\n\n## 결과\n\n한 일과, 요청이 물어본 내용에 대한 답.",
+   "inputs": {
+    "request": "CSV 파일로 내려받아줘"
+   },
+   "history": [],
+   "datasets": "(없음)",
+   "tools": [],
+   "skills": [],
+   "snapshot": {
+    "url": "http://localhost:4173/wip.html",
+    "title": "재공 현황 조회 - 모의 MES",
+    "hasPassword": false,
+    "items": [
+     {
+      "kind": "heading",
+      "text": "재공 현황 조회"
+     },
+     {
+      "kind": "el",
+      "ref": 1,
+      "role": "combobox",
+      "name": "라인",
+      "value": "8라인",
+      "detail": "options=[선택, 6라인, 7라인, 8라인]"
+     },
+     {
+      "kind": "el",
+      "ref": 2,
+      "role": "combobox",
+      "name": "공정",
+      "value": "전체",
+      "detail": "options=[전체, PHOTO, ETCH, DIFF, CMP, IMP]"
+     },
+     {
+      "kind": "el",
+      "ref": 3,
+      "role": "textbox",
+      "name": "제품코드",
+      "value": ""
+     },
+     {
+      "kind": "el",
+      "ref": 4,
+      "role": "button",
+      "name": "조회"
+     },
+     {
+      "kind": "el",
+      "ref": 5,
+      "role": "button",
+      "name": "조건 저장"
+     },
+     {
+      "kind": "text",
+      "text": "총 173건"
+     },
+     {
+      "kind": "el",
+      "ref": 6,
+      "role": "button",
+      "name": "엑셀 다운로드"
+     },
+     {
+      "kind": "el",
+      "ref": 7,
+      "role": "button",
+      "name": "CSV 내려받기"
+     },
+     {
+      "kind": "el",
+      "ref": 8,
+      "role": "button",
+      "name": "이전",
+      "disabled": true
+     },
+     {
+      "kind": "text",
+      "text": "1 / 4 페이지"
+     },
+     {
+      "kind": "el",
+      "ref": 9,
+      "role": "button",
+      "name": "다음"
+     },
+     {
+      "kind": "el",
+      "ref": 10,
+      "role": "table",
+      "name": "재공 목록",
+      "detail": "rows=50 cols=[Lot ID, 제품, 공정, 수량, 상태, 정체시간]"
+     }
+    ]
+   },
+   "changes": null,
+   "step": {
+    "n": 1,
+    "total": 1,
+    "text": "현재 화면에서 다음 요청을 수행한다: CSV 파일로 내려받아줘\n   - 화면을 보고 필요한 동작을 한 번에 하나씩 한다. 이미 되어 있는 일은 다시 하지 않는다.\n   - 요청한 일을 모두 했으면 finish로 끝낸다. summary에는 무엇을 했는지와, 요청이 물어본 내용에 대해 화면에 보이는 답을 적는다.\n   - summary는 마크다운으로 읽기 좋게 쓴다. 첫 줄에 답(결론) 한 문장, 이어서 근거와 핵심을 \"- \" 항목으로 쓴다. 여러 행의 값을 보여 줄 때는 데이터셋에 담은 표를 {table.이름}으로 넣는다.\n   - 요청이 HTML·웹 페이지·인터랙티브·대시보드로 정리해 달라고 하면, 필요한 표를 데이터셋에 담고(집계는 transform) write_html로 보고서 파일을 만든 뒤 finish로 끝낸다. 비교할 숫자가 있으면 charts로 차트를 넣는다.\n   - 화면에 이미 답이 보이는 질문이면 아무것도 조작하지 않고 finish로 답한다.",
+    "unmet": null
+   },
+   "vision": false
+  },
+  "expect": [
+   {
+    "tool": "download_table",
+    "args": {
+     "ref": 7
+    }
+   },
+   {
+    "tool": "click",
+    "args": {
+     "ref": 7
+    }
+   }
+  ],
+  "note": "CSV 내려받기 버튼"
+ }
+]

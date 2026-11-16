@@ -212,8 +212,17 @@ export interface ChatMessage {
   images?: string[];
 }
 
+/** 모델을 부를 때 함께 주는 선택 사항 */
+export interface CompleteOptions {
+  /**
+   * 답이 따라야 할 JSON 스키마 (action-schema.ts). 모델 설정 jsonSchema가 켜져 있을 때만 response_format json_schema로 보내고,
+   * 꺼져 있거나 서버가 거절하면 무시한다. 받은 답은 늘 parseAction으로 다시 검사한다.
+   */
+  schema?: { name: string; schema: Record<string, unknown> };
+}
+
 export interface LlmPort {
-  complete(messages: ChatMessage[], signal?: AbortSignal): Promise<string>;
+  complete(messages: ChatMessage[], signal?: AbortSignal, opts?: CompleteOptions): Promise<string>;
 }
 
 /** 저장·상신 직전에 사용자에게 보여주는 내용. fields는 화면에서 다시 읽은 현재 값이다. */
