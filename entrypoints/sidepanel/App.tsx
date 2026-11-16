@@ -650,6 +650,14 @@ export function App() {
             <label className="check">
               <input
                 type="checkbox"
+                checked={settings.jsonSchema === true}
+                onChange={(e) => setSettings({ ...settings, jsonSchema: e.target.checked })}
+              />
+              제약 디코딩 (json_schema: 모델이 동작 형식에 맞는 답만 내게 함. 서버가 거절하면 저절로 끔)
+            </label>
+            <label className="check">
+              <input
+                type="checkbox"
                 checked={settings.vision === true}
                 onChange={(e) => setSettings({ ...settings, vision: e.target.checked })}
               />

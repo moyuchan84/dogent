@@ -49,6 +49,7 @@ import { composeFlow, editSkill } from './compose-skill';
 import { launchBrowser } from './launch-browser';
 import { describeHookEntries, loadHookEntries, loadHooks, saveHookEntries } from './hooks';
 import { setConfig, type ClientConfig } from './config';
+import { captureWriter } from './eval';
 import { enabledAgents, loadAgents, mentionedAgents } from './agents';
 import { Conversation, addInstruction, contextNote, conversationFile, describeInstructions, loadInstructions, personalInstructionsFile } from './conversation';
 import { buildRunSummary, evaluatePolicy, fetchPolicy, flushOutbox, hubRisk, hubStale, loadHubCache, reportRun, systemsCoveredBy, type HubCache } from './hub';
@@ -850,6 +851,8 @@ export class Session {
         direct: this.cfg.llm.skillDirect,
         // 사내 모델이 화면 그림을 받는다고 설정했을 때만 그림을 붙인다 (llm.vision, 기본 꺼짐)
         vision: this.cfg.llm.vision === true,
+        // 도구 호출 평가 케이스 모으기 (dogent eval capture on)
+        onTurn: this.cfg.evalCapture ? captureWriter(this.cfg.evalCapture, (m) => this.term.print(`  (주의) ${m}`)) : undefined,
         paths: this.cfg.llm.pathCache && !isFree ? filePathStore(this.cfg.home) : undefined,
         files: folderFiles(
           this.cfg.outputDir,

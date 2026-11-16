@@ -16,6 +16,16 @@ import { createServer } from 'node:http';
 import { normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+/**
+ * OpenAI의 response_format을 Ollama의 format으로. json_object는 'json', json_schema는 스키마 그대로 (Ollama 0.5 이상의 구조화 출력).
+ * @param {any} rf
+ */
+export function ollamaFormat(rf) {
+  if (rf?.type === 'json_schema' && rf.json_schema?.schema) return { format: rf.json_schema.schema };
+  if (rf?.type === 'json_object') return { format: 'json' };
+  return {};
+}
+
 export function createOllamaProxy({
   ollamaUrl = process.env.OLLAMA_URL ?? 'http://localhost:11434',
   model: forcedModel = process.env.OLLAMA_MODEL,
@@ -55,7 +65,7 @@ export function createOllamaProxy({
             model,
             messages: input.messages,
             stream: false,
-            ...(input.response_format?.type === 'json_object' ? { format: 'json' } : {}),
+            ...ollamaFormat(input.response_format),
             options: {
               temperature: input.temperature ?? 0,
               num_ctx: numCtx,

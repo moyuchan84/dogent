@@ -37,6 +37,7 @@ export function llmFromEnv(mode) {
       apiKey: env.WXT_LLM_API_KEY,
       model: env.WXT_LLM_MODEL,
       jsonMode: bool(env.WXT_LLM_JSON_MODE),
+      jsonSchema: bool(env.WXT_LLM_JSON_SCHEMA),
       vision: bool(env.WXT_LLM_VISION),
       timeoutScale: Number(env.WXT_LLM_TIMEOUT_SCALE) || undefined,
       headers: env.WXT_LLM_HEADERS?.trim() ? JSON.parse(env.WXT_LLM_HEADERS) : undefined,
@@ -122,9 +123,24 @@ export function buildDefines(mode) {
       // samples: 예시 스킬을 넣었는지. 앱은 개발용 빌드(모드 없음)에서만 예시를 처음부터 보이고, 집·회사 빌드는 숨겨 둔다
       __DOGENT_BUILD__: JSON.stringify({ mode, version, llm, ...(skillsUrl ? { skillsUrl } : {}), ...(systemsUrl ? { systemsUrl } : {}), ...(hubUrl ? { hubUrl } : {}), ...sites, ...(samplesWanted(mode) ? { samples: true } : {}) }),
       __DOGENT_SKILLS__: JSON.stringify(bundledSkills(samplesWanted(mode))),
+      // 도구 호출 평가의 기본 케이스 (evals/tool-calls/*.json, 모의 사이트에서 만든 것). dogent eval tools가 쓴다
+      __DOGENT_EVAL_CASES__: JSON.stringify(evalCases()),
       __DOGENT_HOST__: JSON.stringify(Object.fromEntries(['native-host.mjs', 'protocol.mjs'].map((f) => [f, readFileSync(join(ROOT, 'bridge', f), 'utf8')]))),
     },
   };
+}
+
+/** evals/tool-calls/*.json의 케이스를 하나의 배열로 */
+function evalCases() {
+  const dir = join(ROOT, 'evals', 'tool-calls');
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir)
+    .filter((f) => f.endsWith('.json'))
+    .sort()
+    .flatMap((f) => {
+      const v = JSON.parse(readFileSync(join(dir, f), 'utf8'));
+      return Array.isArray(v) ? v : [v];
+    });
 }
 
 /**

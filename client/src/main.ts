@@ -19,6 +19,7 @@ import { AgentPeer, PRESETS, describeAgents, findExecutable, loadAgents, saveAge
 import { addInstruction, personalInstructionsFile } from './conversation';
 import { Collector, DogentMcp, serveHttp, serveStdio, sessionRunner } from './mcp-serve';
 import { Terminal } from './terminal';
+import { EVAL_USAGE, runEvalCommand } from './eval';
 
 const HELP = `Dogent 클라이언트 ${__DOGENT_BUILD__.version} (${__DOGENT_BUILD__.mode})
 
@@ -52,6 +53,7 @@ const HELP = `Dogent 클라이언트 ${__DOGENT_BUILD__.version} (${__DOGENT_BUI
   dogent schedule list|remove <이름>   예약 보기 / 지우기
   dogent doctor [--fix] [--id <확장 ID>] [--wait <초>]
                                   확장이 안 붙을 때 원인 점검 (토큰, 포트, Native Messaging 등록, 회사 정책, 실시간 시험). --fix는 호스트를 등록한다
+  dogent eval tools|capture|review|list   도구 호출 평가: 같은 케이스로 답 형식(json, schema=제약 디코딩)별 정답률을 잰다. 실제 실행에서 케이스를 모은다
   dogent token                    확장의 "클라이언트 연결"에 넣을 토큰
   dogent config [키 값]            설정 보기 / 바꾸기 (예: dogent config llm.userId sso123)
 
@@ -411,6 +413,14 @@ async function main(): Promise<number> {
       return await runMcpCommand(mine);
     } catch (e) {
       console.error(`오류: ${(e as Error).message}`);
+      return 1;
+    }
+  }
+  if (cmd === 'eval') {
+    try {
+      return await runEvalCommand(rest, loadConfig(), new Terminal());
+    } catch (e) {
+      console.error(`오류: ${(e as Error).message}\n\n${EVAL_USAGE}`);
       return 1;
     }
   }
