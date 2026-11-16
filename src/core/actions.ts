@@ -156,6 +156,28 @@ export const TOOL_ARGS = {
     args: z.record(z.string(), z.unknown()).default({}),
     dataset: z.string().min(1).optional(),
   }),
+  /** PC 폴더의 파일 목록을 본다. dir가 없으면 읽을 수 있는 폴더와 첨부한 파일을 보여 준다 (앱·터미널만). */
+  list_files: z.object({ dir: z.string().min(1).optional(), pattern: z.string().min(1).optional() }),
+  /**
+   * PC의 파일을 읽는다 (텍스트·CSV·TSV·엑셀·워드·파워포인트·PDF). 글은 결과로 보이고, name을 주면 기록 값 {out.name}에 남는다.
+   * dataset을 주면 파일의 표(table번째, 기본 1. 엑셀은 sheet의 표)를 데이터셋에 담는다.
+   */
+  read_file: z.object({
+    path: z.string().min(1),
+    dataset: z.string().min(1).optional(),
+    sheet: z.string().min(1).optional(),
+    table: z.number().int().min(1).default(1),
+    name: z.string().regex(/^[a-z_][a-z0-9_]*$/).optional(),
+  }),
+  /**
+   * 결과 폴더에 글 파일을 저장한다 (txt·md·csv·tsv·json·xml·log). content는 글({out.이름}·{table.이름} 사용 가능),
+   * dataset을 주면 그 표를 파일 형식에 맞게(csv·tsv·json·md 표) 쓴다.
+   */
+  write_file: z.object({
+    filename: z.string().min(1),
+    content: z.string().optional(),
+    dataset: z.string().min(1).optional(),
+  }),
   /** 화면(ref를 주면 그 요소)에 보이는 글을 읽는다. 게시글·공지처럼 글 내용이 필요할 때 쓴다. */
   read_text: z.object({ ref: ref.optional() }),
   /** 화면에서 말에 맞는 요소만 골라 본다 (요소가 많은 화면에서 ref를 찾을 때). 화면은 바꾸지 않는다. */
@@ -212,7 +234,7 @@ export type ToolName = keyof typeof TOOL_ARGS;
 
 /** 모델 없이 실행할 수 있는 단계의 첫머리. 예: "select로 ...", "click으로 ..." */
 const DIRECT_STEP =
-  /^(navigate|open_tab|click|close_tab|press_key|scroll|go_back|upload_file|type|select|extract_table|download_table|fill_table|transform|write_excel|write_html|excel_docs|excel_read|excel_write|excel_save|word_read|word_write|word_save|ppt_read|ppt_write|ppt_save|call_tool|run_skill|run_script|read_text|summarize|finish)(?:으로|로)\s/;
+  /^(navigate|open_tab|click|close_tab|press_key|scroll|go_back|upload_file|type|select|extract_table|download_table|fill_table|transform|write_excel|write_html|excel_docs|excel_read|excel_write|excel_save|word_read|word_write|word_save|ppt_read|ppt_write|ppt_save|call_tool|run_skill|run_script|read_text|summarize|list_files|read_file|write_file|finish)(?:으로|로)\s/;
 
 /**
  * 단계가 "도구로 ..."로 시작하고 `{...}` 인자가 적혀 있으면 그 도구 이름과 인자 원문을 돌려준다.

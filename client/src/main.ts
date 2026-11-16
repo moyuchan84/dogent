@@ -58,6 +58,8 @@ const HELP = `Dogent 클라이언트 ${__DOGENT_BUILD__.version} (${__DOGENT_BUI
   dogent config [키 값]            설정 보기 / 바꾸기 (예: dogent config llm.userId sso123)
 
   --continue, -c 마지막 대화를 이어 간다 (앞선 요청과 결과를 모델이 함께 본다)
+  --file, -f <경로>  파일·폴더를 첨부한다 (여러 번 쓸 수 있음). 에이전트가 읽고(read_file) 화면에 올릴(upload_file) 수 있다.
+                 대화 중에는 첨부 <경로>, 첨부(목록), 첨부 지우기
   --yes          실행 전 확인을 묻지 않는다
   --allow-write  자유 요청에서 저장·상신 버튼을 허용한다 (누르기 전에 확장의 승인 창으로 묻는다)
   --dry-run      저장·상신 직전에 멈춘다 (시험 실행)
@@ -317,10 +319,11 @@ async function runAgentsCommand(rest: string[], workdir: string): Promise<number
   throw new Error(AGENTS_USAGE);
 }
 
-function parseArgs(argv: string[]): { args: string[]; flags: SessionOptions } {
+function parseArgs(argv: string[]): { args: string[]; flags: SessionOptions; files: string[] } {
   // 브라우저 자동 실행은 --no-launch 또는 DOGENT_NO_LAUNCH=1로 끈다 (시험, 원격 데스크톱처럼 창을 띄우면 안 되는 곳)
   const flags: SessionOptions = { yes: false, allowWrite: false, dryRun: false, waitSec: 60, launchBrowser: process.env.DOGENT_NO_LAUNCH !== '1' };
   const args: string[] = [];
+  const files: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--yes' || a === '-y') flags.yes = true;
@@ -330,13 +333,14 @@ function parseArgs(argv: string[]): { args: string[]; flags: SessionOptions } {
     else if (a === '--wait') flags.waitSec = Number(argv[++i]) || 60;
     else if (a === '--browser') flags.browser = argv[++i];
     else if (a === '--continue' || a === '-c') flags.conversation = 'continue';
+    else if ((a === '--file' || a === '-f') && argv[i + 1]) files.push(argv[++i]);
     else args.push(a);
   }
-  return { args, flags };
+  return { args, flags, files };
 }
 
 async function main(): Promise<number> {
-  const { args, flags } = parseArgs(process.argv.slice(2));
+  const { args, flags, files } = parseArgs(process.argv.slice(2));
   const [cmd, ...rest] = args;
   if (cmd === 'help' || cmd === '--help' || cmd === '-h') {
     console.log(HELP);
@@ -480,6 +484,8 @@ async function main(): Promise<number> {
   const term = new Terminal();
   const client = new Session(term, cfg, flags);
   client.help = HELP;
+  // --file로 준 파일·폴더를 첨부한다 (에이전트가 읽고 올릴 수 있다)
+  if (files.length) await client.attach(files);
   process.on('SIGINT', () => {
     if (client.interrupt()) term.print('\n멈추는 중… (한 번 더 누르면 끝냅니다)');
     else {

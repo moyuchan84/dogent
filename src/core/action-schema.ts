@@ -50,6 +50,8 @@ export interface ActionSchemaOptions {
   scripts?: string[];
   /** 화면 그림(look)을 쓸 수 있는지 */
   vision?: boolean;
+  /** PC 파일을 읽을 수 있는지 (list_files·read_file) */
+  files?: boolean;
   /** 위 조건과 상관없이 넣을 도구. 지금 단계의 글에 이름이 적힌 도구 (예: "run_skill로 ..." 단계를 모델이 정할 때) */
   extra?: string[];
 }
@@ -121,6 +123,7 @@ export function schemaTools(opts: ActionSchemaOptions): ToolName[] {
     if (extra.has(t)) return true;
     if (office.has(t)) return opts.office === true;
     if (t === 'look') return opts.vision === true && !!opts.snap;
+    if (t === 'list_files' || t === 'read_file') return opts.files === true;
     if (t === 'call_tool') return (opts.external?.length ?? 0) > 0;
     if (t === 'run_skill') return (opts.skills?.length ?? 0) > 0;
     if (t === 'run_script') return (opts.scripts?.length ?? 0) > 0;

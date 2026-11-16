@@ -341,6 +341,44 @@ export interface FilePort {
   save(filename: string, data: ArrayBuffer): Promise<void>;
 }
 
+/** PC 폴더의 항목 하나 (list_files) */
+export interface LocalFileEntry {
+  name: string;
+  dir: boolean;
+  size: number;
+  /** 고친 시각 (ISO) */
+  modified: string;
+}
+
+/** PC 파일을 읽은 내용 (read_file). 글은 text에, 표는 tables에 담는다 */
+export interface LocalFileContent {
+  /** 실제로 읽은 파일의 전체 경로 */
+  path: string;
+  name: string;
+  /** 읽은 형식: text, csv, tsv, xlsx, docx, pptx, pdf 등 */
+  format: string;
+  /** 글 (문서의 문단, 슬라이드 글, 텍스트 파일 내용). 표만 있는 파일이면 없다 */
+  text?: string;
+  /** 표들 (csv·xlsx는 하나, 워드·파워포인트는 문서 안의 표). 첫 행이 컬럼 이름이다 */
+  tables: { title?: string; columns: string[]; rows: Cell[][] }[];
+  /** 엑셀 문서의 시트 이름들과 읽은 시트 */
+  sheets?: string[];
+  sheet?: string;
+}
+
+/**
+ * PC의 파일을 읽는 통로 (데스크탑 앱·터미널 클라이언트만 준다. 확장은 PC 파일을 읽을 수 없다).
+ * 읽을 수 있는 곳은 사용자가 정한 폴더(roots)와 사용자가 첨부한 파일·폴더뿐이다. 쓰기는 FilePort(결과 폴더)로만 한다.
+ */
+export interface LocalFilesPort {
+  /** 읽을 수 있는 폴더 (첨부한 폴더 포함) */
+  roots(): string[];
+  /** 사용자가 이번 대화에 첨부한 파일 (끌어다 놓기, --file) */
+  attached(): string[];
+  list(dir: string, pattern?: string): Promise<{ dir: string; entries: LocalFileEntry[]; more: number }>;
+  read(path: string, opts?: { sheet?: string }): Promise<LocalFileContent>;
+}
+
 export type RunStatus = 'done' | 'aborted' | 'stopped' | 'error' | 'dryrun';
 
 export interface HistoryEntry {

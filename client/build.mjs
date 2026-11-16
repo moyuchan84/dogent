@@ -23,6 +23,8 @@ await build({
   output: {
     file: join(ROOT, 'client/dist/dogent.mjs'),
     format: 'esm',
+    // PDF 읽기(unpdf)가 쓰는 동적 import도 한 파일 안에 넣는다
+    codeSplitting: false,
     banner: '#!/usr/bin/env node\n// 생성된 파일입니다. client/ 에서 pnpm client:build 로 다시 만드세요.',
   },
 });

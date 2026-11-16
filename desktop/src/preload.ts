@@ -1,10 +1,12 @@
 // 창(renderer)에 내놓는 API. 창에는 Node와 Electron을 열지 않고 이 함수들만 준다.
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type { DogentApi, UiMessage } from './ipc';
 
 const api: DogentApi = {
   init: () => ipcRenderer.invoke('dogent:init'),
-  send: (text) => ipcRenderer.invoke('dogent:send', text),
+  send: (text, files) => ipcRenderer.invoke('dogent:send', text, files ?? []),
+  // 끌어다 놓은 파일의 실제 경로 (창에서는 File 객체만 보이므로 여기서 꺼낸다)
+  pathOf: (file) => webUtils.getPathForFile(file),
   run: (id, values) => ipcRenderer.invoke('dogent:run', id, values),
   answer: (id, value) => ipcRenderer.invoke('dogent:answer', id, value),
   stop: () => ipcRenderer.invoke('dogent:stop'),
