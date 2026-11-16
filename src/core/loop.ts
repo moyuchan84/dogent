@@ -17,7 +17,7 @@ import { approvalText, parseScriptOutput, SCRIPT_OUTPUT_MAX, scriptHash, scriptL
 import { findInSnapshot, renderSnapshot } from './snapshot';
 import { listForPrompt, prepareChild, summarizeChild } from './subagent';
 import { transform } from './transform';
-import { shotDataUrl } from './upload';
+import { formatBytes, shotDataUrl } from './upload';
 import type {
   ActResult,
   ActionTarget,
@@ -34,6 +34,7 @@ import type {
   ToolPort,
   SkillCatalogPort,
   LlmPort,
+  LocalFilesPort,
   PageSnapshot,
   PathStore,
   Screenshot,
@@ -50,6 +51,8 @@ export interface RunDeps {
   files: FilePort;
   /** 엑셀 문서를 다루는 통로. 주면 excel_* 도구를 쓸 수 있다. */
   office?: OfficePort;
+  /** PC의 파일을 읽는 통로. 주면 list_files·read_file을 쓸 수 있다 (앱·터미널). write_file은 files로 결과 폴더에 쓴다 */
+  localFiles?: LocalFilesPort;
   /** 외부 도구(MCP 서버)를 부르는 통로. 주면 call_tool을 쓸 수 있다. */
   tools?: ToolPort;
   /** 스킬에 딸린 스크립트를 실행하는 통로. 주면 run_script를 쓸 수 있다 (데스크탑 앱·터미널 클라이언트). */
@@ -108,6 +111,21 @@ const SUMMARIZE_ROWS_MAX = 200;
 const NO_OFFICE = '이 환경에서는 엑셀·워드·파워포인트 도구를 쓸 수 없습니다 (오피스 도구 dogent-office.exe가 필요합니다)';
 const NO_WORD = '이 환경에서는 워드 도구를 쓸 수 없습니다 (오피스 도구 dogent-office.exe를 다시 만들어야 합니다: pnpm office:build)';
 const NO_PPT = '이 환경에서는 파워포인트 도구를 쓸 수 없습니다 (오피스 도구 dogent-office.exe를 다시 만들어야 합니다: pnpm office:build)';
+const NO_FILES = '이 환경에서는 PC 파일을 읽을 수 없습니다. Dogent 앱이나 터미널(dogent)에서 요청하세요';
+/** read_file 결과로 모델에 보여 줄 글의 최대 길이와, {out.이름}에 남길 최대 길이 */
+const FILE_TEXT_MAX = 6000;
+const FILE_OUT_MAX = 50_000;
+/** write_file로 쓸 수 있는 형식. 실행 파일·스크립트는 쓰지 않는다 */
+export const WRITE_EXTS = ['txt', 'md', 'csv', 'tsv', 'json', 'xml', 'log'];
+
+/** 표를 CSV·TSV 글로. 구분자·따옴표·줄바꿈이 든 칸은 따옴표로 감싼다 */
+function delimited(columns: string[], rows: (string | number)[][], sep: string): string {
+  const cell = (v: unknown) => {
+    const s = String(v ?? '');
+    return s.includes(sep) || /["\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  return [columns, ...rows].map((r) => r.map(cell).join(sep)).join('\r\n');
+}
 const KIND_LABEL: Record<string, string> = { word: '워드', ppt: '파워포인트' };
 /** 문서에서 읽은 글을 모델에 보여 줄 때 자르는 길이 */
 const DOC_TEXT_MAX = 8000;
@@ -160,7 +178,7 @@ export async function runSkill(skill: Skill, inputs: SkillInputs, deps: RunDeps)
 }
 
 async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps, memo: PathMemo | null): Promise<RunResult> {
-  const { llm, browser, ui, files, office, signal } = deps;
+  const { llm, browser, ui, files, office, localFiles, signal } = deps;
   const datasets = deps.datasets ?? new DatasetStore();
   const emit = deps.onEvent ?? (() => {});
   const started = Date.now();
@@ -359,6 +377,7 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps, memo: PathM
       step: { n: current, total: steps.length, text: withOutputs(promptSteps[current - 1]), unmet: unmetNow(snap) },
       vision,
       image: await imageFor(snap),
+      ...(localFiles ? { files: { roots: localFiles.roots(), attached: localFiles.attached() } } : {}),
     };
     let messages = buildTurnMessages(turn);
     // 제약 디코딩용 스키마. 모델 설정 jsonSchema가 꺼져 있으면 클라이언트가 보내지 않는다.
@@ -369,6 +388,7 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps, memo: PathM
       skills: callableSkills.map((s) => s.id),
       scripts: (skill.scripts ?? []).map((s) => s.name),
       vision,
+      files: !!localFiles,
       extra: toolsNamedIn(turn.step.text),
     });
     for (let attempt = 0; ; attempt++) {
@@ -811,6 +831,71 @@ async function run(skill: Skill, inputs: SkillInputs, deps: RunDeps, memo: PathM
         if (deps.dryRun) return { ok: true, result: `시험 실행이라 하지 않았습니다: ${what}`, end: 'dryrun' };
         // 사용자 승인은 확장의 승인 창에서 받는다 (BrowserPort.uploadFile). 승인 없이는 파일이 들어가지 않는다.
         return acted(await browser.uploadFile(action.args.ref, action.args.path));
+      }
+      case 'list_files': {
+        if (!localFiles) return { ok: false, result: NO_FILES };
+        const { dir, pattern } = action.args;
+        if (!dir) {
+          const attached = localFiles.attached();
+          return {
+            ok: true,
+            result: [
+              `읽을 수 있는 폴더: ${localFiles.roots().join(', ') || '(없음)'}`,
+              attached.length ? `첨부한 파일: ${attached.join(', ')}` : '첨부한 파일 없음',
+            ].join('\n'),
+          };
+        }
+        const r = await localFiles.list(dir, pattern);
+        if (r.entries.length === 0) return { ok: true, result: `${r.dir}: ${pattern ? `"${pattern}"에 맞는 ` : ''}파일이 없습니다` };
+        const lines = r.entries.map((e) => (e.dir ? `[폴더] ${e.name}` : `${e.name}  ${formatBytes(e.size)}  ${e.modified.slice(0, 16).replace('T', ' ')}`));
+        return { ok: true, result: `${r.dir}${pattern ? ` (${pattern})` : ''}\n${lines.join('\n')}${r.more ? `\n(그 밖에 ${r.more}개 더 있음. pattern으로 좁히세요)` : ''}` };
+      }
+      case 'read_file': {
+        if (!localFiles) return { ok: false, result: NO_FILES };
+        const { path, dataset, sheet, table, name } = action.args;
+        const f = await localFiles.read(path, { sheet });
+        const parts = [`${f.path} (${f.format})`];
+        if (f.sheets?.length) parts.push(`시트: ${f.sheets.join(', ')}${f.sheet ? ` · 읽은 시트 "${f.sheet}"` : ''}`);
+        if (f.tables.length) {
+          parts.push(`표 ${f.tables.length}개: ${f.tables.slice(0, 10).map((t, i) => `${i + 1}) ${t.title ? `${t.title} ` : ''}${t.rows.length}행 ${JSON.stringify(t.columns)}`).join(', ')}`);
+        }
+        if (dataset) {
+          const t = f.tables[table - 1];
+          if (!t) return { ok: false, result: `${parts.join('\n')}\n${table}번째 표가 없습니다${f.tables.length ? '' : ' (이 파일에는 표가 없습니다. 글은 dataset 없이 읽습니다)'}` };
+          const ds = datasets.set(dataset, t.columns, t.rows);
+          parts.push(`${table}번째 표를 "${ds.name}"에 담음: ${ds.rows.length}행, 컬럼 ${JSON.stringify(ds.columns)}`);
+        } else if (f.tables.length) {
+          const t = f.tables[table - 1] ?? f.tables[0];
+          parts.push(`앞부분:\n<file>\n${tableMarkdown(t.columns, t.rows, 5)}\n</file>\n표 전체를 쓰려면 dataset을 주어 데이터셋에 담습니다`);
+        }
+        if (f.text) {
+          if (name) outputs[name] = clipText(f.text, FILE_OUT_MAX);
+          parts.push(`<file>\n${clipText(f.text, FILE_TEXT_MAX)}\n</file>${name ? `\n(글 전체를 {out.${name}}에 남김)` : ''}`);
+        } else if (!f.tables.length) parts.push('(내용이 없습니다)');
+        return { ok: true, result: parts.join('\n') };
+      }
+      case 'write_file': {
+        const { filename, content, dataset } = action.args;
+        const ext = /\.([A-Za-z0-9]+)$/.exec(filename)?.[1].toLowerCase();
+        if (ext && !WRITE_EXTS.includes(ext)) {
+          return { ok: false, result: `.${ext} 파일은 쓸 수 없습니다. 쓸 수 있는 형식: ${WRITE_EXTS.join(', ')} (엑셀은 write_excel, 보고서는 write_html)` };
+        }
+        const name = `${filename.replace(/[\\/:*?"<>|]/g, '_')}${ext ? '' : '.txt'}`;
+        const kind = ext ?? 'txt';
+        const ds = dataset ? datasets.get(dataset) : null;
+        let text: string;
+        if (ds && (kind === 'csv' || kind === 'tsv')) text = delimited(ds.columns, ds.rows, kind === 'csv' ? ',' : '\t');
+        else if (ds && kind === 'json') text = JSON.stringify(ds.rows.map((r) => Object.fromEntries(ds.columns.map((c, i) => [c, r[i] ?? '']))), null, 2);
+        else {
+          text = withOutputs(content ?? '').replace(/\n{3,}/g, '\n\n').trim();
+          if (ds) text = `${text ? `${text}\n\n` : ''}${tableMarkdown(ds.columns, ds.rows, ds.rows.length)}`;
+        }
+        if (!text.trim()) return { ok: false, result: '쓸 내용이 없습니다. content나 dataset을 주세요' };
+        // CSV는 Excel이 한글을 깨뜨리지 않도록 BOM을 붙인다
+        if (kind === 'csv' || kind === 'tsv') text = `﻿${text}`;
+        await files.save(name, new TextEncoder().encode(text).buffer as ArrayBuffer);
+        savedFiles.push(name);
+        return { ok: true, result: `${name} 저장 (${ds ? `${ds.rows.length}행` : `${text.length}자`})` };
       }
       case 'read_text': {
         if (!browser.readText) return { ok: false, result: '이 환경에서는 화면 글을 읽을 수 없습니다' };

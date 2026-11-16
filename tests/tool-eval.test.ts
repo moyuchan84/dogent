@@ -95,7 +95,8 @@ function concrete(v: unknown): unknown {
     if ('$contains' in o) return `결과: ${o.$contains}`;
     if ('$oneOf' in o) return concrete((o.$oneOf as unknown[])[0]);
     if ('$any' in o) return '아무 값';
-    if ('$regex' in o) return String(o.$regex);
+    // 정규식에서 맞는 글 하나를 만든다 (^ $를 떼고 \. \\ 같은 이스케이프를 푼다). 케이스의 정규식은 이 범위로만 쓴다
+    if ('$regex' in o) return String(o.$regex).replace(/^\^|\$$/g, '').replace(/\\(.)/g, '$1');
     return Object.fromEntries(Object.entries(o).map(([k, x]) => [k, concrete(x)]));
   }
   return v;

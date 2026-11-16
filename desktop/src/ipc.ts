@@ -86,7 +86,10 @@ export type ConnectPreview =
 
 export interface DogentApi {
   init(): Promise<InitInfo>;
-  send(text: string): Promise<void>;
+  /** files: 이 요청과 함께 첨부한 파일·폴더의 전체 경로 (끌어다 놓기, 클립 버튼). 대화가 끝날 때까지 첨부로 남는다 */
+  send(text: string, files?: string[]): Promise<void>;
+  /** 끌어다 놓거나 고른 File의 전체 경로. 경로가 없으면(브라우저에서 끌어온 그림 등) 빈 글 */
+  pathOf(file: File): string;
   run(id: string, values: Record<string, string>): Promise<void>;
   answer(id: number, value: string | null): Promise<void>;
   stop(): Promise<void>;

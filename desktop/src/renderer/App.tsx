@@ -15,7 +15,7 @@ const api = window.dogent;
 
 /** 대화에 쌓이는 것들 */
 type Item =
-  | { type: 'user'; text: string }
+  | { type: 'user'; text: string; files?: string[] }
   | { type: 'text'; text: string }
   | { type: 'ask'; id: number; mode: 'text' | 'confirm'; question: string; fallback: string; answer?: string | null }
   | { type: 'run'; skill: string; page: string; events: RunEvent[]; approval?: ApprovalRequest; result?: { result: RunResult; saved: string[] } }
@@ -115,6 +115,55 @@ export function App() {
   const [folded, toggleFold] = useFolded();
   const feedEnd = useRef<HTMLDivElement>(null);
   const composer = useRef<HTMLTextAreaElement>(null);
+  /** 다음 요청과 함께 보낼 첨부 (끌어다 놓기, 클립 버튼). 전체 경로 */
+  const [files, setFiles] = useState<string[]>([]);
+  const [dragging, setDragging] = useState(false);
+  const picker = useRef<HTMLInputElement>(null);
+
+  /** 끌어다 놓거나 고른 파일을 첨부 목록에 더한다. 경로가 없는 것(웹에서 끌어온 그림 등)은 뺀다 */
+  function addFiles(list: FileList | null) {
+    const paths = [...(list ?? [])].map((f) => api.pathOf(f)).filter(Boolean);
+    if (paths.length) setFiles((prev) => [...prev, ...paths.filter((p) => !prev.includes(p))]);
+    composer.current?.focus();
+  }
+
+  // 창 어디에 놓아도 파일을 첨부로 받는다 (놓은 파일을 창이 열어 버리지 않게)
+  useEffect(() => {
+    let depth = 0;
+    const hasFiles = (e: DragEvent) => [...(e.dataTransfer?.types ?? [])].includes('Files');
+    const enter = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      depth++;
+      setDragging(true);
+    };
+    const leave = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      depth = Math.max(0, depth - 1);
+      if (depth === 0) setDragging(false);
+    };
+    const over = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+    };
+    const drop = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      depth = 0;
+      setDragging(false);
+      addFiles(e.dataTransfer?.files ?? null);
+    };
+    window.addEventListener('dragenter', enter);
+    window.addEventListener('dragleave', leave);
+    window.addEventListener('dragover', over);
+    window.addEventListener('drop', drop);
+    return () => {
+      window.removeEventListener('dragenter', enter);
+      window.removeEventListener('dragleave', leave);
+      window.removeEventListener('dragover', over);
+      window.removeEventListener('drop', drop);
+    };
+  }, []);
 
   // 지금 브라우저 탭을 몇 초마다 읽어 그 사이트를 다루는 스킬을 위에 둔다
   useEffect(() => {
@@ -209,9 +258,11 @@ export function App() {
   function send(value = text) {
     const t = value.trim();
     if (!t || busy) return;
-    setItems((prev) => [...prev, { type: 'user', text: t }]);
+    const attached = files;
+    setItems((prev) => [...prev, { type: 'user', text: t, ...(attached.length ? { files: attached } : {}) }]);
     setText('');
-    void api.send(t);
+    setFiles([]);
+    void api.send(t, attached);
   }
 
   function answer(id: number, value: string | null) {
@@ -497,13 +548,26 @@ ${x.url}`}>
 
           <div className="composer">
             <div className="composer-inner">
-              <div className="composer-box">
+              <div className={`composer-box${dragging ? ' dropping' : ''}`}>
+                {dragging && <div className="drop-hint">여기에 놓으면 첨부합니다. 에이전트가 파일을 읽고, 웹 화면의 첨부 칸에 올릴 수 있습니다</div>}
+                {files.length > 0 && (
+                  <div className="attachments" aria-label="첨부한 파일">
+                    {files.map((f) => (
+                      <span key={f} className="file-chip" title={f}>
+                        {fileName(f)}
+                        <button className="chip-x" aria-label={`${fileName(f)} 빼기`} onClick={() => setFiles((prev) => prev.filter((x) => x !== f))}>
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
                 <textarea
                   ref={composer}
                   id="composer"
                   rows={2}
                   value={text}
-                  placeholder="무엇을 할까요?  예: 이 화면 요약해줘"
+                  placeholder={files.length ? '첨부한 파일로 무엇을 할까요?  예: 이 엑셀을 조정 화면에 입력해줘' : '무엇을 할까요?  예: 이 화면 요약해줘  (파일을 끌어다 놓으면 첨부)'}
                   onChange={(e) => setText(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -514,6 +578,21 @@ ${x.url}`}>
                 />
                 <div className="composer-bar">
                   <div className="opts">
+                    <button className="attach" id="attach" type="button" title="파일 첨부 (끌어다 놓아도 됩니다)" aria-label="파일 첨부" disabled={busy} onClick={() => picker.current?.click()}>
+                      <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden>
+                        <path d="M10.5 4.5 5.8 9.2a1.4 1.4 0 0 0 2 2l5-5a2.8 2.8 0 0 0-4-4l-5 5a4.2 4.2 0 0 0 6 6l4.3-4.3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </button>
+                    <input
+                      ref={picker}
+                      type="file"
+                      multiple
+                      hidden
+                      onChange={(e) => {
+                        addFiles(e.target.files);
+                        e.target.value = '';
+                      }}
+                    />
                     <label className="toggle" title="스킬 없이 하는 자유 요청에서도 저장·상신 버튼을 누를 수 있게 합니다. 누르기 전에 승인 창으로 묻습니다">
                       <input id="opt-write" type="checkbox" checked={opts.allowWrite} disabled={busy} onChange={(e) => setOption({ allowWrite: e.target.checked })} />
                       <span>저장·상신 허용</span>
@@ -536,7 +615,7 @@ ${x.url}`}>
                   )}
                 </div>
               </div>
-              <div className="composer-note">Enter로 보내고 Shift+Enter로 줄을 바꿉니다. 저장·상신은 승인 창을 거칩니다.</div>
+              <div className="composer-note">Enter로 보내고 Shift+Enter로 줄을 바꿉니다. 파일은 끌어다 놓아 첨부합니다. 저장·상신은 승인 창을 거칩니다.</div>
             </div>
           </div>
         </main>
@@ -689,7 +768,21 @@ function FeedItem(props: {
   busy: boolean;
 }) {
   const it = props.item;
-  if (it.type === 'user') return <div className="msg-user">{it.text}</div>;
+  if (it.type === 'user')
+    return (
+      <div className="msg-user">
+        {it.text}
+        {it.files?.length ? (
+          <div className="msg-files">
+            {it.files.map((f) => (
+              <span key={f} className="file-chip" title={f}>
+                {fileName(f)}
+              </span>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    );
   if (it.type === 'text') return <div className={`msg-text ${/^오류/.test(it.text) ? 'error' : ''}`}>{it.text}</div>;
   if (it.type === 'ask') return <Ask item={it} onAnswer={props.onAnswer} />;
   if (it.type === 'form') return <SkillForm skill={it.skill} initial={it.initial} onRun={props.onRun} onEdit={props.onEdit} busy={props.busy} />;
@@ -1103,4 +1196,9 @@ function Settings({
       </div>
     </div>
   );
+}
+
+/** 경로에서 파일 이름 */
+function fileName(path: string): string {
+  return path.split(/[\\/]/).filter(Boolean).pop() ?? path;
 }

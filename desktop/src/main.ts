@@ -189,7 +189,7 @@ ipcMain.handle('dogent:init', () => ({
   browsers: session.browsersNow(),
   options,
 }));
-ipcMain.handle('dogent:send', (_e, text: string) => work(() => session.handle(text.trim())));
+ipcMain.handle('dogent:send', (_e, text: string, files: string[] = []) => work(() => session.handle(text.trim(), Array.isArray(files) ? files.filter((f) => typeof f === 'string') : [])));
 ipcMain.handle('dogent:run', (_e, id: string, values: Record<string, string>) =>
   work(() => session.runSkillById(id, Object.entries(values).filter(([, v]) => v !== '').map(([k, v]) => `${k}=${v}`))),
 );

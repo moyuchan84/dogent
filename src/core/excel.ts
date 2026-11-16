@@ -25,7 +25,7 @@ function cellOf(value: ExcelJS.CellValue): Cell {
 }
 
 /** 큰따옴표로 감싼 칸과 칸 안의 줄바꿈을 지원하는 CSV 읽기. */
-function parseCsv(text: string): string[][] {
+export function parseCsv(text: string): string[][] {
   const rows: string[][] = [];
   let row: string[] = [];
   let cell = '';
@@ -59,15 +59,56 @@ function parseCsv(text: string): string[][] {
 
 type Table = Pick<Dataset, 'columns' | 'rows'>;
 
-/** 사내 시스템의 CSV는 UTF-8이 아니라 EUC-KR(CP949)인 경우가 많다. UTF-8로 읽히지 않으면 EUC-KR로 읽는다. */
-function csvGrid(data: ArrayBuffer): Cell[][] {
+/** 사내 시스템의 글 파일(CSV 등)은 UTF-8이 아니라 EUC-KR(CP949)인 경우가 많다. UTF-8로 읽히지 않으면 EUC-KR로 읽는다. 앞의 BOM은 뗀다. */
+export function decodeText(data: ArrayBuffer | Uint8Array): string {
   let text: string;
   try {
     text = new TextDecoder('utf-8', { fatal: true }).decode(data);
   } catch {
     text = new TextDecoder('euc-kr').decode(data);
   }
-  return parseCsv(text.replace(/^﻿/, ''));
+  return text.replace(/^﻿/, '');
+}
+
+function csvGrid(data: ArrayBuffer): Cell[][] {
+  return parseCsv(decodeText(data));
+}
+
+/** 탭으로 나눈 글(TSV)을 표로 */
+export function tsvTable(text: string): Table {
+  return toTable(text.split(/\r?\n/).map((l) => l.split('\t')));
+}
+
+/** 글 칸들(첫 행이 머리글)을 표로. 빈 행은 건너뛰고, 머리글이 비거나 겹치면 이름을 붙인다 (문서 안의 표처럼 엄격하지 않은 표용) */
+export function looseTable(grid: Cell[][]): Table | null {
+  grid = grid.filter((r) => r.some((c) => String(c).trim() !== ''));
+  if (grid.length === 0) return null;
+  const seen = new Map<string, number>();
+  const columns = grid[0].map((c, i) => {
+    let name = String(c).trim() || `열${i + 1}`;
+    const n = (seen.get(name) ?? 0) + 1;
+    seen.set(name, n);
+    if (n > 1) name = `${name}_${n}`;
+    return name;
+  });
+  return { columns, rows: grid.slice(1).map((r) => columns.map((_, i) => r[i] ?? '')) };
+}
+
+/** 엑셀(xlsx)의 시트 하나를 표로 읽는다. sheet가 없으면 첫 시트. 시트 이름들도 돌려준다 */
+export async function readSheet(data: ArrayBuffer, sheet?: string): Promise<{ table: Table; sheets: string[]; sheet: string }> {
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(data);
+  const sheets = wb.worksheets.map((w) => w.name);
+  const ws = sheet ? wb.worksheets.find((w) => w.name === sheet) ?? wb.worksheets.find((w) => w.name.trim().toLowerCase() === sheet.trim().toLowerCase()) : wb.worksheets[0];
+  if (!ws) throw new Error(sheet ? `시트 "${sheet}"가 없습니다. 시트: ${sheets.join(', ')}` : '엑셀 파일에 시트가 없습니다');
+  const grid: Cell[][] = [];
+  ws.eachRow({ includeEmpty: false }, (row) => {
+    const values = row.values as ExcelJS.CellValue[];
+    grid.push(Array.from({ length: Math.max(values.length - 1, 0) }, (_, i) => cellOf(values[i + 1])));
+  });
+  const table = looseTable(grid);
+  if (!table) throw new Error(`시트 "${ws.name}"에 내용이 없습니다`);
+  return { table, sheets, sheet: ws.name };
 }
 
 async function xlsxGrid(data: ArrayBuffer): Promise<Cell[][]> {

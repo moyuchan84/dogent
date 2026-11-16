@@ -15,6 +15,9 @@ import {
   HOOK_EVENTS,
   type HookPayload,
   skillUsesOffice,
+  fileIntent,
+  skillUsesFiles,
+  type LocalFilesPort,
   describeSystem,
   docOfSkill,
   isLocalSite,
@@ -50,6 +53,8 @@ import { launchBrowser } from './launch-browser';
 import { describeHookEntries, loadHookEntries, loadHooks, saveHookEntries } from './hooks';
 import { setConfig, type ClientConfig } from './config';
 import { captureWriter } from './eval';
+import { checkAttachment, localFilesPort } from './files';
+import { defaultUploadDirs } from './upload';
 import { enabledAgents, loadAgents, mentionedAgents } from './agents';
 import { Conversation, addInstruction, contextNote, conversationFile, describeInstructions, loadInstructions, personalInstructionsFile } from './conversation';
 import { buildRunSummary, evaluatePolicy, fetchPolicy, flushOutbox, hubRisk, hubStale, loadHubCache, reportRun, systemsCoveredBy, type HubCache } from './hub';
@@ -182,11 +187,49 @@ export class Session {
     this.reloadSkills();
   }
 
-  /** 새 대화: 앞선 요청과 데이터셋을 잊는다 */
+  /** 새 대화: 앞선 요청과 데이터셋, 첨부한 파일을 잊는다 */
   newConversation(): void {
     this.conversation.clear();
     this.carry = [];
+    this.attachments.length = 0;
     this.term.print('새 대화를 시작합니다. 앞선 요청은 이제 참고하지 않습니다.');
+  }
+
+  /**
+   * 이번 대화에 첨부한 파일·폴더 (앱에 끌어다 놓기, dogent --file, "첨부 <경로>").
+   * 에이전트는 첨부한 파일을 어느 폴더에 있든 읽고(read_file) 올릴(upload_file) 수 있고, 첨부한 폴더 안을 읽을 수 있다.
+   * 배열을 바꿔 가며 쓴다: 파일 올리기 검사(openLink의 upload.files)가 같은 배열을 본다.
+   */
+  private readonly attachments: { path: string; dir: boolean }[] = [];
+
+  /** 파일·폴더를 첨부한다. 받은 것만 남기고, 못 받은 이유는 알린다 */
+  async attach(paths: string[]): Promise<void> {
+    for (const raw of paths) {
+      if (!raw.trim()) continue;
+      const r = await checkAttachment(raw);
+      if ('error' in r) {
+        this.term.print(`첨부하지 못했습니다: ${r.error}`);
+        continue;
+      }
+      if (this.attachments.some((a) => a.path.toLowerCase() === r.path.toLowerCase())) continue;
+      this.attachments.push(r);
+      this.term.print(`첨부: ${r.path}${r.dir ? ' (폴더)' : ''}`);
+    }
+  }
+
+  /** 첨부한 파일·폴더 (화면에 보일 때) */
+  attachmentList(): { path: string; dir: boolean }[] {
+    return this.attachments.map((a) => ({ ...a }));
+  }
+
+  /** 첨부를 모두 뗀다 */
+  clearAttachments(): void {
+    this.attachments.length = 0;
+  }
+
+  /** PC 파일을 읽는 통로: 읽을 수 있는 폴더(uploadDirs)와 첨부한 파일·폴더 */
+  private filesPort(): LocalFilesPort {
+    return localFilesPort({ dirs: () => this.cfg.uploadDirs ?? defaultUploadDirs(this.cfg.outputDir), attached: () => this.attachments });
   }
 
   /** 모델에 함께 보여 줄 지침과 앞선 대화 */
@@ -613,7 +656,16 @@ export class Session {
 
   /** 설정의 브라우저 연결 방식에 맞는 연결을 연다. 직접 제어는 브라우저를 아직 띄우지 않는다 (처음 쓸 때 띄운다). */
   private async openLink(): Promise<Bridge> {
-    const upload = this.cfg.uploadDirs ? { dirs: this.cfg.uploadDirs, maxBytes: this.cfg.uploadMaxBytes } : undefined;
+    // 첨부한 파일과 폴더도 올릴 수 있다. 첨부는 대화 중에 바뀌므로 검사할 때마다 다시 읽는다.
+    const attachments = this.attachments;
+    const baseDirs = this.cfg.uploadDirs ?? defaultUploadDirs(this.cfg.outputDir);
+    const upload = {
+      get dirs() {
+        return [...baseDirs, ...attachments.filter((a) => a.dir).map((a) => a.path)];
+      },
+      maxBytes: this.cfg.uploadMaxBytes,
+      files: () => attachments.filter((a) => !a.dir).map((a) => a.path),
+    };
     if (!this.direct) return openBridge({ port: this.cfg.bridgePort, upload });
     return openDirect({
       home: this.cfg.home,
@@ -732,6 +784,13 @@ export class Session {
   /** 스킬의 입력값을 채운다. 비어 있는 필수 입력은 묻는다. */
   private async fillInputs(skill: Skill, given: Record<string, string>): Promise<{ values: SkillInputs; files: Record<string, string> } | null> {
     const form = { ...given };
+    // 파일 입력이 비었고 첨부한 엑셀·CSV가 하나뿐이면 그 파일을 쓴다
+    const sheets = this.attachments.filter((a) => !a.dir && /\.(xlsx|xlsm|xls|csv)$/i.test(a.path));
+    for (const i of skill.inputs) {
+      if (i.type !== 'file' || (form[i.name] ?? '') !== '' || sheets.length !== 1) continue;
+      form[i.name] = sheets[0].path;
+      this.term.print(`  ${i.label ?? i.name}: 첨부한 파일 ${basename(sheets[0].path)}`);
+    }
     for (const i of skill.inputs) {
       if (form[i.name] !== undefined && form[i.name] !== '') continue;
       if (!i.required || i.default !== undefined) continue;
@@ -770,6 +829,10 @@ export class Session {
       excel?: boolean;
       /** 브라우저 없이 연결된 MCP 도구만으로 한다 (자유 요청) */
       toolsOnly?: boolean;
+      /** 브라우저 없이 PC 파일 도구로만 한다 (자유 요청) */
+      filesOnly?: boolean;
+      /** PC 파일 도구(list_files·read_file)를 붙인다 (자유 요청) */
+      files?: boolean;
       /** 요청이 말한 다른 사이트들의 주소(host). 자유 요청의 허용 도메인에 더해 open_tab으로 오갈 수 있게 한다 */
       extraHosts?: string[];
       /** 지침과 앞선 대화 (자유 요청) */
@@ -793,7 +856,7 @@ export class Session {
     const signal = this.abort!.signal;
     const isFree = skill.id === FREE_SKILL_ID;
     const excelOnly = isFree && !!opts.excelOnly;
-    const noWeb = excelOnly || (isFree && !!opts.toolsOnly);
+    const noWeb = excelOnly || (isFree && (!!opts.toolsOnly || !!opts.filesOnly));
     // Hub의 중지 스위치·정책 만료를 먼저 본다 (자유 요청은 요청이 말한 사이트의 시스템으로 본다)
     const blocked = await this.hubGate(skill, isFree ? (opts.extraHosts ?? []) : skill.domains);
     if (blocked) {
@@ -818,11 +881,13 @@ export class Session {
       const table = await this.until(this.readInputFile(path));
       datasets.set(spec.dataset, table.columns, table.rows);
     }
-    const target = bridge ? await this.until(bridge.browser.target()) : { url: '', title: excelOnly ? '엑셀' : 'MCP 도구', allowed: true };
+    const target = bridge ? await this.until(bridge.browser.target()) : { url: '', title: excelOnly ? '엑셀' : opts.filesOnly ? 'PC 파일' : 'MCP 도구', allowed: true };
     if (!target.allowed) {
       throw new Error(`지금 브라우저 탭(${target.url})은 조작할 사이트 목록에 없습니다. 업무 화면 탭을 앞에 두거나 확장 설정 → 조작할 사이트에서 더하세요`);
     }
-    const active = isFree ? buildFreeSkill(bridge ? target.url : null, this.flags.allowWrite, opts.systemInfo, !!office, !!tools, opts.extraHosts, true, opts.context) : skill;
+    // PC 파일 도구는 자유 요청이 파일을 말하거나, 스킬이 read_file·list_files를 쓸 때 붙인다
+    const localFiles = (isFree ? opts.files || opts.filesOnly : skillUsesFiles(skill)) ? this.filesPort() : undefined;
+    const active = isFree ? buildFreeSkill(bridge ? target.url : null, this.flags.allowWrite, opts.systemInfo, !!office, !!tools, opts.extraHosts, true, opts.context, !!localFiles) : skill;
     const scale = Math.max(1, this.cfg.llm.timeoutScale || 1);
     const scaled = { ...active, limits: { ...active.limits, timeout_sec: active.limits.timeout_sec * scale } };
     const events: RunEvent[] = [];
@@ -839,6 +904,7 @@ export class Session {
         llm: this.llm(),
         browser,
         office: office ? stoppable(office, signal) : undefined,
+        localFiles,
         tools: tools ? stoppable(tools, signal) : undefined,
         // 스킬에 딸린 스크립트 (처음 실행할 때와 내용이 바뀌었을 때 confirm으로 승인받는다)
         scripts: localScripts(this.cfg.home),
@@ -1105,7 +1171,10 @@ export class Session {
       const base = shortlistSkills(this.skills, (e) => docOfSkill(e.skill), text, { url: await this.currentUrl() });
       // 요청에 나온 시스템을 다루는 스킬도 후보에 넣는다 (그 시스템 화면이 아직 열려 있지 않아도)
       const extra = this.skills.filter((e) => !base.includes(e) && named.some((m) => skillCoversUrl(docOfSkill(e.skill), m.url)));
-      plan = await planRequest(text, [...base, ...extra].map((e) => e.skill), this.llm(), this.abort?.signal, systemInfo, context);
+      // 첨부한 파일이 있으면 요청 해석에도 알려 준다 (파일 입력이 있는 스킬이 그 파일을 쓰도록)
+      const files = this.attachments.filter((a) => !a.dir).map((a) => a.path);
+      const asked = files.length ? `${text}\n(첨부한 파일: ${files.join(', ')})` : text;
+      plan = await planRequest(asked, [...base, ...extra].map((e) => e.skill), this.llm(), this.abort?.signal, systemInfo, context);
     } catch (e) {
       if (this.abort?.signal.aborted) throw e;
       this.term.print(`요청을 해석하지 못했습니다: ${(e as Error).message}`);
@@ -1134,15 +1203,22 @@ export class Session {
     // 이번 문장에 단서가 없으면 직전 요청의 통로를 잇는다 (엑셀을 연 직후 "거기 있는 거 봐줘"가 브라우저로 가지 않게)
     const intent = viaServer || !office ? said : carryIntent(said, this.conversation.lastUses());
     if (intent !== said) this.term.print('앞선 요청이 오피스 문서였으므로 이어서 오피스 도구로 합니다 (브라우저가 필요하면 "브라우저에서"라고 말하세요).');
+    // PC 파일(첨부, 경로, 파일·폴더라는 말)을 다루는 요청이면 파일 도구를 붙인다
+    const filesWanted = this.attachments.length > 0 || fileIntent(text);
     if (intent.excel && !office) {
-      this.term.print('엑셀·워드·파워포인트 문서가 필요한 요청 같지만 오피스 도구(dogent-office.exe)가 없습니다. pnpm office:build로 만들거나 dogent config officeExe <경로>로 알려 주세요');
-      if (!intent.web) return false;
+      if (filesWanted) this.term.print('오피스 도구가 없어 문서 파일을 직접 읽습니다 (문서 보안이 걸린 파일은 읽지 못합니다).');
+      else {
+        this.term.print('엑셀·워드·파워포인트 문서가 필요한 요청 같지만 오피스 도구(dogent-office.exe)가 없습니다. pnpm office:build로 만들거나 dogent config officeExe <경로>로 알려 주세요');
+        if (!intent.web) return false;
+      }
     }
     const excelOnly = intent.excel && !intent.web && !!office;
     const withExcel = intent.excel && !!office;
     // 요청이 MCP 서버(이름이나 keywords)를 말하고 엑셀·화면은 필요 없으면 브라우저 연결을 기다리지 않는다
     const toolsOnly = !excelOnly && !intent.excel && !intent.web && this.mentioned(text).length > 0;
-    const noWeb = excelOnly || toolsOnly;
+    // 화면 일이 없고 파일만 다루면 브라우저 연결을 기다리지 않는다
+    const filesOnly = filesWanted && !intent.web && !excelOnly && !toolsOnly;
+    const noWeb = excelOnly || toolsOnly || filesOnly;
     if (withExcel) {
       this.term.print(docs.length ? `열려 있는 오피스 문서 ${docs.length}개: ${docs.map((d) => d.name).join(', ')}` : '사용자의 Excel·Word·PowerPoint에 열려 있는 문서가 없습니다 (파일 경로를 요청에 쓰면 그 파일을 엽니다)');
     }
@@ -1151,8 +1227,12 @@ export class Session {
         ? '맞는 스킬이 없어 오피스 도구(엑셀·워드·파워포인트)로 자유 요청을 합니다 (브라우저는 쓰지 않습니다).'
         : toolsOnly
           ? '맞는 스킬이 없어 연결된 MCP 도구로 자유 요청을 합니다 (브라우저는 쓰지 않습니다).'
+          : filesOnly
+            ? '맞는 스킬이 없어 PC 파일 도구로 자유 요청을 합니다 (브라우저는 쓰지 않습니다).'
           : withExcel
           ? '맞는 스킬이 없어 지금 브라우저 화면과 오피스 도구로 자유 요청을 합니다.'
+          : filesWanted
+            ? '맞는 스킬이 없어 지금 브라우저 화면과 PC 파일로 자유 요청을 합니다.'
           : '맞는 스킬이 없어 지금 브라우저 화면에서 자유 요청으로 합니다.',
     );
     if (!this.flags.yes && !(await this.term.confirm('진행할까요?', true))) return false;
@@ -1175,7 +1255,7 @@ export class Session {
       }
     };
     const extraHosts = [...named.map((m) => hostOf(m.url)), ...(asked ? [hostOf(asked)] : [])].filter(Boolean);
-    const run = await this.execute(free, { request: text }, {}, { systemInfo, excelOnly, toolsOnly, excel: withExcel, extraHosts, context, request: text });
+    const run = await this.execute(free, { request: text }, {}, { systemInfo, excelOnly, toolsOnly, filesOnly, files: filesWanted, excel: withExcel, extraHosts, context, request: text });
     if (run.result.status !== 'done') return false;
     // 화면 없이 도구만 다룬 실행은 화면 절차가 없어 스킬로 저장하지 않는다.
     if (noWeb) return true;
@@ -1295,8 +1375,25 @@ export class Session {
   }
 
   /** 한 줄 입력을 처리한다 (대화 모드와 화면의 입력 칸). 명령이 아니면 요청으로 본다. */
-  async handle(text: string): Promise<void> {
-    return this.job(() => this.handleNow(text), undefined);
+  /** files는 이 요청과 함께 첨부한 파일·폴더 (앱에 끌어다 놓은 것). 대화가 끝날 때까지 첨부로 남는다 */
+  async handle(text: string, files: string[] = []): Promise<void> {
+    return this.job(async () => {
+      if (files.length) await this.attach(files);
+      return this.handleNow(text);
+    }, undefined);
+  }
+
+  /** 첨부 · 첨부 <경로> · 첨부 지우기 */
+  private async attachCommand(arg: string): Promise<void> {
+    if (/^(지우기|clear|비우기|떼기)$/.test(arg)) {
+      this.clearAttachments();
+      this.term.print('첨부를 모두 뗐습니다');
+      return;
+    }
+    if (arg) await this.attach([arg]);
+    const list = this.attachments;
+    this.term.print(list.length ? `첨부한 것 ${list.length}개:\n${list.map((a) => `  ${a.path}${a.dir ? ' (폴더)' : ''}`).join('\n')}` : '첨부한 파일이 없습니다. 첨부 <전체 경로> 로 더합니다');
+    this.term.print(`그 밖에 읽을 수 있는 폴더: ${(this.cfg.uploadDirs ?? defaultUploadDirs(this.cfg.outputDir)).join(', ')}`);
   }
 
   private async handleNow(text: string): Promise<void> {
@@ -1305,6 +1402,7 @@ export class Session {
     else if (/^\/\S/.test(text) && (await this.slash(text))) return;
     else if (hookRequestKind(text)) await this.hooksCommand(text, true);
     else if (text === 'new' || text === '새 대화' || text === '/new' || text === '/clear') this.newConversation();
+    else if (/^\/?(첨부|attach)(\s|$)/.test(text)) await this.attachCommand(text.replace(/^\/?(첨부|attach)\s*/, '').trim());
     else if (text === 'memory' || text === '기억' || text === '/memory') this.memory();
     else if (MEMORY_ADD.test(text)) this.memory(text.replace(MEMORY_ADD, ''));
     else if (text === 'skills') this.listSkills();

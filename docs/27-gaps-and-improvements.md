@@ -76,7 +76,7 @@
 | # | 내용 | 필요해지는 때 | 심각도 |
 |---|---|---|---|
 | F1 | 화면 그림(screenshot) 보조 판단: 구현됐으나 **사내 모델이 이미지 입력을 받는지 모름**. 보이는 영역만 찍히고 탭을 앞으로 가져옴 | canvas 그리드, 그림 버튼 | 확인 필요 |
-| F2 | 파일 올리기: 구현됐으나 **실제 업로드 화면 구조 미확인**(숨은 input, shadow DOM, 드롭존). Dogent 클라이언트에서만 동작. **앱에 끌어다 놓기(P1-3)는 아직 없음** | 신청서 첨부, 엑셀 업로드 화면 | 확인 필요 |
+| F2 | 파일 올리기: 구현됐으나 **실제 업로드 화면 구조 미확인**(숨은 input, shadow DOM, 드롭존). Dogent 클라이언트에서만 동작. 앱에 끌어다 놓기(P1-3)는 있음: 첨부한 파일은 올릴 수 있는 폴더 밖이어도 올릴 수 있다 ([29](29-file-tools-and-attachments.md)) | 신청서 첨부, 엑셀 업로드 화면 | 확인 필요 |
 | F3 | 구형 엑셀(xls)·HTML 형식 xls 직접 읽기 (지금은 오피스 도구로 Excel에서 열어 읽음). **폼 전송(POST)·새 탭(noopener)·늦게 뜨는 팝업에서 받는 파일, "내려받으시겠습니까?" 확인 창은 해결**: 앱·터미널이 브라우저가 저장한 파일을 직접 읽음. 외부 MCP 클라이언트는 POST 파일을 다시 받지 못한다고 안내 | 사내 시스템이 xls를 내려줄 때 | 중간 |
 | F4 | EDM 스킬 (편집 버튼 → `excel_attach`) | 실제 EDM 화면을 본 뒤 | 중간 |
 | F5 | Word·PowerPoint: 문서 보안이 저장도 가로채는지, EDM 편집 버튼의 여는 방식 미확인 | 사내 문서 업무 | 중간 |
@@ -91,7 +91,7 @@
 |---|---|---|
 | Q1 | **시험이 모두 모의 환경.** 사내 Gemma의 JSON 출력·다단계 판단·말로 고치기 품질을 모름 | 사내 Gemma로 같은 시나리오 20회 반복 (`pnpm e2e:ollama` 방식), 실패 시 동작 기록 수집. 차례 단위 정답률은 `dogent eval tools --modes plain,json,schema`로 재고, 실제 실행에서 케이스를 모은다 (`dogent eval capture on`, [28](28-tool-eval-and-constrained-decoding.md)) |
 | Q2 | **[19](19-project-status-and-checklist.html)가 11-03 기준.** 시험 수(589→652), 훅·계획·`/명령`·카탈로그가 "미구현"/"낮음"으로 남아 있음 | 이 문서를 근거로 19의 8장·10장·부록 갱신 |
-| Q3 | [17-claude-parity.md](17-claude-parity.md)의 P1-3(끌어다 놓기), P2-1(대화 목록), P2-3(`delegate`)이 남아 있음 | 우선순위 재평가 (사내 확인 후) |
+| Q3 | [17-claude-parity.md](17-claude-parity.md)의 P2-1(대화 목록), P2-3(`delegate`)이 남아 있음 | 우선순위 재평가 (사내 확인 후) |
 | Q7 | e2e를 돌리려면 **`WXT_SAMPLE_SKILLS=true`로 확장·클라이언트·앱을 빌드**해야 함 (모의 사이트용 예시 스킬). 안 하면 스킬이 없다며 무더기로 실패 | 각 e2e 파일 머리말의 빌드 명령을 따름. 클라이언트 e2e는 브라우저 자동 실행을 끔(`DOGENT_NO_LAUNCH=1`) |
 | Q4 | 팀 저장소 CI가 사내 self-hosted 러너 전제 | 러너 없으면 PR 전에 `skill-check.mjs`, `mcp-index.mjs --check`를 손으로 |
 | Q5 | `keys\dogent-extension.pem`(확장 ID 고정 키)이 저장소에서 제외 | 사내 안전한 곳에 백업 (분실하면 확장 ID가 바뀜) |

@@ -167,6 +167,9 @@ export function lintSkill(source: string, policySource?: string, files?: Record<
       if (tool === 'extract_table' || tool === 'download_table' || tool === 'excel_read') datasets.add(args.dataset);
       if ((tool === 'word_read' || tool === 'ppt_read') && args.dataset) datasets.add(args.dataset);
       if (tool === 'call_tool' && args.dataset) datasets.add(args.dataset);
+      if (tool === 'read_file' && args.dataset) datasets.add(args.dataset);
+      if (tool === 'write_file' && args.dataset) needDataset(args.dataset, n);
+      if (tool === 'read_file' && args.name) outputs.add(args.name);
       if (tool === 'transform') datasets.add(args.target);
       if (tool === 'summarize') {
         if (args.source !== 'page') needDataset(args.source, n);

@@ -1,0 +1,359 @@
+[
+ {
+  "id": "file-attached-csv-1",
+  "tags": [
+   "files",
+   "free"
+  ],
+  "reviewed": true,
+  "source": "seed",
+  "turn": {
+   "skill": {
+    "id": "free",
+    "name": "자유 요청",
+    "version": "0.1.0",
+    "domains": [
+     "(브라우저 없음)"
+    ],
+    "scripts": []
+   },
+   "body": "## 단계\n\n1. PC 파일 도구(list_files·read_file·write_file)로 다음 요청을 수행한다: 첨부한 조정 파일 내용을 CSV로 정리해서 저장해줘\n   - 브라우저 화면은 없다. PC 파일 도구(list_files·read_file·write_file)로 필요한 값을 읽고 가공하고 쓴다. 이미 되어 있는 일은 다시 하지 않는다.\n   - 요청한 일을 모두 했으면 finish로 끝낸다. summary에는 무엇을 했는지와, 요청이 물어본 내용에 대해 화면에 보이는 답을 적는다.\n   - summary는 마크다운으로 읽기 좋게 쓴다. 첫 줄에 답(결론) 한 문장, 이어서 근거와 핵심을 \"- \" 항목으로 쓴다. 여러 행의 값을 보여 줄 때는 데이터셋에 담은 표를 {table.이름}으로 넣는다.\n   - 요청이 HTML·웹 페이지·인터랙티브·대시보드로 정리해 달라고 하면, 필요한 표를 데이터셋에 담고(집계는 transform) write_html로 보고서 파일을 만든 뒤 finish로 끝낸다. 비교할 숫자가 있으면 charts로 차트를 넣는다.\n   - 화면에 이미 답이 보이는 질문이면 아무것도 조작하지 않고 finish로 답한다.\n\n## 예외\n\n- 요청이 모호해서 무엇을 할지 정할 수 없으면 ask_user로 묻는다.\n- 요청한 일을 PC 파일 도구(list_files·read_file·write_file)로 할 수 없으면 abort로 이유를 알린다.\n- 요청에 없는 저장, 삭제, 상신은 하지 않는다.\n\n## 결과\n\n한 일과, 요청이 물어본 내용에 대한 답.",
+   "inputs": {
+    "request": "첨부한 조정 파일 내용을 CSV로 정리해서 저장해줘"
+   },
+   "history": [],
+   "datasets": "(없음)",
+   "tools": [],
+   "skills": [],
+   "snapshot": {
+    "url": "",
+    "title": "(브라우저 없음)",
+    "hasPassword": false,
+    "items": []
+   },
+   "changes": null,
+   "step": {
+    "n": 1,
+    "total": 1,
+    "text": "PC 파일 도구(list_files·read_file·write_file)로 다음 요청을 수행한다: 첨부한 조정 파일 내용을 CSV로 정리해서 저장해줘\n   - 브라우저 화면은 없다. PC 파일 도구(list_files·read_file·write_file)로 필요한 값을 읽고 가공하고 쓴다. 이미 되어 있는 일은 다시 하지 않는다.\n   - 요청한 일을 모두 했으면 finish로 끝낸다. summary에는 무엇을 했는지와, 요청이 물어본 내용에 대해 화면에 보이는 답을 적는다.\n   - summary는 마크다운으로 읽기 좋게 쓴다. 첫 줄에 답(결론) 한 문장, 이어서 근거와 핵심을 \"- \" 항목으로 쓴다. 여러 행의 값을 보여 줄 때는 데이터셋에 담은 표를 {table.이름}으로 넣는다.\n   - 요청이 HTML·웹 페이지·인터랙티브·대시보드로 정리해 달라고 하면, 필요한 표를 데이터셋에 담고(집계는 transform) write_html로 보고서 파일을 만든 뒤 finish로 끝낸다. 비교할 숫자가 있으면 charts로 차트를 넣는다.\n   - 화면에 이미 답이 보이는 질문이면 아무것도 조작하지 않고 finish로 답한다.",
+    "unmet": null
+   },
+   "vision": false,
+   "files": {
+    "roots": [
+     "C:\\Users\\me\\Downloads",
+     "C:\\Users\\me\\Documents"
+    ],
+    "attached": [
+     "D:\\work\\조정.csv"
+    ]
+   }
+  },
+  "expect": {
+   "tool": "read_file",
+   "args": {
+    "path": {
+     "$regex": "조정\\.csv$"
+    },
+    "dataset": {
+     "$any": true
+    }
+   }
+  },
+  "note": "첨부한 파일을 표로 읽는다 (경로를 지어내지 않는다)"
+ },
+ {
+  "id": "file-attached-csv-2",
+  "tags": [
+   "files",
+   "free"
+  ],
+  "reviewed": true,
+  "source": "seed",
+  "turn": {
+   "skill": {
+    "id": "free",
+    "name": "자유 요청",
+    "version": "0.1.0",
+    "domains": [
+     "(브라우저 없음)"
+    ],
+    "scripts": []
+   },
+   "body": "## 단계\n\n1. PC 파일 도구(list_files·read_file·write_file)로 다음 요청을 수행한다: 첨부한 조정 파일 내용을 CSV로 정리해서 저장해줘\n   - 브라우저 화면은 없다. PC 파일 도구(list_files·read_file·write_file)로 필요한 값을 읽고 가공하고 쓴다. 이미 되어 있는 일은 다시 하지 않는다.\n   - 요청한 일을 모두 했으면 finish로 끝낸다. summary에는 무엇을 했는지와, 요청이 물어본 내용에 대해 화면에 보이는 답을 적는다.\n   - summary는 마크다운으로 읽기 좋게 쓴다. 첫 줄에 답(결론) 한 문장, 이어서 근거와 핵심을 \"- \" 항목으로 쓴다. 여러 행의 값을 보여 줄 때는 데이터셋에 담은 표를 {table.이름}으로 넣는다.\n   - 요청이 HTML·웹 페이지·인터랙티브·대시보드로 정리해 달라고 하면, 필요한 표를 데이터셋에 담고(집계는 transform) write_html로 보고서 파일을 만든 뒤 finish로 끝낸다. 비교할 숫자가 있으면 charts로 차트를 넣는다.\n   - 화면에 이미 답이 보이는 질문이면 아무것도 조작하지 않고 finish로 답한다.\n\n## 예외\n\n- 요청이 모호해서 무엇을 할지 정할 수 없으면 ask_user로 묻는다.\n- 요청한 일을 PC 파일 도구(list_files·read_file·write_file)로 할 수 없으면 abort로 이유를 알린다.\n- 요청에 없는 저장, 삭제, 상신은 하지 않는다.\n\n## 결과\n\n한 일과, 요청이 물어본 내용에 대한 답.",
+   "inputs": {
+    "request": "첨부한 조정 파일 내용을 CSV로 정리해서 저장해줘"
+   },
+   "history": [
+    {
+     "n": 1,
+     "step": 1,
+     "tool": "read_file",
+     "args": {
+      "path": "D:\\work\\조정.csv",
+      "dataset": "adj",
+      "table": 1
+     },
+     "thought": "",
+     "ok": true,
+     "result": "D:\\work\\조정.csv (csv)\n표 1개: 1) 2행 [\"Lot ID\",\"공정\",\"조정수량\"]\n1번째 표를 \"adj\"에 담음: 2행, 컬럼 [\"Lot ID\",\"공정\",\"조정수량\"]",
+     "by": "model"
+    }
+   ],
+   "datasets": "- adj: 2행, 컬럼 [\"Lot ID\",\"공정\",\"조정수량\"]\n    [\"P7-00001\",\"PHOTO\",5]\n    [\"P7-00002\",\"ETCH\",-3]",
+   "tools": [],
+   "skills": [],
+   "snapshot": {
+    "url": "",
+    "title": "(브라우저 없음)",
+    "hasPassword": false,
+    "items": []
+   },
+   "changes": [],
+   "step": {
+    "n": 1,
+    "total": 1,
+    "text": "PC 파일 도구(list_files·read_file·write_file)로 다음 요청을 수행한다: 첨부한 조정 파일 내용을 CSV로 정리해서 저장해줘\n   - 브라우저 화면은 없다. PC 파일 도구(list_files·read_file·write_file)로 필요한 값을 읽고 가공하고 쓴다. 이미 되어 있는 일은 다시 하지 않는다.\n   - 요청한 일을 모두 했으면 finish로 끝낸다. summary에는 무엇을 했는지와, 요청이 물어본 내용에 대해 화면에 보이는 답을 적는다.\n   - summary는 마크다운으로 읽기 좋게 쓴다. 첫 줄에 답(결론) 한 문장, 이어서 근거와 핵심을 \"- \" 항목으로 쓴다. 여러 행의 값을 보여 줄 때는 데이터셋에 담은 표를 {table.이름}으로 넣는다.\n   - 요청이 HTML·웹 페이지·인터랙티브·대시보드로 정리해 달라고 하면, 필요한 표를 데이터셋에 담고(집계는 transform) write_html로 보고서 파일을 만든 뒤 finish로 끝낸다. 비교할 숫자가 있으면 charts로 차트를 넣는다.\n   - 화면에 이미 답이 보이는 질문이면 아무것도 조작하지 않고 finish로 답한다.",
+    "unmet": null
+   },
+   "vision": false,
+   "files": {
+    "roots": [
+     "C:\\Users\\me\\Downloads",
+     "C:\\Users\\me\\Documents"
+    ],
+    "attached": [
+     "D:\\work\\조정.csv"
+    ]
+   }
+  },
+  "expect": {
+   "tool": "write_file",
+   "args": {
+    "filename": {
+     "$regex": "\\.csv$"
+    },
+    "dataset": "adj"
+   }
+  },
+  "note": "읽은 데이터셋을 CSV 파일로 쓴다"
+ },
+ {
+  "id": "file-attached-csv-3",
+  "tags": [
+   "files",
+   "free"
+  ],
+  "reviewed": true,
+  "source": "seed",
+  "turn": {
+   "skill": {
+    "id": "free",
+    "name": "자유 요청",
+    "version": "0.1.0",
+    "domains": [
+     "(브라우저 없음)"
+    ],
+    "scripts": []
+   },
+   "body": "## 단계\n\n1. PC 파일 도구(list_files·read_file·write_file)로 다음 요청을 수행한다: 첨부한 조정 파일 내용을 CSV로 정리해서 저장해줘\n   - 브라우저 화면은 없다. PC 파일 도구(list_files·read_file·write_file)로 필요한 값을 읽고 가공하고 쓴다. 이미 되어 있는 일은 다시 하지 않는다.\n   - 요청한 일을 모두 했으면 finish로 끝낸다. summary에는 무엇을 했는지와, 요청이 물어본 내용에 대해 화면에 보이는 답을 적는다.\n   - summary는 마크다운으로 읽기 좋게 쓴다. 첫 줄에 답(결론) 한 문장, 이어서 근거와 핵심을 \"- \" 항목으로 쓴다. 여러 행의 값을 보여 줄 때는 데이터셋에 담은 표를 {table.이름}으로 넣는다.\n   - 요청이 HTML·웹 페이지·인터랙티브·대시보드로 정리해 달라고 하면, 필요한 표를 데이터셋에 담고(집계는 transform) write_html로 보고서 파일을 만든 뒤 finish로 끝낸다. 비교할 숫자가 있으면 charts로 차트를 넣는다.\n   - 화면에 이미 답이 보이는 질문이면 아무것도 조작하지 않고 finish로 답한다.\n\n## 예외\n\n- 요청이 모호해서 무엇을 할지 정할 수 없으면 ask_user로 묻는다.\n- 요청한 일을 PC 파일 도구(list_files·read_file·write_file)로 할 수 없으면 abort로 이유를 알린다.\n- 요청에 없는 저장, 삭제, 상신은 하지 않는다.\n\n## 결과\n\n한 일과, 요청이 물어본 내용에 대한 답.",
+   "inputs": {
+    "request": "첨부한 조정 파일 내용을 CSV로 정리해서 저장해줘"
+   },
+   "history": [
+    {
+     "n": 1,
+     "step": 1,
+     "tool": "read_file",
+     "args": {
+      "path": "D:\\work\\조정.csv",
+      "dataset": "adj",
+      "table": 1
+     },
+     "thought": "",
+     "ok": true,
+     "result": "D:\\work\\조정.csv (csv)\n표 1개: 1) 2행 [\"Lot ID\",\"공정\",\"조정수량\"]\n1번째 표를 \"adj\"에 담음: 2행, 컬럼 [\"Lot ID\",\"공정\",\"조정수량\"]",
+     "by": "model"
+    },
+    {
+     "n": 2,
+     "step": 1,
+     "tool": "write_file",
+     "args": {
+      "filename": "조정_정리.csv",
+      "dataset": "adj"
+     },
+     "thought": "",
+     "ok": true,
+     "result": "조정_정리.csv 저장 (2행)",
+     "by": "model"
+    }
+   ],
+   "datasets": "- adj: 2행, 컬럼 [\"Lot ID\",\"공정\",\"조정수량\"]\n    [\"P7-00001\",\"PHOTO\",5]\n    [\"P7-00002\",\"ETCH\",-3]",
+   "tools": [],
+   "skills": [],
+   "snapshot": {
+    "url": "",
+    "title": "(브라우저 없음)",
+    "hasPassword": false,
+    "items": []
+   },
+   "changes": [],
+   "step": {
+    "n": 1,
+    "total": 1,
+    "text": "PC 파일 도구(list_files·read_file·write_file)로 다음 요청을 수행한다: 첨부한 조정 파일 내용을 CSV로 정리해서 저장해줘\n   - 브라우저 화면은 없다. PC 파일 도구(list_files·read_file·write_file)로 필요한 값을 읽고 가공하고 쓴다. 이미 되어 있는 일은 다시 하지 않는다.\n   - 요청한 일을 모두 했으면 finish로 끝낸다. summary에는 무엇을 했는지와, 요청이 물어본 내용에 대해 화면에 보이는 답을 적는다.\n   - summary는 마크다운으로 읽기 좋게 쓴다. 첫 줄에 답(결론) 한 문장, 이어서 근거와 핵심을 \"- \" 항목으로 쓴다. 여러 행의 값을 보여 줄 때는 데이터셋에 담은 표를 {table.이름}으로 넣는다.\n   - 요청이 HTML·웹 페이지·인터랙티브·대시보드로 정리해 달라고 하면, 필요한 표를 데이터셋에 담고(집계는 transform) write_html로 보고서 파일을 만든 뒤 finish로 끝낸다. 비교할 숫자가 있으면 charts로 차트를 넣는다.\n   - 화면에 이미 답이 보이는 질문이면 아무것도 조작하지 않고 finish로 답한다.",
+    "unmet": null
+   },
+   "vision": false,
+   "files": {
+    "roots": [
+     "C:\\Users\\me\\Downloads",
+     "C:\\Users\\me\\Documents"
+    ],
+    "attached": [
+     "D:\\work\\조정.csv"
+    ]
+   }
+  },
+  "expect": {
+   "tool": "finish",
+   "args": {}
+  },
+  "note": "다 했으면 끝낸다"
+ },
+ {
+  "id": "file-find-downloads-1",
+  "tags": [
+   "files",
+   "free"
+  ],
+  "reviewed": true,
+  "source": "seed",
+  "turn": {
+   "skill": {
+    "id": "free",
+    "name": "자유 요청",
+    "version": "0.1.0",
+    "domains": [
+     "(브라우저 없음)"
+    ],
+    "scripts": []
+   },
+   "body": "## 단계\n\n1. PC 파일 도구(list_files·read_file·write_file)로 다음 요청을 수행한다: 내려받기 폴더에서 재공 엑셀 파일 찾아서 몇 행인지 알려줘\n   - 브라우저 화면은 없다. PC 파일 도구(list_files·read_file·write_file)로 필요한 값을 읽고 가공하고 쓴다. 이미 되어 있는 일은 다시 하지 않는다.\n   - 요청한 일을 모두 했으면 finish로 끝낸다. summary에는 무엇을 했는지와, 요청이 물어본 내용에 대해 화면에 보이는 답을 적는다.\n   - summary는 마크다운으로 읽기 좋게 쓴다. 첫 줄에 답(결론) 한 문장, 이어서 근거와 핵심을 \"- \" 항목으로 쓴다. 여러 행의 값을 보여 줄 때는 데이터셋에 담은 표를 {table.이름}으로 넣는다.\n   - 요청이 HTML·웹 페이지·인터랙티브·대시보드로 정리해 달라고 하면, 필요한 표를 데이터셋에 담고(집계는 transform) write_html로 보고서 파일을 만든 뒤 finish로 끝낸다. 비교할 숫자가 있으면 charts로 차트를 넣는다.\n   - 화면에 이미 답이 보이는 질문이면 아무것도 조작하지 않고 finish로 답한다.\n\n## 예외\n\n- 요청이 모호해서 무엇을 할지 정할 수 없으면 ask_user로 묻는다.\n- 요청한 일을 PC 파일 도구(list_files·read_file·write_file)로 할 수 없으면 abort로 이유를 알린다.\n- 요청에 없는 저장, 삭제, 상신은 하지 않는다.\n\n## 결과\n\n한 일과, 요청이 물어본 내용에 대한 답.",
+   "inputs": {
+    "request": "내려받기 폴더에서 재공 엑셀 파일 찾아서 몇 행인지 알려줘"
+   },
+   "history": [],
+   "datasets": "(없음)",
+   "tools": [],
+   "skills": [],
+   "snapshot": {
+    "url": "",
+    "title": "(브라우저 없음)",
+    "hasPassword": false,
+    "items": []
+   },
+   "changes": null,
+   "step": {
+    "n": 1,
+    "total": 1,
+    "text": "PC 파일 도구(list_files·read_file·write_file)로 다음 요청을 수행한다: 내려받기 폴더에서 재공 엑셀 파일 찾아서 몇 행인지 알려줘\n   - 브라우저 화면은 없다. PC 파일 도구(list_files·read_file·write_file)로 필요한 값을 읽고 가공하고 쓴다. 이미 되어 있는 일은 다시 하지 않는다.\n   - 요청한 일을 모두 했으면 finish로 끝낸다. summary에는 무엇을 했는지와, 요청이 물어본 내용에 대해 화면에 보이는 답을 적는다.\n   - summary는 마크다운으로 읽기 좋게 쓴다. 첫 줄에 답(결론) 한 문장, 이어서 근거와 핵심을 \"- \" 항목으로 쓴다. 여러 행의 값을 보여 줄 때는 데이터셋에 담은 표를 {table.이름}으로 넣는다.\n   - 요청이 HTML·웹 페이지·인터랙티브·대시보드로 정리해 달라고 하면, 필요한 표를 데이터셋에 담고(집계는 transform) write_html로 보고서 파일을 만든 뒤 finish로 끝낸다. 비교할 숫자가 있으면 charts로 차트를 넣는다.\n   - 화면에 이미 답이 보이는 질문이면 아무것도 조작하지 않고 finish로 답한다.",
+    "unmet": null
+   },
+   "vision": false,
+   "files": {
+    "roots": [
+     "C:\\Users\\me\\Downloads",
+     "C:\\Users\\me\\Documents"
+    ],
+    "attached": [
+     "D:\\work\\조정.csv"
+    ]
+   }
+  },
+  "expect": {
+   "tool": "list_files",
+   "args": {
+    "dir": {
+     "$regex": "Downloads"
+    }
+   }
+  },
+  "note": "경로를 모르면 목록부터 본다"
+ },
+ {
+  "id": "file-find-downloads-2",
+  "tags": [
+   "files",
+   "free"
+  ],
+  "reviewed": true,
+  "source": "seed",
+  "turn": {
+   "skill": {
+    "id": "free",
+    "name": "자유 요청",
+    "version": "0.1.0",
+    "domains": [
+     "(브라우저 없음)"
+    ],
+    "scripts": []
+   },
+   "body": "## 단계\n\n1. PC 파일 도구(list_files·read_file·write_file)로 다음 요청을 수행한다: 내려받기 폴더에서 재공 엑셀 파일 찾아서 몇 행인지 알려줘\n   - 브라우저 화면은 없다. PC 파일 도구(list_files·read_file·write_file)로 필요한 값을 읽고 가공하고 쓴다. 이미 되어 있는 일은 다시 하지 않는다.\n   - 요청한 일을 모두 했으면 finish로 끝낸다. summary에는 무엇을 했는지와, 요청이 물어본 내용에 대해 화면에 보이는 답을 적는다.\n   - summary는 마크다운으로 읽기 좋게 쓴다. 첫 줄에 답(결론) 한 문장, 이어서 근거와 핵심을 \"- \" 항목으로 쓴다. 여러 행의 값을 보여 줄 때는 데이터셋에 담은 표를 {table.이름}으로 넣는다.\n   - 요청이 HTML·웹 페이지·인터랙티브·대시보드로 정리해 달라고 하면, 필요한 표를 데이터셋에 담고(집계는 transform) write_html로 보고서 파일을 만든 뒤 finish로 끝낸다. 비교할 숫자가 있으면 charts로 차트를 넣는다.\n   - 화면에 이미 답이 보이는 질문이면 아무것도 조작하지 않고 finish로 답한다.\n\n## 예외\n\n- 요청이 모호해서 무엇을 할지 정할 수 없으면 ask_user로 묻는다.\n- 요청한 일을 PC 파일 도구(list_files·read_file·write_file)로 할 수 없으면 abort로 이유를 알린다.\n- 요청에 없는 저장, 삭제, 상신은 하지 않는다.\n\n## 결과\n\n한 일과, 요청이 물어본 내용에 대한 답.",
+   "inputs": {
+    "request": "내려받기 폴더에서 재공 엑셀 파일 찾아서 몇 행인지 알려줘"
+   },
+   "history": [
+    {
+     "n": 1,
+     "step": 1,
+     "tool": "list_files",
+     "args": {
+      "dir": "C:\\Users\\me\\Downloads",
+      "pattern": "*재공*"
+     },
+     "thought": "",
+     "ok": true,
+     "result": "C:\\Users\\me\\Downloads (*재공*)\n재공확인_7라인.xlsx  20.0KB  2026-11-16 09:10\n회의록.docx  10.0KB  2026-11-15 09:10",
+     "by": "model"
+    }
+   ],
+   "datasets": "(없음)",
+   "tools": [],
+   "skills": [],
+   "snapshot": {
+    "url": "",
+    "title": "(브라우저 없음)",
+    "hasPassword": false,
+    "items": []
+   },
+   "changes": [],
+   "step": {
+    "n": 1,
+    "total": 1,
+    "text": "PC 파일 도구(list_files·read_file·write_file)로 다음 요청을 수행한다: 내려받기 폴더에서 재공 엑셀 파일 찾아서 몇 행인지 알려줘\n   - 브라우저 화면은 없다. PC 파일 도구(list_files·read_file·write_file)로 필요한 값을 읽고 가공하고 쓴다. 이미 되어 있는 일은 다시 하지 않는다.\n   - 요청한 일을 모두 했으면 finish로 끝낸다. summary에는 무엇을 했는지와, 요청이 물어본 내용에 대해 화면에 보이는 답을 적는다.\n   - summary는 마크다운으로 읽기 좋게 쓴다. 첫 줄에 답(결론) 한 문장, 이어서 근거와 핵심을 \"- \" 항목으로 쓴다. 여러 행의 값을 보여 줄 때는 데이터셋에 담은 표를 {table.이름}으로 넣는다.\n   - 요청이 HTML·웹 페이지·인터랙티브·대시보드로 정리해 달라고 하면, 필요한 표를 데이터셋에 담고(집계는 transform) write_html로 보고서 파일을 만든 뒤 finish로 끝낸다. 비교할 숫자가 있으면 charts로 차트를 넣는다.\n   - 화면에 이미 답이 보이는 질문이면 아무것도 조작하지 않고 finish로 답한다.",
+    "unmet": null
+   },
+   "vision": false,
+   "files": {
+    "roots": [
+     "C:\\Users\\me\\Downloads",
+     "C:\\Users\\me\\Documents"
+    ],
+    "attached": [
+     "D:\\work\\조정.csv"
+    ]
+   }
+  },
+  "expect": {
+   "tool": "read_file",
+   "args": {
+    "path": {
+     "$regex": "Downloads\\\\재공확인_7라인\\.xlsx$"
+    }
+   }
+  },
+  "note": "목록에서 찾은 파일을 전체 경로로 읽는다"
+ }
+]

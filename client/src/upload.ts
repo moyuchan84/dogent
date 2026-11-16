@@ -27,6 +27,8 @@ export interface UploadPolicy {
   dirs: string[];
   /** 올릴 수 있는 파일의 최대 크기(바이트). 확장의 절대 상한(UPLOAD_HARD_MAX_BYTES)을 넘길 수 없다 */
   maxBytes?: number;
+  /** 폴더와 상관없이 올릴 수 있는 파일: 사용자가 이번 대화에 첨부한 파일 (세션이 바꿔 가므로 부를 때마다 읽는다) */
+  files?: () => string[];
 }
 
 /** 기본으로 올릴 수 있는 폴더: 결과 저장 폴더, 내려받기, 문서, 바탕 화면 */
@@ -66,7 +68,15 @@ export async function checkUploadPath(raw: string, policy: UploadPolicy, fs: Upl
     throw new Error(`올릴 파일을 찾을 수 없습니다: ${raw}`);
   }
   let rel: string | null = null;
-  for (const dir of policy.dirs) {
+  // 사용자가 첨부한 파일은 어느 폴더에 있든 그 파일만 올릴 수 있다
+  for (const f of policy.files?.() ?? []) {
+    const rf = await fs.realpath(resolve(f)).catch(() => null);
+    if (rf && (process.platform === 'win32' ? rf.toLowerCase() === real.toLowerCase() : rf === real)) {
+      rel = basename(real);
+      break;
+    }
+  }
+  for (const dir of rel === null ? policy.dirs : []) {
     const root = await fs.realpath(resolve(dir)).catch(() => null);
     if (!root) continue;
     rel = inside(root, real);

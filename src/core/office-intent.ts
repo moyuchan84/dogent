@@ -43,6 +43,19 @@ export function officeIntent(text: string, o: { openDocs?: string[]; hasUrl?: bo
   return { excel, web, ...(word ? { word: true as const } : {}), ...(ppt ? { ppt: true as const } : {}) };
 }
 
+/** 요청이 PC의 파일·폴더를 말하는지: 드라이브 경로, 공유 경로, 파일 확장자, 파일·폴더라는 말 */
+const FILE_WORDS = /([A-Za-z]:[\\/]|\\\\[^\\\s]+\\|\.(txt|md|csv|tsv|json|log|xml|xlsx|xlsm|docx|pptx|pdf)\b|파일|폴더|바탕\s*화면|첨부)/i;
+
+/** 요청이 PC 파일 도구(list_files·read_file·write_file)를 쓸 만한지. 판정은 말 그대로이며 모델을 부르지 않는다 */
+export function fileIntent(text: string): boolean {
+  return FILE_WORDS.test(text);
+}
+
+/** 스킬 단계가 PC 파일 읽기(list_files·read_file)를 쓰는지 (그러면 실행에 파일 통로를 붙인다) */
+export function skillUsesFiles(skill: Skill): boolean {
+  return /\b(list_files|read_file)\b/.test(skill.body);
+}
+
 /**
  * 이번 문장에 단서가 하나도 없으면("거기 있는 거 봐줘", "방금 그거 합계 내줘") 직전 요청이 쓴 통로를 이어 쓴다.
  * 단서가 있으면 그 판정을 그대로 둔다. 직전이 브라우저뿐이었다면 기본값(브라우저)과 같으니 바꿀 것이 없다.

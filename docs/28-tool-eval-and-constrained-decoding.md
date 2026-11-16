@@ -41,13 +41,14 @@ Dogent의 에이전트는 차례마다 모델에게서 동작 하나(`{"thought"
 | `{"$any": true}` / `{"$absent": true}` | 값이 있기만 하면 / 없어야 |
 | `{"$el": {"name": "조회", "role": "button"}}` | ref가 가리키는 요소의 이름·역할 |
 
-### 1.3 기본 케이스 (저장소 `evals/tool-calls/`, 61개)
+### 1.3 기본 케이스 (저장소 `evals/tool-calls/`, 66개)
 
 | 파일 | 만든 방법 | 수 |
 |---|---|---|
 | `seed.json` | `EVAL_SEED=1 pnpm vitest run tests/tool-eval-seed.test.ts`. 모의 사이트에서 예시 스킬 5개와 자유 요청 1개를 모의 모델로 돌리며 모델이 정한 차례를 모았다 (`direct: false`) | 35 |
 | `seed.json`의 `*-goal` | 위 케이스의 단계 글에서 "args는 다음을 그대로 쓴다"와 인자 원문을 지운 것. 모델이 인자를 베끼지 않고 화면에서 요소를 골라야 한다 | 19 |
 | `manual.json` | 손으로 만든 자유 요청: 화면에 이미 답이 있음, 값이 없으면 묻기, 할 수 없는 일, 입력란 고르기, 전체 페이지 받기, 다음 페이지, CSV | 7 |
+| `files.json` | PC 파일 도구 (첨부한 파일 읽기·CSV로 쓰기·끝내기, 목록 보고 찾기). 같은 생성기로 만든다 ([29](29-file-tools-and-attachments.md)) | 5 |
 
 예시 스킬은 대부분 인자가 적힌 단계라 쉬운 편이다. 실제로는 `skillDirect`가 모델 없이 처리하는 단계다. **판단력을 보려면 `goal`·`free`·`manual` 태그를 따로 본다** (`--tag goal`). 기본 케이스는 클라이언트 빌드에 들어가므로 사내 PC에서 저장소 없이 바로 돌릴 수 있다.
 

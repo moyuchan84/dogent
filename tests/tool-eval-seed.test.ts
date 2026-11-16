@@ -8,8 +8,8 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, it } from 'vitest';
-import { buildFreeSkill, captureCase, DatasetStore, resolveInputs, runSkill, type EvalCase, type Skill, type SkillInputs } from '../src/core';
-import { adjustSkill, fwSkill, holdSkill, JsdomBrowser, memoryFiles, mockLlm, wipSkill } from './helpers';
+import { buildFreeSkill, captureCase, DatasetStore, resolveInputs, runSkill, type EvalCase, type LocalFilesPort, type Skill, type SkillInputs } from '../src/core';
+import { adjustSkill, fwSkill, holdSkill, JsdomBrowser, memoryFiles, mockLlm, scriptedLlm, wipSkill } from './helpers';
 
 const OUT = join(import.meta.dirname, '..', 'evals', 'tool-calls', 'seed.json');
 
@@ -125,4 +125,68 @@ describe.skipIf(!process.env.EVAL_SEED)('평가 기본 케이스 만들기', () 
     writeFileSync(OUT, `${JSON.stringify(cases, null, 1)}\n`);
     console.log(`${cases.length}개 케이스 → ${OUT}`);
   }, 120_000);
+
+  it('PC 파일 도구 케이스 (files.json): 정해 둔 답으로 돌리며 차례를 모으고 정답을 느슨하게 고친다', async () => {
+    const out = join(OUT, '..', 'files.json');
+    const DL = 'C:\\Users\\me\\Downloads';
+    const CSV = 'D:\\work\\조정.csv';
+    const port: LocalFilesPort = {
+      roots: () => [DL, 'C:\\Users\\me\\Documents'],
+      attached: () => [CSV],
+      list: async (dir) => ({
+        dir,
+        entries: [
+          { name: '재공확인_7라인.xlsx', dir: false, size: 20480, modified: '2026-11-16T09:10:00.000Z' },
+          { name: '회의록.docx', dir: false, size: 10240, modified: '2026-11-15T09:10:00.000Z' },
+        ],
+        more: 0,
+      }),
+      read: async (path) => ({ path, name: '조정.csv', format: 'csv', tables: [{ columns: ['Lot ID', '공정', '조정수량'], rows: [['P7-00001', 'PHOTO', 5], ['P7-00002', 'ETCH', -3]] }] }),
+    };
+    const cases: EvalCase[] = [];
+    const go = async (id: string, request: string, script: object[], pick: Record<number, { expect: EvalCase['expect']; note: string }>) => {
+      const mine: EvalCase[] = [];
+      await runSkill(buildFreeSkill(null, false, undefined, false, false, [], false, undefined, true), { request }, {
+        llm: scriptedLlm(script),
+        browser: { snapshot: async () => ({ url: '', title: '(브라우저 없음)', hasPassword: false, items: [] }) } as never,
+        ui: { ask: async () => '', approve: async () => false },
+        files: memoryFiles(),
+        localFiles: port,
+        onTurn: (turn, snap, action) => mine.push(captureCase(turn, snap, action)),
+      });
+      for (const [i, p] of Object.entries(pick)) {
+        const c = mine[Number(i)];
+        cases.push({ ...c, id: `${id}-${Number(i) + 1}`, note: p.note, reviewed: true, source: 'seed', tags: ['files', 'free'], expect: p.expect });
+      }
+    };
+    await go(
+      'file-attached-csv',
+      '첨부한 조정 파일 내용을 CSV로 정리해서 저장해줘',
+      [
+        { thought: '', tool: 'read_file', args: { path: CSV, dataset: 'adj' } },
+        { thought: '', tool: 'write_file', args: { filename: '조정_정리.csv', dataset: 'adj' } },
+        { thought: '', tool: 'finish', args: { summary: '저장했습니다' } },
+      ],
+      {
+        0: { note: '첨부한 파일을 표로 읽는다 (경로를 지어내지 않는다)', expect: { tool: 'read_file', args: { path: { $regex: '조정\\.csv$' }, dataset: { $any: true } } } },
+        1: { note: '읽은 데이터셋을 CSV 파일로 쓴다', expect: { tool: 'write_file', args: { filename: { $regex: '\\.csv$' }, dataset: 'adj' } } },
+        2: { note: '다 했으면 끝낸다', expect: { tool: 'finish', args: {} } },
+      },
+    );
+    await go(
+      'file-find-downloads',
+      '내려받기 폴더에서 재공 엑셀 파일 찾아서 몇 행인지 알려줘',
+      [
+        { thought: '', tool: 'list_files', args: { dir: DL, pattern: '*재공*' } },
+        { thought: '', tool: 'read_file', args: { path: `${DL}\\재공확인_7라인.xlsx`, dataset: 'wip' } },
+        { thought: '', tool: 'finish', args: { summary: '{rows.wip}행' } },
+      ],
+      {
+        0: { note: '경로를 모르면 목록부터 본다', expect: { tool: 'list_files', args: { dir: { $regex: 'Downloads' } } } },
+        1: { note: '목록에서 찾은 파일을 전체 경로로 읽는다', expect: { tool: 'read_file', args: { path: { $regex: 'Downloads\\\\재공확인_7라인\\.xlsx$' } } } },
+      },
+    );
+    writeFileSync(out, `${JSON.stringify(cases, null, 1)}\n`);
+    console.log(`${cases.length}개 케이스 → ${out}`);
+  });
 });

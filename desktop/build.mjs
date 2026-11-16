@@ -24,7 +24,8 @@ await build({
   platform: 'node',
   external: ['electron', 'bufferutil', 'utf-8-validate'],
   transform: { define },
-  output: { file: join(OUT, 'main.mjs'), format: 'esm' },
+  // PDF 읽기(unpdf)가 쓰는 동적 import도 한 파일 안에 넣는다
+  output: { file: join(OUT, 'main.mjs'), format: 'esm', codeSplitting: false },
 });
 
 // 창에 내놓는 API. Electron의 샌드박스 preload는 CommonJS여야 한다.

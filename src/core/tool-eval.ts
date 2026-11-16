@@ -98,6 +98,8 @@ export const EvalCase = z.object({
     changes: z.array(z.string()).nullable().default(null),
     step: z.object({ n: z.number(), total: z.number(), text: z.string(), unmet: z.array(z.string()).nullable().default(null) }),
     vision: z.boolean().default(false),
+    /** PC 파일을 읽을 수 있던 차례면 읽을 수 있는 폴더와 첨부한 파일 */
+    files: z.object({ roots: z.array(z.string()), attached: z.array(z.string()) }).optional(),
   }),
   /** 정답 동작. 여럿이면 그중 하나면 맞다 */
   expect: z.union([ExpectAction, z.array(ExpectAction).min(1)]),
@@ -150,6 +152,7 @@ export function caseTurn(c: EvalCase): TurnInput {
     changes: t.changes,
     step: t.step,
     vision: t.vision,
+    ...(t.files ? { files: t.files } : {}),
   };
 }
 
@@ -163,6 +166,7 @@ export function caseSchema(c: EvalCase): JsonSchemaSpec {
     skills: t.skills.map((s) => s.id),
     scripts: t.skill.scripts.map((s) => s.name),
     vision: t.vision,
+    files: !!t.files,
     extra: toolsNamedIn(t.step.text),
   });
 }
@@ -419,6 +423,7 @@ export function captureCase(turn: TurnInput, snap: PageSnapshot, action: Action,
       changes: turn.changes,
       step: turn.step,
       vision: turn.vision === true,
+      ...(turn.files ? { files: { roots: [...turn.files.roots], attached: [...turn.files.attached] } } : {}),
     },
     expect: { tool: action.tool, args: JSON.parse(JSON.stringify(action.args)) },
   });
